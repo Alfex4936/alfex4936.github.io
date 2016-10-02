@@ -23,6 +23,7 @@
 	</style>
 
 	<script>
+	$("#top").hide();
     // coding is in progress.
     function ignore(e) {
         e = e || window.event;
@@ -34,6 +35,7 @@
     }
 
 	function sctop() {
+	   $("#top").show();
 	   $("#preloader").fadeOut("slow");
 	   $("html, body").animate({
             scrollTop: 0
