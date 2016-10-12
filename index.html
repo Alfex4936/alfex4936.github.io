@@ -23,7 +23,7 @@
 	</style>
 
 	<script>
-	$("#top").hide();
+	$('body').css('overflow', 'hidden');
     // coding is in progress.
     function ignore(e) {
         e = e || window.event;
@@ -35,7 +35,7 @@
     }
 
 	function sctop() {
-	   $("#top").show();
+	   $('body').css('overflow', 'auto');
 	   $("#preloader").fadeOut("slow");
 	   $("html, body").animate({
             scrollTop: 0
@@ -94,7 +94,7 @@
                         <img class="activator" src="img/ts.png">
                     </div>
                     <div class="card-content">
-                        <span class="card-title activator grey-text text-darken-4">태성고 앱<a class="grey-text text-darken-4 mdi mdi-dots-vertical">v3.52</a></span>
+                        <span class="card-title activator grey-text text-darken-4">태성고 앱<a class="grey-text text-darken-4 mdi mdi-dots-vertical">v3.6 - 20161012</a></span>
                         <p><a target="_blank" class="mdi mdi-shopping-music" href="https://play.google.com/store/apps/details?id=com.csw.taesung.high.schooltwo">PlayStore</a></p>
                     </div>
 					<div class="card-reveal">
