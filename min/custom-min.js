@@ -1,0 +1,1 @@
+(function($){$((function(){$("*").bind("contextmenu",(function(n){return!1}));$('.parallax').parallax()}));})(jQuery);

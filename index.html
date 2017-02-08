@@ -1,406 +1,339 @@
 <!DOCTYPE html>
-<!--[if IE 8 ]><html class="no-js oldie ie8" lang="ko"> <![endif]-->
-<!--[if IE 9 ]><html class="no-js oldie ie9" lang="ko"> <![endif]-->
-<!--[if (gte IE 9)|!(IE)]><!--><html class="no-js" lang="ko"> <!--<![endif]-->
+<html>
 <head>
-   <!--- basic page needs
-   ================================================== -->
-   <meta charset="utf-8">
-	<title>Coffee-</title>
-	<meta name="description" content="">  
-	<meta name="author" content="">
+	<title>태성고 최석원</title>
+	<meta name="description" content="30831 개인 사이트" />
 
-   <!-- mobile specific metas
-   ================================================== -->
-	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+    <meta name="theme-color" content="#4527A0">
 
- 	<!-- CSS
-   ================================================== -->
-   <link rel="stylesheet" href="css/base.css">  
-   <link rel="stylesheet" href="css/main.css">
-   <link rel="stylesheet" href="css/vendor.css">     
+	<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+	<link href="https://fonts.googleapis.com/css?family=Roboto" rel="stylesheet">
 
-   <!-- script
-   ================================================== -->
-	<script src="js/modernizr.js"></script>
+    <!-- CSS  -->
+    <link href="min/custom-min.css" type="text/css" rel="stylesheet" media="all">
 
-   <!-- favicons
-	================================================== -->
-	<link rel="icon" type="image/ico" href="favicon.ico">
+	<!-- Internal Scripts -->
+	<script src="min/plugin-min.js"></script>
+    <script src="min/custom-min.js"></script>
 
+    <style>
+	  * { font-family: 'Roboto', sans-serif; !important;}
+	</style>
+
+	<script>
+	$('body').css('overflow', 'hidden');
+    // coding is in progress.
+    function ignore(e) {
+        e = e || window.event;
+
+        if (e.keyCode == '123') {
+            e.returnValue=false;
+            e.cancel = true;
+        }
+    }
+
+	function sctop() {
+	   $('body').css('overflow', 'auto');
+	   $("#preloader").fadeOut("slow");
+	   $("html, body").animate({
+            scrollTop: 0
+        }, 500);
+	}
+	</script>
 </head>
-
-<body id="top">
-
-	<!-- header 
-   ================================================== -->
-   <header>
-
-   	<div class="row">
-
-   		<div class="logo">
-	         <a href="index.html">Coffee-</a>
-	      </div>
-
-	   	<nav id="main-nav-wrap">
-				<ul class="main-navigation">
-					<li class="current"><a class="smoothscroll"  href="#intro" title="">메인</a></li>
-					<li><a class="smoothscroll"  href="#process" title="">가입</a></li>
-					<li><a class="smoothscroll"  href="#features" title="">특징</a></li>
-					<li><a class="smoothscroll"  href="#testimonials" title="">도우미</a></li>
-					<li><a class="smoothscroll"  href="#faq" title="">FAQ</a></li>
-				</ul>
-			</nav>
-
-			<a class="menu-toggle" href="#"><span>메뉴</span></a>
-   		
-   	</div>   	
-   	
-   </header> <!-- /header -->
-
-	<!-- intro section
-   ================================================== -->
-   <section id="intro">
-
-   	<div class="shadow-overlay"></div>
-
-   	<div class="intro-content">
-   		<div class="row">
-
-   			<div class="col-twelve">
-
-	   			<h5>SINCE 2015.10.10</h5>
-	   			<h1>Coffee-</h1>
-
-	   			<a class="button stroke smoothscroll" href="#process" title="">공지 보기</a>
-
-	   		</div>  
-   			
-   		</div>   		 		
-   	</div> 
-
-   	<!-- Modal Popup
-	   ========================================================= -->
-
-      <div id="video-popup" class="popup-modal mfp-hide">
-
-		   <div class="fluid-video-wrapper">
-            <iframe src="http://player.vimeo.com/video/14592941?title=0&amp;byline=0&amp;portrait=0&amp;color=faec09" width="500" height="281" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen></iframe> 
-         </div>		     
-
-         <a class="close-popup">닫기</a>         
-
-	   </div> <!-- /video-popup -->  	 	
-
-   </section> <!-- /intro -->
-
-
-   <!-- Process Section
-   ================================================== -->
-   <section id="process">  
-
-   	<div class="row section-intro">
-   		<div class="col-twelve with-bottom-line">
-
-   			<h5>가입 과정</h5>
-   			<h1>가입은 어떻게 하나요?</h1>
-
-			<p class="lead">모바일로도 가입할 수 있습니다!</p>
-			
-   		</div>   		
-   	</div>
-
-   	<div class="row process-content">
-
-   		<div class="left-side">
-
-   			<div class="item" data-item="1">
-
-   				<h5>공지 확인</h5>
-
-   				<p>꼼꼼히 확인해주세요.</p>
-   					
-   			</div>
-			
-			<div class="item" data-item="2">
-
-	   			<h5>알리기</h5>
-
-	   			<p>공지를 확인했다고 게임 채팅으로 쳐주세요.</p>
-   					
-   			</div>
-   				
-   		</div> <!-- /left-side -->
-   		
-   		<div class="right-side">
-   				
-
-   		</div> <!-- /right-side -->  
-
-   		<div class="image-part"></div>  			
-
-   	</div> <!-- /process-content --> 
-
-   </section> <!-- /process-->    
-
-
-   <!-- features Section
-   ================================================== -->
-	<section id="features">
-
-		<div class="row section-intro">
-   		<div class="col-twelve with-bottom-line">
-
-   			<h5>특징</h5>
-   			<h1>클린 & 화목</h1>
-
-   			<!--<p class="lead">Lorem ipsum Do commodo in proident enim in dolor cupidatat adipisicing dolore officia nisi aliqua incididunt Ut veniam lorem ipsum Consectetur ut in in eu do.</p>
--->
-   		</div>   		
-   	</div>
-
-   	<div class="row features-content">
-
-   		<div class="features-list block-1-3 block-s-1-2 block-tab-full group">
-
-	      	<div class="bgrid feature">	
-
-	      		<span class="icon"><i class="icon-window"></i></span>            
-
-	            <div class="service-content">	
-
-	            	 <h3 class="h05">친목</h3>
-
-		            <p>가나다라마바사아자차카타파하
-	         		</p>
-	         		
-	         	</div> 	         	 
-
-				</div> <!-- /bgrid -->
-
-				<div class="bgrid feature">	
-
-					<span class="icon"><i class="icon-eye"></i></span>                          
-
-	            <div class="service-content">	
-	            	<h3 class="h05">네티켓</h3>  
-
-		            <p>가나다라마바사아자차카타파하
-	         		</p>
-
-	         		
-	            </div>	                          
-
-			   </div> <!-- /bgrid -->
-
-			   <div class="bgrid feature">
-
-			   	<span class="icon"><i class="icon-paint-brush"></i></span>		            
-
-	            <div class="service-content">
-	            	<h3 class="h05">연합</h3>
-
-		            <p>가나다라마바사아자차카타파하
-	         		</p>
-
-	        			
-	            </div> 	            	               
-
-			   </div> <!-- /bgrid -->
-
-	      </div> <!-- features-list -->
-   		
-   	</div> <!-- features-content -->
-		
-	</section> <!-- /features -->
-
-   <!-- Testimonials Section
-   ================================================== -->
-   <section id="testimonials">
-
-   	<div class="row">
-   		<div class="col-twelve">
-   			<h2 class="h01">도우미들</h2>
-   		</div>   		
-   	</div>   	
-
-      <div class="row flex-container">
-    
-         <div id="testimonial-slider" class="flexslider">
-
-            <ul class="slides">
-
-               <li>
-               	<div class="testimonial-author">
-                    	<img src="images/avatars/avatar-1.jpg" alt="Or7I">
-                    	<div class="author-info">
-                    		Or7I
-                    		<span class="position">Coffee- 블리자드</span>
-                    	</div>
-                  </div>
-
-                  <p>
-                  나는 좋은 마스터다. 						
-                  </p>                  
-             	</li> <!-- /slide -->
-
-               <li> 
-
-               	<div class="testimonial-author">
-                    	<img src="images/avatars/avatar-2.png" alt="V3">
-                    	<div class="author-info">
-                    		V3
-                    		<span>Coffee- 홈피 제작</span>
-                    	</div>
-                  </div> 
-
-                  <p>
-                  나는 노력형 프로그래머다.
-                  </p>
-                                         
-               </li> <!-- /slide -->
-
-            </ul> <!-- /slides -->
-
-         </div> <!-- /testimonial-slider -->         
-        
-      </div> <!-- /flex-container -->
-
-   </section> <!-- /testimonials -->
-
-
-   <!-- faq
-   ================================================== -->
-   <section id="faq">
-
-   	<div class="row section-intro">
-   		<div class="col-twelve with-bottom-line">
-
-   			<h5>Faq</h5>
-   			<h1>질의응답</h1>
-
-   		</div>   		
-   	</div>
-
-   	<div class="row faq-content">
-
-   		<div class="q-and-a block-1-2 block-tab-full group">
-
-   			<div class="bgrid">
-
-   				<h3>흔히 묻는 질문?</h3>
-
-   				<p>명령어 제외</p>
-
-   			</div>
-
-   			<div class="bgrid">
-
-   				<h3>흔히 묻는 질문?</h3>
-
-   				<p>있으면 좋겠음</p>
-
-   			</div>
-
-   		</div> <!-- /q-and-a --> 
-   		
-   	</div> <!-- /faq-content --> 
-
-   </section> <!-- /faq --> 
-
-   <!-- cta
-   ================================================== -->
-   <section id="cta">
-
-   	<div class="row cta-content">
-
-   		<div class="col-twelve">
-
-   			<h1 class="h01">Fish 서버 앱 다운로드</h1>
-
-   			<p class="lead">안드로이드만 지원합니다.</p>
-
-   			<ul class="stores">
-   				<li class="play-store">
-   					<a target="_blank" href="https://play.google.com/store/apps/details?id=mog422.fish" class="button round large" title="">
-   						<i class="icon ion-social-android"></i>Play Store</a>
-   					</li>
-   			</ul>
-
-   		</div>
-
-   	</div> <!-- /cta-content -->
-
-   </section> <!-- /cta -->
-
-
-   <!-- footer
-   ================================================== -->
-   <footer>
-
-   	<div class="footer-main">
-
-   		<div class="row">  
-
-	      	<div class="col-four tab-full mob-full footer-info">            
-
-	            <div class="footer-logo"></div>
-
-	            <p>
-		        	안녕하세요.<br>
-		        	test@mail.com
-		        	</p>
-
-		      </div> <!-- /footer-info -->
-
-	      	<div class="col-two tab-1-3 mob-1-2 site-links">
-
-	      		<h4>참고 링크</h4>
-
-	      		<ul>
-	      			<li><a href="#">스타 명령어 모음</a></li>
-				    <li><a href="#">스타 팁 모음</a></li>
-					<li><a href="#">Coffee- 인구 그래프</a></li>
-				</ul>
-
-	      	</div> <!-- /site-links -->  
-
-	      </div> <!-- /row -->
-
-   	</div> <!-- /footer-main -->
-
-
-      <div class="footer-bottom">
-
-      	<div class="row">
-
-      		<div class="col-twelve">
-	      		<div class="copyright">
-		         	<span>Made by V3 - 제작: x일 경과</span> 
-		         </div>
-
-		         <div id="go-top" style="display: block;">
-		            <a class="smoothscroll" title="Back to Top" href="#top"><i class="icon ion-android-arrow-up"></i></a>
-		         </div>         
-	      	</div>
-
-      	</div> <!-- /footer-bottom -->     	
-
-      </div>
-
-   </footer>  
-
-   <div id="preloader"> 
-    	<div id="loader"></div>
-   </div> 
-
-   <!-- Java Script
-   ================================================== --> 
-   <script src="js/jquery-1.11.3.min.js"></script>
-   <script src="js/jquery-migrate-1.2.1.min.js"></script>
-   <script src="js/plugins.js"></script>
-   <script src="js/main.js"></script>
-
-</body>
-
+<body onkeydown="ignore(event);" onload="sctop();" id="top" class="scrollspy">
+
+<!-- Pre-Loader -->
+<div id="preloader"></div>
+
+<!-- Banner -->
+<div id="index-banner"></div>
+
+<!--Head-->
+<div id="head" class="section scrollspy">
+    <div class="container">
+        <div class="row">
+		           <div class="center card-image waves-effect waves-block waves-light">
+                        <img class="activator" src="img/csw_logo.png" height="300" width="300" style="max-width: 100%; max-height: 100%;">
+                    </div>
+            <div class="col s12 m4 l4 center">
+                <div class="center promo promo-example">
+                    <i class="mdi mdi-android-studio"></i>
+                    <h5 class="promo-caption">개발</h5>
+                    <p class="light center">안드로이드 앱, 홈페이지 제작 가능<br>첫 앱: 2014년</p>
+                </div>
+            </div>
+			<div  class="col s12 m4 l4 center">
+                <div class="center promo promo-example">
+                    <i class="mdi mdi-code-braces"></i>
+                    <h5 class="promo-caption">프로그래밍 언어</h5>
+                    <p class="light center">C, JAVA, JS, Go, Python 공부함<br>첫 시작: 2013년</p>
+                </div>
+            </div>
+			<div  class="col s12 m4 l4 center">
+                <div class="center promo promo-example">
+                    <i class="mdi mdi-auto-fix"></i>
+                    <h5 class="promo-caption">프로그램</h5>
+                    <p class="light center">포토샵, 일러스트레이션, 안드로이드 스튜디오<br>애프터이펙트, 프리미어, Github</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!--Arts-->
+<div class="section scrollspy" id="art">
+    <div class="container">
+        <h2 class="header text_b">작업 (일부)</h2>
+        <div class="row">
+            <div class="col s12 m4 l4">
+                <div class="card">
+                    <div class="card-image waves-effect waves-block waves-light">
+                        <img class="activator" src="img/ts.png">
+                    </div>
+                    <div class="card-content">
+                        <span class="card-title activator grey-text text-darken-4">태성고 앱<a class="grey-text text-darken-4 mdi mdi-dots-vertical">v3.63 - 20161028</a></span>
+                        <p><a target="_blank" class="mdi mdi-shopping-music" href="https://play.google.com/store/apps/details?id=com.csw.taesung.high.schooltwo">PlayStore</a></p>
+                    </div>
+					<div class="card-reveal">
+					    <span class="card-title grey-text text-darken-4">닫기<i class="mdi mdi-close right"></i></span>
+						<br>
+						<b><p>&#9956; 그래픽 배너</p></b>
+						<div class="waves-effect waves-light card-image">
+                            <img class="activator" src="img/ts_banner.png">
+                        </div>
+						<b><p>&#9956; 아침 6시마다 중식, 석식 알림 기능</p></b>
+						<div class="waves-effect waves-light card-image">
+                            <img class="activator" src="img/ts_notify.png">
+                        </div>
+						<b><p>&#9956; 런쳐 급식 위젯 (4x4)</p></b>
+						<div class="waves-effect waves-light card-image">
+                            <img class="activator" src="img/ts_widget.png">
+                        </div>
+						<b><p>&#9956; 태성고 교가 듣기</p></b>
+						<div class="waves-effect waves-light card-image">
+                            <img class="activator" src="img/ts_song.png">
+                        </div>
+						<b><p>&#9956; 태성고 급식 보기</p></b>
+						<b><p>&#9956; 태성고 정보</p></b>
+						<b><p>&#9956; 태성고 일정</p></b>
+						<b><p>&#9956; 지원: 4.2.2 (API17) ~ 7+ (API24)</p></b>
+                    </div>
+                </div>
+            </div>
+			<div class="col s12 m4 l4">
+                <div class="card">
+                    <div class="card-image waves-effect waves-block waves-light">
+                        <img class="activator" src="img/wa.png">
+                    </div>
+                    <div class="card-content">
+                        <span class="card-title activator grey-text text-darken-4">세계 알파벳 공부 앱<a class="grey-text text-darken-4 mdi mdi-dots-vertical">2014.06.22</a></span>
+                        <p><a class="mdi mdi-shopping-music">미등록</a></p>
+                    </div>
+					<div class="card-reveal">
+					    <span class="card-title grey-text text-darken-4">닫기<i class="mdi mdi-close right"></i></span>
+						<b><p>&#9956; 발음을 들려주며 알파벳을 슬라이드</p></b>
+						<div class="card-image waves-effect waves-block waves-light">
+                            <img class="activator" src="img/wa_content.png">
+                        </div>
+                    </div>
+                </div>
+            </div>
+			<div class="col s12 m4 l4">
+                <div class="card">
+                    <div class="card-image waves-effect waves-block waves-light">
+                        <img class="activator" src="img/rd.png">
+                    </div>
+                    <div class="card-content">
+                        <span class="card-title activator grey-text text-darken-4">랜덤 암호 앱<a class="grey-text text-darken-4 mdi mdi-dots-vertical">2014.08.24</a></span>
+                        <p><a class="mdi mdi-shopping-music">미등록</a></p>
+                    </div>
+					<div class="card-reveal">
+					    <span class="card-title grey-text text-darken-4">닫기<i class="mdi mdi-close right"></i></span>
+						<b><p>&#9956; 길이 선택 후 랜덤화 및 저장</p></b>
+						<div class="card-image waves-effect waves-block waves-light">
+                            <img class="activator" src="img/rd_content.png">
+                        </div>
+                    </div>
+                </div>
+            </div>
+			<div class="col s12 m4 l4">
+                <div class="card">
+                    <div class="card-image waves-effect waves-block waves-light">
+                        <img class="activator" src="img/art/4.png">
+                    </div>
+                    <div class="card-content">
+                        <span class="card-title activator grey-text text-darken-4"><a class="grey-text text-darken-4 mdi mdi-image-filter-hdr">안드로이드 커스텀 롬</a></span>
+                    </div>
+					<div class="card-reveal">
+					    <span class="card-title grey-text text-darken-4">닫기<i class="mdi mdi-close right"></i></span>
+						<b><p>&#9956; 롬 이름: MIRAGE, Zest</p></b>
+						<b><p>&#9956; 개발: 2013.03.30 ~ 2013.07.24</p></b>
+						<b><p>&#9956; 빌드 OS: Ubuntu</p></b>
+						<b><p>&#9956; 로고 디자인: 틱톡, TARXO</p></b>
+						<div class="card-image waves-effect waves-block waves-light">
+                            <img class="activator" src="img/mr_content.png">
+                        </div>
+                    </div>
+                </div>
+            </div>
+			<div class="col s12 m4 l4">
+                <div class="card">
+                    <div class="card-image waves-effect waves-block waves-light">
+                        <img class="activator" src="img/art/1.jpg">
+                    </div>
+                    <div class="card-content">
+                        <span class="card-title activator grey-text text-darken-4"><a class="grey-text text-darken-4 mdi mdi-image-filter-hdr">2014.06.05</a></span>
+                    </div>
+					<div class="card-reveal">
+					    <span class="card-title grey-text text-darken-4">닫기<i class="mdi mdi-close right"></i></span>
+						<b><p>&#9956; 포토샵 작업</p></b>
+                    </div>
+                </div>
+            </div>
+			<div class="col s12 m4 l4">
+                <div class="card">
+                    <div class="card-image waves-effect waves-block waves-light">
+                        <img class="activator" src="img/art/2.jpg">
+                    </div>
+                    <div class="card-content">
+                        <span class="card-title activator grey-text text-darken-4"><a class="grey-text text-darken-4 mdi mdi-image-filter-hdr">2014.06.06</a></span>
+                    </div>
+					<div class="card-reveal">
+					    <span class="card-title grey-text text-darken-4">닫기<i class="mdi mdi-close right"></i></span>
+						<b><p>&#9956; 포토샵 작업</p></b>
+                    </div>
+                </div>
+            </div>
+			<div class="col s12 m4 l4">
+                <div class="card">
+                    <div class="card-image waves-effect waves-block waves-light">
+                        <img class="activator" src="img/art/6.png">
+                    </div>
+                    <div class="card-content">
+                        <span class="card-title activator grey-text text-darken-4"><a class="grey-text text-darken-4 mdi mdi-image-filter-hdr">2014.12.30</a></span>
+                    </div>
+					<div class="card-reveal">
+					    <span class="card-title grey-text text-darken-4">닫기<i class="mdi mdi-close right"></i></span>
+						<b><p>&#9956; Wacom 펜 작업</p></b>
+                    </div>
+                </div>
+            </div>
+			<div class="col s12 m4 l4">
+                <div class="card">
+                    <div class="card-image waves-effect waves-block waves-light">
+                        <img class="activator" src="img/art/3.png">
+                    </div>
+                    <div class="card-content">
+                        <span class="card-title activator grey-text text-darken-4"><a class="grey-text text-darken-4 mdi mdi-image-filter-hdr">2015.01.04</a></span>
+                    </div>
+					<div class="card-reveal">
+					    <span class="card-title grey-text text-darken-4">닫기<i class="mdi mdi-close right"></i></span>
+						<b><p>&#9956; 일러스트레이션 작업</p></b>
+                    </div>
+                </div>
+            </div>
+			<div class="col s12 m4 l4">
+                <div class="card">
+                    <div class="card-image waves-effect waves-block waves-light">
+                        <img class="activator" src="img/art/5.png">
+                    </div>
+                    <div class="card-content">
+                        <span class="card-title activator grey-text text-darken-4"><a class="grey-text text-darken-4 mdi mdi-image-filter-hdr">2015.01.06</a></span>
+                    </div>
+					<div class="card-reveal">
+					    <span class="card-title grey-text text-darken-4">닫기<i class="mdi mdi-close right"></i></span>
+						<b><p>&#9956; 일러스트레이션 작업</p></b>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!--Parallax-->
+<div class="parallax-container">
+    <div class="parallax"><img src="img/parallax1.gif"></div>
+</div>
+
+<!--Dev-->
+<div class="section scrollspy" id="dev">
+    <div class="container">
+        <h2 class="header text_b">About</h2>
+        <div class="row center">
+            <div class="col s12 m3">
+                <div class="card card-avatar">
+                    <div class="waves-effect waves-block waves-light">
+                        <img class="activator" src="img/csw_logo.png">
+                    </div>
+                    <div class="card-content">
+                        <span class="card-title activator grey-text text-darken-4"><b>최석원 (30831)</b><br/>
+                            <small><em><a class="pink-text text-darken-1">" ╰໒(◉ᴥ◉)७╯ "<br>" ...미니멀리즘... "<br>" 사진 클릭하여 정보 보기 "</a></em></small></span>
+                    </div>
+					<div class="card-reveal">
+					    <span class="card-title grey-text text-darken-4">닫기<i class="mdi mdi-close right"></i></span>
+						<b><p>&#9136; 나이: 19</p></b>
+						<b><p>&#9136; 꿈: 다재다능한 화이트 해커</p></b>
+						<b><p>&#9136; 목표: 사용자 만족</p></b>
+						<b><p>&#9136; 로고: C=날개 S=몸 W=왕관</p></b>
+						<b><p>&#9136; 로고 의미: 최고를 향해 날아가자</p></b>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!--Info-->
+<footer id="info" class="page-footer default_color scrollspy">
+    <div class="container">  
+        <div class="row">
+            <div class="col l3 s12">
+                <h5 class="white-text">&#9930; To-Do &#9930;</h5>
+				<ul>
+                    <li>
+						<a class="white-text">
+                            리버싱 /
+                        </a>
+						<a class="white-text">
+                            NodeJS<br>
+                        </a>
+						<a class="white-text">
+                            해킹 /
+                        </a>
+						<a class="white-text">
+                            서버 이용 앱<br>
+                        </a>
+						<a class="white-text">
+                            Kotlin 개발
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            <div class="col l3 s12">
+                <h5 class="white-text">&#9930; 링크 &#9930;</h5>
+                <ul>
+                    <li>
+                        <a class="white-text mdi mdi-github-circle" target="_blank" href="https://github.com/Alfex4936">
+                            Github
+                        </a>
+						<br>
+						<a class="white-text mdi mdi-email-open" target="_blank" href="mailto:alfex4936@gmail.com">
+                            alfex4936@gmail.com
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+	<div class="footer-copyright footer_color">
+        <div class="container">
+		Copyright 2016 (CSW) all rights reserved.
+        </div>
+    </div>
+</footer>
+
+    </body>
 </html>
