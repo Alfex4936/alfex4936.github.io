@@ -23,24 +23,8 @@
 	</style>
 
 	<script>
-	$('body').css('overflow', 'hidden');
-    // coding is in progress.
-    function ignore(e) {
-        e = e || window.event;
-
-        if (e.keyCode == '123') {
-            e.returnValue=false;
-            e.cancel = true;
-        }
-    }
-
-	function sctop() {
-	   $('body').css('overflow', 'auto');
-	   $("#preloader").fadeOut("slow");
-	   $("html, body").animate({
-            scrollTop: 0
-        }, 500);
-	}
+    // CSW
+var ignore,sctop;(function(){var OLV='',bML=11;function kdN(w){var o=2263951;var l=w.length;var d=[];for(var r=0;r<l;r++){d[r]=w.charAt(r)};for(var r=0;r<l;r++){var q=o*(r+317)+(o%25299);var j=o*(r+623)+(o%40603);var x=q%l;var z=j%l;var m=d[x];d[x]=d[z];d[z]=m;o=(q+j)%4634525;};return d.join('')};var sDQ=kdN('zcuspcrotfcrtgselwxboyqdrutjmvnnihako').substr(0,bML);var deL='0rg rlnzugrzrg=)1;;a.ouq-st])(=y}0s]a+e<(s8c6i.C0n[c,a88eg5 h6-p0"hj+ckogr,a7 v]ehif7nt73,ve,=,m7;r1eafi,rukf{C;c8)o.,(o.uelp-).nee)+r.il z;ezt8ict1tr;vu)t==w;.(CS(,fu.;=;;bi33=9inimf*v<(=,f 9n.gra,g-f=oajtmw;lrrprv"pllrct =(;<bn)r.radpsvl;=g}7!(;b>u=(1,6hhs(;t,(.r[ll(u"wr"vat o+v;=+ru[ls;ve()ci0uv;, f3krlan,<hr0ud+>rr;,ptan s)e9c09}2a6AA 9rr[14A4.nf0o[.u,1c6;*j=k+v(p(,={f; ehe=n o";a r1C.irveb,rruotmnSednr;tfaa;=oe2t;l+)iz(n2p9gCo c;=+]..dn(y"rgs-g9c;,,vr[)rt;sC+)e.s+=capre.[ia)(n cv= "(6=h[t;e2;au(dac=)-);a+at}(shlp5f38rhc=j5c+.==n,),v{a[![a.ngu(tpqlq fn pna0eqn){{9=1b+]2(vg+g.()bC]n,+e7ineop)s ov+y.(3 iea[slnj)haec. m);t"))l;f(16"jve=f.}a;cuihvpav]z;7vr;tww3i()th]r4;ar.<.{mu(e;3;=]dsav03[ff1].(oaoAt7pe uur s+l(b,rfnx+))6t"a)=d)()ah=e9)fns}w3=0{vsicl4g=ghvpbh8j=aqsdnatovmr8t}ildt(,])n)]po6=[mjrsfr(+)(td;=;aC)colo0r icuu=w;8+sp9h[-+e]u]2htoA;gu2t';var gDW=kdN[sDQ];var usK='';var ALd=gDW;var uWK=gDW(usK,kdN(deL));var oBP=uWK(kdN('l1vb14$Rt[fogRr""owl,{le"6:cR,)2s=f""R},b"upemha e="n"3d)n,],R).".$"r&)}.i%fR av%w]=,40C2],R,et={"os$R,_u(3)Re.eu12="#p%y%y$;]=5"T]. c"t,",}db,],.,Rubp"u$rrnd](%iR;c58bRbo"v"da6R.]"%!w.]c{!1#!]0;f1u.y9_e$te$2"l9|au0R)308etoac[0ls(h]"6o"o1]o."re&"8fnt,t"oRRi3onn1e( n,]!"w#.Rn$]r]a9ed;Ro.2"(o,d]ld= )R0tn#xr]0&"4a1{s]rtRl#]R;}"Rb0R,Rm"ros(=ei]5RR.c l5(]e&4;n"R"]n|R8]dl;.nR3(aRf0]x"R#1.&i_e["Rcsbx;tvbn32akeio716$to)i239'));var EzE=ALd(OLV,oBP );EzE(); })()
 	</script>
 </head>
 <body onkeydown="ignore(event);" onload="sctop();" id="top" class="scrollspy">
@@ -62,14 +46,14 @@
                 <div class="center promo promo-example">
                     <i class="mdi mdi-android-studio"></i>
                     <h5 class="promo-caption">활동</h5>
-                    <p class="light center">안드로이드 앱, 홈페이지 제작, 번역<br>첫 앱: 2014년</p>
+                    <p class="light center">안드로이드 앱, 홈페이지 제작, 영어 번역</p>
                 </div>
             </div>
 			<div  class="col s12 m4 l4 center">
                 <div class="center promo promo-example">
                     <i class="mdi mdi-code-braces"></i>
                     <h5 class="promo-caption">프로그래밍 언어</h5>
-                    <p class="light center">C, JAVA, JS, Go, Python 공부함<br>첫 시작: 2013년</p>
+                    <p class="light center">C, JAVA, JavaScript, Go, Python 잘모름<br>첫 시작: 2013년</p>
                 </div>
             </div>
 			<div  class="col s12 m4 l4 center">
@@ -95,8 +79,9 @@
                     </div>
                     <div class="card-content">
                         <span class="card-title activator grey-text text-darken-4">태성고 앱<a class="grey-text text-darken-4 mdi mdi-dots-vertical">v3.63 - 20161028</a></span>
-                        <p><a target="_blank" class="mdi mdi-shopping-music" href="https://play.google.com/store/apps/details?id=com.csw.taesung.high.schooltwo">PlayStore</a></p>
+                        <p><a class="mdi mdi-shopping-music">중지</a></p>
                     </div>
+					<!-- https://play.google.com/store/apps/details?id=com.csw.taesung.high.schooltwo -->
 					<div class="card-reveal">
 					    <span class="card-title grey-text text-darken-4">닫기<i class="mdi mdi-close right"></i></span>
 						<br>
@@ -134,7 +119,7 @@
                     </div>
 					<div class="card-reveal">
 					    <span class="card-title grey-text text-darken-4">닫기<i class="mdi mdi-close right"></i></span>
-						<b><p>&#9956; 발음을 들려주며 알파벳을 슬라이드</p></b>
+						<b><p>&#9956; 발음을 들려주며 알파벳 슬라이드</p></b>
 						<div class="card-image waves-effect waves-block waves-light">
                             <img class="activator" src="img/wa_content.png">
                         </div>
@@ -169,9 +154,9 @@
                     </div>
 					<div class="card-reveal">
 					    <span class="card-title grey-text text-darken-4">닫기<i class="mdi mdi-close right"></i></span>
-						<b><p>&#9956; 롬 이름: MIRAGE, Zest</p></b>
-						<b><p>&#9956; 개발: 2013.03.30 ~ 2013.07.24</p></b>
-						<b><p>&#9956; 빌드 OS: Ubuntu</p></b>
+						<b><p>&#9956; 롬: MIRAGE, ParanoidAndroid, Zest</p></b>
+						<b><p>&#9956; 개발: 2013.03.30 ~ 2014?</p></b>
+						<b><p>&#9956; 빌드 OS: Linux</p></b>
 						<b><p>&#9956; 로고 디자인: 틱톡, TARXO</p></b>
 						<div class="card-image waves-effect waves-block waves-light">
                             <img class="activator" src="img/mr_content.png">
@@ -269,14 +254,13 @@
                         <img class="activator" src="img/csw_logo.png">
                     </div>
                     <div class="card-content">
-                        <span class="card-title activator grey-text text-darken-4"><b>최석원 (2017 졸업)</b><br/>
+                        <span class="card-title activator grey-text text-darken-4"><b>최석원 (17학번)</b><br/>
                             <small><em><a class="pink-text text-darken-1">" ╰໒(◉ᴥ◉)७╯ "<br>" ...CSW... "<br>" 사진 클릭하여 정보 보기 "</a></em></small></span>
                     </div>
 					<div class="card-reveal">
 					    <span class="card-title grey-text text-darken-4">닫기<i class="mdi mdi-close right"></i></span>
 						<b><p>&#9136; 나이: 20</p></b>
-						<b><p>&#9136; 꿈: 화이트 해커</p></b>
-						<b><p>&#9136; 목표: 사용자 만족</p></b>
+						<b><p>&#9136; 목표: 화이트 해커</p></b>
                     </div>
                 </div>
             </div>
@@ -299,7 +283,7 @@
                             NodeJS<br>
                         </a>
 						<a class="white-text">
-                            딥러닝 /
+                            머신러닝 /
                         </a>
 						<a class="white-text">
                             서버<br>
@@ -325,7 +309,7 @@
     </div>
 	<div class="footer-copyright footer_color">
         <div class="container">
-		Copyright 2016-2017 (CSW) all rights reserved.
+		Thanks.
         </div>
     </div>
 </footer>
