@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>YTChatX - 상세 정보</title>
+    <title>YTChatX - Project Details</title>
     <style>
       * {
         margin: 0;
@@ -475,50 +475,47 @@
         <div class="project-logo">
           <img
             src="https://github.com/Alfex4936/alfex4936.github.io/blob/master/portfolio/ytchatx-logo.png?raw=true"
-            alt="YTChatX 로고"
+            alt="YTChatX Logo"
           />
         </div>
         <h1 class="project-title">YTChatX</h1>
-        <p class="project-subtitle">YouTube 라이브 채팅 실시간 분석 웹사이트</p>
+        <p class="project-subtitle">Real-time YouTube Live Chat Analysis Website</p>
         <div class="project-meta">
           <span class="meta-item">📅 2025.02 - 2025.03</span>
-          <span class="meta-item">👥 개인 프로젝트</span>
-          <span class="meta-item">💻 풀스택 개발</span>
+          <span class="meta-item">👥 Personal Project</span>
+          <span class="meta-item">💻 Fullstack Development</span>
         </div>
       </div>
 
       <!-- Content Section -->
       <div class="content">
-
-        <!-- UML 다이어그램 -->
+        <!-- UML Diagram -->
         <div class="section">
-            <h2 class="section-title">📊 시스템 아키텍처</h2>
+            <h2 class="section-title">📊 System Architecture</h2>
             <div class="image-section">
                 <div class="project-images">
                     <div class="project-image" onclick="openLightbox('https://github.com/Alfex4936/alfex4936.github.io/blob/master/portfolio/ytchatx.png?raw=true', 'UML')">
-                        <img src="https://github.com/Alfex4936/alfex4936.github.io/blob/master/portfolio/ytchatx.png?raw=true" alt="시스템 아키텍처">
-                        <div class="project-image-caption">시스템 아키텍처</div>
+                        <img src="https://github.com/Alfex4936/alfex4936.github.io/blob/master/portfolio/ytchatx.png?raw=true" alt="System Architecture">
+                        <div class="project-image-caption">System Architecture</div>
                     </div>
                 </div>
             </div>
         </div>
         
-        <!-- 프로젝트 목적 -->
+        <!-- Project Purpose -->
         <div class="section">
-          <h2 class="section-title">🎯 프로젝트 목적</h2>
+          <h2 class="section-title">🎯 Project Purpose</h2>
           <div class="purpose-box">
-            YouTube 스트리머와 시청자들이 채팅 트렌드를 실시간으로 분석하고 소통
-            패턴을 파악할 수 있도록 도와주는 플랫폼을 제공합니다. 특히 대규모
-            라이브 스트림에서 발생하는 방대한 채팅 데이터를 효율적으로 처리하고
-            시각화하여, 스트리머가 시청자와의 소통을 더 잘 이해할 수 있도록
-            지원합니다.
+            To help YouTube streamers and viewers analyze chat trends in real-time and understand communication patterns.
+            This platform efficiently processes and visualizes massive chat data from large-scale live streams,
+            enabling streamers to better understand their audience interactions and engagement patterns.
           </div>
         </div>
 
-        <!-- 기술 스택 -->
+        <!-- Tech Stack -->
         <div class="section">
-          <h2 class="section-title">🛠 기술 스택</h2>
-          <p>이 프로젝트에서 사용한 주요 기술들입니다.</p>
+          <h2 class="section-title">🛠 Tech Stack</h2>
+          <p>Key technologies used in this project.</p>
           <div class="tech-stack">
             <span class="tech-item">Spring Boot</span>
             <span class="tech-item">Java</span>
@@ -532,161 +529,153 @@
           </div>
         </div>
 
-        <!-- 담당 역할 -->
+        <!-- Roles & Responsibilities -->
         <div class="section">
-          <h2 class="section-title">👨‍💻 담당 역할</h2>
+          <h2 class="section-title">👨‍💻 Roles & Responsibilities</h2>
           <ul class="role-list">
-            <li>시스템 아키텍처 설계</li>
-            <li>Spring Boot API 개발</li>
-            <li>Playwright 크롤링 시스템</li>
-            <li>Rust 스크래퍼 개발</li>
-            <li>Redis 실시간 처리</li>
-            <li>React 대시보드 개발</li>
-            <li>WebSocket 실시간 통신</li>
-            <li>성능 최적화</li>
+            <li>System Architecture Design</li>
+            <li>Spring Boot API Development</li>
+            <li>Playwright Crawling System</li>
+            <li>Rust Scraper Development</li>
+            <li>Redis Real-time Processing</li>
+            <li>React Dashboard Development</li>
+            <li>WebSocket Real-time Communication</li>
+            <li>Performance Optimization</li>
           </ul>
         </div>
 
-        <!-- 주요 성과 및 기술적 도전 -->
+        <!-- Key Achievements & Technical Challenges -->
         <div class="section">
-          <h2 class="section-title">🏆 주요 성과 & 기술적 도전</h2>
+          <h2 class="section-title">🏆 Key Achievements & Technical Challenges</h2>
           <ul class="achievement-list">
             <li>
-              <strong>대규모 실시간 데이터 처리</strong><br />
-              Playwright 기반 자동화로 시청자 3만 명 라이브에서 초당 최대
-              1,677개 메시지를 안정적으로 수집. YouTube의 동적 로딩과 rate
-              limiting을 우회하여 안정적인 데이터 수집 파이프라인 구축.
+              <strong>Large-scale Real-time Data Processing</strong><br />
+              Stably collected up to 1,677 messages per second during a 30K-viewer livestream using Playwright automation.
+              Built a reliable data collection pipeline that bypasses YouTube's dynamic loading and rate limiting.
             </li>
             <li>
-              <strong>성능 최적화를 위한 Rust 도입</strong><br />
-              기존 Java 크롤러의 한계를 극복하기 위해 Rust + Chromiumoxide 기반
-              경량 스크래퍼 도입. 메모리 사용량 65% 감소, 50개 이상의 동시
-              크롤러 운영으로 확장성 3배 향상.
+              <strong>Performance Optimization with Rust</strong><br />
+              Introduced lightweight Rust + Chromiumoxide scraper to overcome Java crawler limitations.
+              Achieved 65% memory usage reduction and 3x scalability improvement with 50+ concurrent crawlers.
             </li>
             <li>
-              <strong>안정적인 배치 처리 시스템</strong><br />
-              Redis Pipeline과 RSemaphore를 활용하여 메시지 2,500개/10초 단위로
-              안정적인 배치 처리 구현. 리소스 제어를 통해 시스템 과부하 방지 및
-              데이터 손실 최소화.
+              <strong>Reliable Batch Processing System</strong><br />
+              Implemented stable batch processing for 2,500 messages every 10 seconds using Redis Pipeline and RSemaphore.
+              Prevented system overload and minimized data loss through resource control.
             </li>
             <li>
-              <strong>실시간 분석 및 시각화</strong><br />
-              실시간 도네이션 감지 알고리즘 구현 및 키워드 기반 채팅 트렌드
-              시각화 기능 개발. WebSocket을 통한 실시간 업데이트로 사용자 경험
-              향상.
+              <strong>Real-time Analysis & Visualization</strong><br />
+              Developed real-time donation detection algorithm and keyword-based chat trend visualization.
+              Enhanced user experience with real-time updates via WebSocket communication.
             </li>
           </ul>
         </div>
 
-        <!-- 프로젝트 스크린샷/이미지 -->
+        <!-- Project Screenshots -->
         <div class="section">
-          <h2 class="section-title">📸 프로젝트 스크린샷</h2>
+          <h2 class="section-title">📸 Project Screenshots</h2>
           <div class="image-section">
-            <p>이미지를 클릭하면 크게 볼 수 있습니다.</p>
+            <p>Click on images to view them in full size.</p>
             <div class="project-images">
               <div
                 class="project-image"
-                onclick="openLightbox('https://raw.githubusercontent.com/Alfex4936/alfex4936.github.io/refs/heads/master/portfolio/ytchatx1.png', 'YTChatX 메인 대시보드 - 실시간 채팅 분석')"
+                onclick="openLightbox('https://raw.githubusercontent.com/Alfex4936/alfex4936.github.io/refs/heads/master/portfolio/ytchatx1.png', 'YTChatX Main Dashboard - Real-time Chat Analysis')"
               >
                 <img
                   src="https://raw.githubusercontent.com/Alfex4936/alfex4936.github.io/refs/heads/master/portfolio/ytchatx1.png"
-                  alt="YTChatX 메인 대시보드"
+                  alt="YTChatX Main Dashboard"
                 />
                 <div class="project-image-caption">
-                  메인 대시보드 - 실시간 채팅 분석
+                  Main Dashboard - Real-time Chat Analysis
                 </div>
               </div>
               <div
                 class="project-image"
-                onclick="openLightbox('https://github.com/Alfex4936/alfex4936.github.io/blob/master/portfolio/ytchatx2.png?raw=true', '도네이션 감지')"
+                onclick="openLightbox('https://github.com/Alfex4936/alfex4936.github.io/blob/master/portfolio/ytchatx2.png?raw=true', 'Donation Detection')"
               >
                 <img
                   src="https://github.com/Alfex4936/alfex4936.github.io/blob/master/portfolio/ytchatx2.png?raw=true"
-                  alt="도네이션 감지"
+                  alt="Donation Detection"
                 />
                 <div class="project-image-caption">
-                  도네이션 감지
+                  Donation Detection
                 </div>
               </div>
               <div
                 class="project-image"
-                onclick="openLightbox('https://github.com/Alfex4936/alfex4936.github.io/blob/master/portfolio/ytchatx3.png?raw=true', '설정 화면')"
+                onclick="openLightbox('https://github.com/Alfex4936/alfex4936.github.io/blob/master/portfolio/ytchatx3.png?raw=true', 'Settings Page')"
               >
                 <img
                   src="https://github.com/Alfex4936/alfex4936.github.io/blob/master/portfolio/ytchatx3.png?raw=true"
-                  alt="설정"
+                  alt="Settings"
                 />
-                <div class="project-image-caption">설정</div>
+                <div class="project-image-caption">Settings</div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- 프로젝트 회고 -->
+        <!-- Project Reflection -->
         <div class="section">
-          <h2 class="section-title">🤔 프로젝트 회고</h2>
+          <h2 class="section-title">🤔 Project Reflection</h2>
           <div class="reflection-box">
             <div class="reflection-item">
-              <span class="reflection-label">배운 점:</span>
+              <span class="reflection-label">What I Learned:</span>
               <div class="reflection-content">
-                대규모 실시간 데이터 처리의 복잡성을 경험했습니다. 특히
-                YouTube의 동적 UI와 rate limiting 문제를 해결하면서 웹 크롤링의
-                기술적 한계와 다양한 해결 방안을 깊이 있게 학습했습니다. 또한
-                Java와 Rust의 성능을 직접 비교하며 언어별 특성과 적합한 활용
-                시나리오를 이해할 수 있었습니다.
+                I gained hands-on experience with the complexity of large-scale real-time data processing.
+                Solving YouTube's dynamic UI and rate limiting challenges gave me deep insights into web crawling limitations
+                and various solution approaches. Directly comparing Java and Rust performance helped me understand
+                the characteristics of each language and their appropriate use cases.
               </div>
             </div>
             <div class="reflection-item">
-              <span class="reflection-label">아쉬운 점:</span>
+              <span class="reflection-label">Areas for Improvement:</span>
               <div class="reflection-content">
-                YouTube API의 제약으로 일부 기능을 크롤링에 의존해야 했던 점이
-                아쉬웠습니다. 또한 초반에 스크래퍼의 다양한 구현 방식을 충분히
-                검토하고 테스트해보지 못해, 후반에 성능 측면에서 개선할 여지가
-                있던 점이 아쉬웠습니다.
+                Having to rely on crawling for some features due to YouTube API constraints was challenging.
+                I also regret not thoroughly reviewing and testing various scraper implementation approaches early on,
+                which left room for performance improvements later in the project.
               </div>
             </div>
             <div class="reflection-item">
-              <span class="reflection-label">향후 계획:</span>
+              <span class="reflection-label">Future Plans:</span>
               <div class="reflection-content">
-                Rust 스크래퍼를 각 실행 바이너리로 돌리는 방식 대신,
-                <strong>Rust Scraper Server</strong>를 유저 환경에 배포해
-                실행하도록 전환할 계획입니다. 이 서버는 각 쓰레드에서 스크래퍼를
-                관리하며, gRPC를 통해 Spring Boot 서버와 통신합니다. 이렇게 하면
-                관리가 용이하고, 서버 측 자원 효율성을 높이며, 확장성과
-                유지보수성이 개선됩니다. 또한 NLP
-                기반의 채팅 감정 분석, 스팸 필터링, 자동 하이라이트 추출 등으로
-                스트리머에게 더 많은 가치를 제공하고 싶습니다.
+                Instead of running Rust scrapers as individual executable binaries, I plan to transition to deploying
+                a <strong>Rust Scraper Server</strong> in the user environment. This server will manage scrapers
+                in separate threads and communicate with the Spring Boot server via gRPC. This approach will improve
+                manageability, server-side resource efficiency, scalability, and maintainability.
+                Additionally, I want to provide more value to streamers through NLP-based chat sentiment analysis,
+                spam filtering, and automatic highlight extraction features.
               </div>
             </div>
           </div>
         </div>
 
-        <!-- 관련 링크 -->
+        <!-- Related Links -->
         <div class="section">
-          <h2 class="section-title">🔗 관련 링크</h2>
+          <h2 class="section-title">🔗 Related Links</h2>
           <div class="links-section">
-            <p>프로젝트와 관련된 링크들입니다.</p>
+            <p>Links related to this project.</p>
             <div class="project-links">
               <a target="_blank" rel="noopener noreferrer"
                 href="https://github.com/Alfex4936/YoutubeLive-Chatx"
                 class="project-link"
               >
-                🐙 GitHub 저장소
+                🐙 GitHub Repository
               </a>
               <!-- <a target="_blank" rel="noopener noreferrer"
                 href="https://alfex4936.github.io/YTChatX/"
                 class="project-link"
               >
-                🌐 프로젝트 데모
+                🌐 Project Demo
               </a> -->
             </div>
           </div>
         </div>
       </div>
 
-      <!-- 뒤로가기 링크 -->
+      <!-- Back Link -->
       <div class="back-link">
-        <a href="javascript:history.back()">← 이력서로 돌아가기</a>
+        <a href="javascript:history.back()">← Back to Resume</a>
       </div>
     </div>
 
