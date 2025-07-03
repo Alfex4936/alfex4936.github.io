@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YTChatX - 상세 정보</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        line-height: 1.6;
+        color: #333;
+        background: #f8f9fa;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+      }
+
+      .header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+      }
+
+      .project-logo {
+        width: 80px;
+        height: 80px;
+        margin: 0 auto 20px;
+        border-radius: 12px;
+        background: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      }
+
+      .project-logo img {
+        max-width: 60px;
+        max-height: 60px;
+        object-fit: contain;
+      }
+
+      .project-title {
+        font-size: 28px;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+
+      .project-subtitle {
+        font-size: 16px;
+        opacity: 0.9;
+        margin-bottom: 20px;
+      }
+
+      .project-meta {
+        display: flex;
+        justify-content: center;
+        gap: 30px;
+        flex-wrap: wrap;
+      }
+
+      .meta-item {
+        background: rgba(255, 255, 255, 0.2);
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 14px;
+        font-weight: 500;
+      }
+
+      .content {
+        padding: 40px;
+      }
+
+      .section {
+        margin-bottom: 35px;
+      }
+
+      .section:last-child {
+        margin-bottom: 0;
+      }
+
+      .section-title {
+        font-size: 20px;
+        font-weight: 600;
+        color: #2c3e50;
+        margin-bottom: 15px;
+        padding-bottom: 8px;
+        border-bottom: 2px solid #e9ecef;
+        position: relative;
+      }
+
+      .section-title::before {
+        content: "";
+        position: absolute;
+        bottom: -2px;
+        left: 0;
+        width: 50px;
+        height: 2px;
+        background: #667eea;
+      }
+
+      .purpose-box {
+        background: #f8fff8;
+        border-left: 4px solid #28a745;
+        padding: 20px;
+        border-radius: 8px;
+        font-style: italic;
+        font-size: 16px;
+        color: #28a745;
+        font-weight: 500;
+      }
+
+      .tech-stack {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .tech-item {
+        background: #e7f3ff;
+        color: #0066cc;
+        padding: 6px 12px;
+        border-radius: 16px;
+        font-size: 13px;
+        font-weight: 500;
+        border: 1px solid #b3d9ff;
+      }
+
+      .role-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 12px;
+        padding-left: 0;
+        list-style: none;
+      }
+
+      .role-list li {
+        background: #fff5f5;
+        border-left: 3px solid #dc3545;
+        padding: 8px 12px;
+        border-radius: 4px;
+        font-weight: 500;
+        font-size: 14px;
+        text-align: center;
+        transition: all 0.2s ease;
+      }
+
+      .role-list li:hover {
+        background: #ffe6e6;
+        transform: translateY(-1px);
+      }
+
+      .achievement-list {
+        list-style: none;
+        padding-left: 0;
+      }
+
+      .achievement-list li {
+        background: #f0f8ff;
+        border-left: 3px solid #007bff;
+        padding: 15px 20px;
+        margin-bottom: 12px;
+        border-radius: 4px;
+        position: relative;
+      }
+
+      .achievement-list li::before {
+        content: "✓";
+        position: absolute;
+        left: -12px;
+        top: 15px;
+        background: #007bff;
+        color: white;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: bold;
+      }
+
+      .image-section {
+        margin: 25px 0;
+      }
+
+      .project-images {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin-top: 15px;
+      }
+
+      .project-image {
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+
+      .project-image:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+      }
+
+      .project-image img {
+        width: 100%;
+        height: auto;
+        object-fit: cover;
+        transition: transform 0.3s ease;
+      }
+
+      .project-image:hover img {
+        transform: scale(1.05);
+      }
+
+      /* Lightbox Styles */
+      .lightbox {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.9);
+        animation: fadeIn 0.3s ease;
+      }
+
+      .lightbox.active {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .lightbox-content {
+        position: relative;
+        max-width: 90%;
+        max-height: 90%;
+        animation: scaleIn 0.3s ease;
+      }
+
+      .lightbox-image {
+        width: 100%;
+        height: auto;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+      }
+
+      .lightbox-close {
+        position: absolute;
+        top: -40px;
+        right: 0;
+        color: white;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+        background: rgba(0, 0, 0, 0.5);
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s ease;
+      }
+
+      .lightbox-close:hover {
+        background: rgba(0, 0, 0, 0.7);
+        transform: scale(1.1);
+      }
+
+      .lightbox-caption {
+        position: absolute;
+        bottom: -40px;
+        left: 0;
+        right: 0;
+        color: white;
+        text-align: center;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 10px;
+        border-radius: 4px;
+        font-size: 14px;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      @keyframes scaleIn {
+        from {
+          transform: scale(0.8);
+          opacity: 0;
+        }
+        to {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+
+      .project-image-caption {
+        background: #f8f9fa;
+        padding: 10px;
+        font-size: 13px;
+        color: #6c757d;
+        text-align: center;
+      }
+
+      .reflection-box {
+        background: #fefefe;
+        border: 1px solid #e9ecef;
+        border-radius: 8px;
+        padding: 25px;
+        margin-top: 15px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      }
+
+      .reflection-item {
+        margin-bottom: 20px;
+      }
+
+      .reflection-item:last-child {
+        margin-bottom: 0;
+      }
+
+      .reflection-label {
+        font-weight: 600;
+        color: #495057;
+        font-size: 14px;
+        margin-bottom: 8px;
+        display: block;
+      }
+
+      .reflection-content {
+        color: #6c757d;
+        font-size: 14px;
+        line-height: 1.6;
+        padding-left: 15px;
+        border-left: 2px solid #dee2e6;
+      }
+
+      .links-section {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+        text-align: center;
+      }
+
+      .project-links {
+        display: flex;
+        justify-content: center;
+        gap: 15px;
+        flex-wrap: wrap;
+        margin-top: 15px;
+      }
+
+      .project-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 20px;
+        background: #007bff;
+        color: white;
+        text-decoration: none;
+        border-radius: 6px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+      }
+
+      .project-link:hover {
+        background: #0056b3;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 123, 255, 0.3);
+      }
+
+      .back-link {
+        text-align: center;
+        margin-top: 30px;
+        padding-top: 20px;
+        border-top: 1px solid #e9ecef;
+      }
+
+      .back-link a {
+        color: #6c757d;
+        text-decoration: none;
+        font-size: 14px;
+      }
+
+      .back-link a:hover {
+        color: #495057;
+        text-decoration: underline;
+      }
+
+      /* Print Styles */
+      @media print {
+        body {
+          background: white;
+          padding: 0;
+        }
+
+        .container {
+          box-shadow: none;
+          border-radius: 0;
+        }
+
+        .project-link {
+          background: #333 !important;
+          color: white !important;
+        }
+
+        .back-link {
+          display: none;
+        }
+      }
+
+      /* Mobile Responsive */
+      @media (max-width: 768px) {
+        .container {
+          margin: 10px;
+          border-radius: 8px;
+        }
+
+        .header {
+          padding: 20px;
+        }
+
+        .project-title {
+          font-size: 24px;
+        }
+
+        .content {
+          padding: 25px;
+        }
+
+        .project-meta {
+          gap: 15px;
+        }
+
+        .project-images {
+          grid-template-columns: 1fr;
+        }
+
+        .project-links {
+          flex-direction: column;
+          align-items: center;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header Section -->
+      <div class="header">
+        <div class="project-logo">
+          <img
+            src="https://private-user-images.githubusercontent.com/2356749/461842451-e717e4f7-9e7d-46e2-a314-3eeea6fe5c89.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NTE1MTgyMTUsIm5iZiI6MTc1MTUxNzkxNSwicGF0aCI6Ii8yMzU2NzQ5LzQ2MTg0MjQ1MS1lNzE3ZTRmNy05ZTdkLTQ2ZTItYTMxNC0zZWVlYTZmZTVjODkucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI1MDcwMyUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNTA3MDNUMDQ0NTE1WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9M2U5YTRhNzQxOWE5YmZlNjc2NjRmZGQ2ZjgxZjk4MDcyMzY5YzJhOTQyNzA0MzQzYWEwNTg5NTUyZTFhOGU2YiZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QifQ.Jkrk60Z3n32dlmrZW6ST1vuID2BIxWDdtX88-msGFKQ"
+            alt="YTChatX 로고"
+          />
+        </div>
+        <h1 class="project-title">YTChatX</h1>
+        <p class="project-subtitle">YouTube 라이브 채팅 실시간 분석 웹사이트</p>
+        <div class="project-meta">
+          <span class="meta-item">📅 2025.02 - 2025.03</span>
+          <span class="meta-item">👥 개인 프로젝트</span>
+          <span class="meta-item">💻 풀스택 개발</span>
+        </div>
+      </div>
+
+      <!-- Content Section -->
+      <div class="content">
+        <!-- 프로젝트 목적 -->
+        <div class="section">
+          <h2 class="section-title">🎯 프로젝트 목적</h2>
+          <div class="purpose-box">
+            YouTube 스트리머와 시청자들이 채팅 트렌드를 실시간으로 분석하고 소통
+            패턴을 파악할 수 있도록 도와주는 플랫폼을 제공합니다. 특히 대규모
+            라이브 스트림에서 발생하는 방대한 채팅 데이터를 효율적으로 처리하고
+            시각화하여, 스트리머가 시청자와의 소통을 더 잘 이해할 수 있도록
+            지원합니다.
+          </div>
+        </div>
+
+        <!-- 기술 스택 -->
+        <div class="section">
+          <h2 class="section-title">🛠 기술 스택</h2>
+          <p>이 프로젝트에서 사용한 주요 기술들입니다.</p>
+          <div class="tech-stack">
+            <span class="tech-item">Spring Boot</span>
+            <span class="tech-item">Java</span>
+            <span class="tech-item">Redis</span>
+            <span class="tech-item">Playwright</span>
+            <span class="tech-item">PostgreSQL</span>
+            <span class="tech-item">WebSocket</span>
+            <span class="tech-item">Rust</span>
+            <span class="tech-item">Chromiumoxide</span>
+            <span class="tech-item">React</span>
+          </div>
+        </div>
+
+        <!-- 담당 역할 -->
+        <div class="section">
+          <h2 class="section-title">👨‍💻 담당 역할</h2>
+          <ul class="role-list">
+            <li>시스템 아키텍처 설계</li>
+            <li>Spring Boot API 개발</li>
+            <li>Playwright 크롤링 시스템</li>
+            <li>Rust 스크래퍼 개발</li>
+            <li>Redis 실시간 처리</li>
+            <li>React 대시보드 개발</li>
+            <li>WebSocket 실시간 통신</li>
+            <li>성능 최적화</li>
+          </ul>
+        </div>
+
+        <!-- 주요 성과 및 기술적 도전 -->
+        <div class="section">
+          <h2 class="section-title">🏆 주요 성과 & 기술적 도전</h2>
+          <ul class="achievement-list">
+            <li>
+              <strong>대규모 실시간 데이터 처리</strong><br />
+              Playwright 기반 자동화로 시청자 3만 명 라이브에서 초당 최대
+              1,677개 메시지를 안정적으로 수집. YouTube의 동적 로딩과 rate
+              limiting을 우회하여 안정적인 데이터 수집 파이프라인 구축.
+            </li>
+            <li>
+              <strong>성능 최적화를 위한 Rust 도입</strong><br />
+              기존 Java 크롤러의 한계를 극복하기 위해 Rust + Chromiumoxide 기반
+              경량 스크래퍼 도입. 메모리 사용량 65% 감소, 50개 이상의 동시
+              크롤러 운영으로 확장성 3배 향상.
+            </li>
+            <li>
+              <strong>안정적인 배치 처리 시스템</strong><br />
+              Redis Pipeline과 RSemaphore를 활용하여 메시지 2,500개/10초 단위로
+              안정적인 배치 처리 구현. 리소스 제어를 통해 시스템 과부하 방지 및
+              데이터 손실 최소화.
+            </li>
+            <li>
+              <strong>실시간 분석 및 시각화</strong><br />
+              실시간 도네이션 감지 알고리즘 구현 및 키워드 기반 채팅 트렌드
+              시각화 기능 개발. WebSocket을 통한 실시간 업데이트로 사용자 경험
+              향상.
+            </li>
+          </ul>
+        </div>
+
+        <!-- 프로젝트 스크린샷/이미지 -->
+        <div class="section">
+          <h2 class="section-title">📸 프로젝트 스크린샷</h2>
+          <div class="image-section">
+            <p>이미지를 클릭하면 크게 볼 수 있습니다.</p>
+            <div class="project-images">
+              <div
+                class="project-image"
+                onclick="openLightbox('https://private-user-images.githubusercontent.com/2356749/461842407-2186469b-820f-4ff1-b971-d99d7432f471.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NTE1MTgyMTUsIm5iZiI6MTc1MTUxNzkxNSwicGF0aCI6Ii8yMzU2NzQ5LzQ2MTg0MjQwNy0yMTg2NDY5Yi04MjBmLTRmZjEtYjk3MS1kOTlkNzQzMmY0NzEucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI1MDcwMyUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNTA3MDNUMDQ0NTE1WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9NzIwOWUzYzIxOWIxZmYwMjI3YWNiYWJhZDkwYjhhOWM5NGI3YTFkZGRhY2YzY2EyNmVlODlhMzljYTdiOTk5NCZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QifQ.T4gCuaLMqGiUsO4WN03sgl4Lt6AW-juApP4_DEvfMP0', 'YTChatX 메인 대시보드 - 실시간 채팅 분석')"
+              >
+                <img
+                  src="https://private-user-images.githubusercontent.com/2356749/461842407-2186469b-820f-4ff1-b971-d99d7432f471.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NTE1MTgyMTUsIm5iZiI6MTc1MTUxNzkxNSwicGF0aCI6Ii8yMzU2NzQ5LzQ2MTg0MjQwNy0yMTg2NDY5Yi04MjBmLTRmZjEtYjk3MS1kOTlkNzQzMmY0NzEucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI1MDcwMyUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNTA3MDNUMDQ0NTE1WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9NzIwOWUzYzIxOWIxZmYwMjI3YWNiYWJhZDkwYjhhOWM5NGI3YTFkZGRhY2YzY2EyNmVlODlhMzljYTdiOTk5NCZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QifQ.T4gCuaLMqGiUsO4WN03sgl4Lt6AW-juApP4_DEvfMP0"
+                  alt="YTChatX 메인 대시보드"
+                />
+                <div class="project-image-caption">
+                  메인 대시보드 - 실시간 채팅 분석
+                </div>
+              </div>
+              <div
+                class="project-image"
+                onclick="openLightbox('https://private-user-images.githubusercontent.com/2356749/461842410-2919940b-b0ae-4d67-b293-cdcfd0518ffa.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NTE1MTgyMTUsIm5iZiI6MTc1MTUxNzkxNSwicGF0aCI6Ii8yMzU2NzQ5LzQ2MTg0MjQxMC0yOTE5OTQwYi1iMGFlLTRkNjctYjI5My1jZGNmZDA1MThmZmEucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI1MDcwMyUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNTA3MDNUMDQ0NTE1WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9YjE4ZDEyZWQ3OWE2NmEzZmFiMmYyMmNiNmFmZWY1YWQ4MDUwYjYyODVjNzNiYzRjN2FmNDU4ZDg1NjYwMmM2MSZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QifQ.8G349nafTmhtjaW5KETw6LIdgoDiWKBIJrNXD9aO1VA', '도네이션 감지')"
+              >
+                <img
+                  src="https://private-user-images.githubusercontent.com/2356749/461842410-2919940b-b0ae-4d67-b293-cdcfd0518ffa.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NTE1MTgyMTUsIm5iZiI6MTc1MTUxNzkxNSwicGF0aCI6Ii8yMzU2NzQ5LzQ2MTg0MjQxMC0yOTE5OTQwYi1iMGFlLTRkNjctYjI5My1jZGNmZDA1MThmZmEucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI1MDcwMyUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNTA3MDNUMDQ0NTE1WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9YjE4ZDEyZWQ3OWE2NmEzZmFiMmYyMmNiNmFmZWY1YWQ4MDUwYjYyODVjNzNiYzRjN2FmNDU4ZDg1NjYwMmM2MSZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QifQ.8G349nafTmhtjaW5KETw6LIdgoDiWKBIJrNXD9aO1VA"
+                  alt="도네이션 감지"
+                />
+                <div class="project-image-caption">
+                  도네이션 감지
+                </div>
+              </div>
+              <div
+                class="project-image"
+                onclick="openLightbox('https://private-user-images.githubusercontent.com/2356749/461842412-286c492b-21a6-41e5-ba26-0f5799240c7b.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NTE1MTgyMTUsIm5iZiI6MTc1MTUxNzkxNSwicGF0aCI6Ii8yMzU2NzQ5LzQ2MTg0MjQxMi0yODZjNDkyYi0yMWE2LTQxZTUtYmEyNi0wZjU3OTkyNDBjN2IucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI1MDcwMyUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNTA3MDNUMDQ0NTE1WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9MTE2MGQyNjMzZmM2NWZlZjZlOGI1ZjI4ZTEwNTcwMjQzODQwZTM0MjcyZmYyOWRjYzBjNjJlOTc0ZjczY2E4ZiZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QifQ.YoKkGAg1NXbRYbi5CMrphRSykwS5tzDxaJ-PUAOjcnM', '설정 화면')"
+              >
+                <img
+                  src="https://private-user-images.githubusercontent.com/2356749/461842412-286c492b-21a6-41e5-ba26-0f5799240c7b.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NTE1MTgyMTUsIm5iZiI6MTc1MTUxNzkxNSwicGF0aCI6Ii8yMzU2NzQ5LzQ2MTg0MjQxMi0yODZjNDkyYi0yMWE2LTQxZTUtYmEyNi0wZjU3OTkyNDBjN2IucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI1MDcwMyUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNTA3MDNUMDQ0NTE1WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9MTE2MGQyNjMzZmM2NWZlZjZlOGI1ZjI4ZTEwNTcwMjQzODQwZTM0MjcyZmYyOWRjYzBjNjJlOTc0ZjczY2E4ZiZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QifQ.YoKkGAg1NXbRYbi5CMrphRSykwS5tzDxaJ-PUAOjcnM"
+                  alt="설정"
+                />
+                <div class="project-image-caption">설정</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 프로젝트 회고 -->
+        <div class="section">
+          <h2 class="section-title">🤔 프로젝트 회고</h2>
+          <div class="reflection-box">
+            <div class="reflection-item">
+              <span class="reflection-label">배운 점:</span>
+              <div class="reflection-content">
+                대규모 실시간 데이터 처리의 복잡성을 경험했습니다. 특히
+                YouTube의 동적 UI와 rate limiting 문제를 해결하면서 웹 크롤링의
+                기술적 한계와 다양한 해결 방안을 깊이 있게 학습했습니다. 또한
+                Java와 Rust의 성능을 직접 비교하며 언어별 특성과 적합한 활용
+                시나리오를 이해할 수 있었습니다.
+              </div>
+            </div>
+            <div class="reflection-item">
+              <span class="reflection-label">아쉬운 점:</span>
+              <div class="reflection-content">
+                YouTube API의 제약으로 일부 기능을 크롤링에 의존해야 했던 점이
+                아쉬웠습니다. 또한 초반에 스크래퍼의 다양한 구현 방식을 충분히
+                검토하고 테스트해보지 못해, 후반에 성능 측면에서 개선할 여지가
+                있던 점이 아쉬웠습니다.
+              </div>
+            </div>
+            <div class="reflection-item">
+              <span class="reflection-label">향후 계획:</span>
+              <div class="reflection-content">
+                Rust 스크래퍼를 각 실행 바이너리로 돌리는 방식 대신,
+                <strong>Rust Scraper Server</strong>를 유저 환경에 배포해
+                실행하도록 전환할 계획입니다. 이 서버는 각 쓰레드에서 스크래퍼를
+                관리하며, gRPC를 통해 Spring Boot 서버와 통신합니다. 이렇게 하면
+                관리가 용이하고, 서버 측 자원 효율성을 높이며, 확장성과
+                유지보수성이 개선됩니다. 또한 NLP
+                기반의 채팅 감정 분석, 스팸 필터링, 자동 하이라이트 추출 등으로
+                스트리머에게 더 많은 가치를 제공하고 싶습니다.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 관련 링크 -->
+        <div class="section">
+          <h2 class="section-title">🔗 관련 링크</h2>
+          <div class="links-section">
+            <p>프로젝트와 관련된 링크들입니다.</p>
+            <div class="project-links">
+              <a
+                href="https://github.com/Alfex4936/YoutubeLive-Chatx"
+                class="project-link"
+              >
+                🐙 GitHub 저장소
+              </a>
+              <a
+                href="https://alfex4936.github.io/YTChatX/"
+                class="project-link"
+              >
+                🌐 프로젝트 데모
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 뒤로가기 링크 -->
+      <div class="back-link">
+        <a href="javascript:history.back()">← 이력서로 돌아가기</a>
+      </div>
+    </div>
+
+    <!-- Lightbox Modal -->
+    <div id="lightbox" class="lightbox" onclick="closeLightbox()">
+      <div class="lightbox-content" onclick="event.stopPropagation()">
+        <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
+        <img id="lightbox-image" class="lightbox-image" src="" alt="" />
+        <div id="lightbox-caption" class="lightbox-caption"></div>
+      </div>
+    </div>
+
+    <script>
+      function openLightbox(imageSrc, caption) {
+        const lightbox = document.getElementById("lightbox");
+        const lightboxImage = document.getElementById("lightbox-image");
+        const lightboxCaption = document.getElementById("lightbox-caption");
+
+        lightboxImage.src = imageSrc;
+        lightboxCaption.textContent = caption;
+        lightbox.classList.add("active");
+
+        // Prevent body scroll when lightbox is open
+        document.body.style.overflow = "hidden";
+      }
+
+      function closeLightbox() {
+        const lightbox = document.getElementById("lightbox");
+        lightbox.classList.remove("active");
+
+        // Restore body scroll
+        document.body.style.overflow = "auto";
+      }
+
+      // Close lightbox with Escape key
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+          closeLightbox();
+        }
+      });
+    </script>
+  </body>
+</html>
