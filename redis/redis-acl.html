@@ -1,0 +1,1229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redis ACL Simulator v7+</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;700&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827;
+        }
+        .font-fira {
+            font-family: 'Fira Code', monospace;
+        }
+        .command-input::placeholder {
+            color: #4b5563;
+        }
+        .scrollable-area::-webkit-scrollbar {
+            width: 8px;
+        }
+        .scrollable-area::-webkit-scrollbar-track {
+            background: #1f2937;
+        }
+        .scrollable-area::-webkit-scrollbar-thumb {
+            background-color: #4b5563;
+            border-radius: 4px;
+        }
+        .user-card {
+            transition: all 0.2s ease-in-out;
+        }
+        .user-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+        }
+        /* Styles for the autocomplete dropdown */
+        .autocomplete-item:hover {
+            background-color: #4b5563;
+        }
+        .autocomplete-highlight {
+            background-color: #2563eb; /* A strong blue for keyboard selection */
+        }
+    </style>
+</head>
+<body class="text-gray-200">
+
+    <div class="container mx-auto p-4 md:p-6 lg:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-red-500 mb-2">Redis ACL Simulator</h1>
+            <p class="text-gray-400">An interactive tool for testing Redis v7+ Access Control Lists</p>
+        </header>
+
+        <main class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            <!-- Left Column: Controls & User List -->
+            <div class="lg:col-span-2 space-y-6">
+                <!-- Command Input Card -->
+                <div class="bg-gray-800 p-5 rounded-xl shadow-lg">
+                    <h2 class="text-xl font-bold text-red-400 mb-4 border-b border-gray-700 pb-2 flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+                        ACL Command
+                    </h2>
+                    <div class="flex flex-col space-y-3">
+                        <input id="acl-command-input" type="text" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-4 py-2 text-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500 command-input" placeholder="e.g., SETUSER worker +@read ~app:*">
+                        <button id="run-command-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition duration-200">Execute</button>
+                    </div>
+                </div>
+
+                <!-- Dry Run Card -->
+                <div class="bg-gray-800 p-5 rounded-xl shadow-lg">
+                    <h2 class="text-xl font-bold text-red-400 mb-4 border-b border-gray-700 pb-2 flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M21.73 18a2.64 2.64 0 0 0-3.76 0l-1.18 1.18a2.64 2.64 0 0 0 0 3.76l1.18 1.18a2.64 2.64 0 0 0 3.76 0z"></path><path d="m2 2 7 7"></path><path d="M14.23 21.84 7 14.6l-5.18 5.18a2.64 2.64 0 0 0 0 3.76l1.18 1.18a2.64 2.64 0 0 0 3.76 0Z"></path></svg>
+                        Permission Check (DRYRUN)
+                    </h2>
+                    <div class="flex flex-col space-y-3">
+                        <select id="dryrun-user-select" class="w-full bg-gray-900 border border-gray-700 rounded-md px-4 py-2 text-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500"></select>
+                        <input id="dryrun-command-input" type="text" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-4 py-2 text-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500 command-input" placeholder="e.g., GET app:user:123">
+                        <button id="check-permission-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-200">Check Permission</button>
+                    </div>
+                </div>
+
+                <!-- User List Card -->
+                <div class="bg-gray-800 p-5 rounded-xl shadow-lg">
+                    <h2 class="text-xl font-bold text-red-400 mb-4 border-b border-gray-700 pb-2 flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                        Active Users
+                    </h2>
+                    <div id="user-list" class="space-y-3 max-h-[40vh] overflow-y-auto scrollable-area pr-2"></div>
+                </div>
+            </div>
+
+            <!-- Right Column: Output Log -->
+            <div class="lg:col-span-3 bg-gray-800 p-5 rounded-xl shadow-lg">
+                <h2 class="text-xl font-bold text-red-400 mb-4 border-b border-gray-700 pb-2 flex items-center justify-between">
+                    <span>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block mr-2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                        Simulator Log & Output
+                    </span>
+                    <button id="clear-log-btn" class="text-gray-400 hover:text-white transition-colors" title="Clear Log">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                    </button>
+                </h2>
+                <div id="output-log" class="font-fira text-sm bg-gray-900 rounded-md p-4 h-[calc(100vh-12rem)] min-h-[400px] overflow-y-auto scrollable-area"></div>
+            </div>
+        </main>
+
+        <!-- Command Builder Card -->
+        <div class="mt-6 bg-gray-800 p-5 rounded-xl shadow-lg">
+            <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
+                <h2 class="text-xl font-bold text-red-400 flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+                    ACL Command Builder
+                </h2>
+                <button id="builder-reset-btn" class="text-sm text-gray-400 hover:text-white transition-colors flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M21 21v-5h-5"></path></svg>
+                    Reset
+                </button>
+            </div>
+            <div id="command-builder" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="space-y-4">
+                    <div>
+                        <label for="builder-username" class="block text-sm font-medium text-gray-300 mb-1">Username</label>
+                        <input type="text" id="builder-username" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm" placeholder="e.g., worker">
+                    </div>
+                    
+                    <div>
+                        <label for="builder-passwords" class="block text-sm font-medium text-gray-300 mb-1">Passwords (one per line)</label>
+                        <p class="text-xs text-gray-500 mb-2">Hint: Adds passwords using the `>password` syntax. Leave blank for none.</p>
+                        <textarea id="builder-passwords" rows="2" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm transition-colors" placeholder="your-secure-password"></textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Flags</label>
+                        <div class="flex items-center space-x-4">
+                            <label class="flex items-center" title="Enables the user, allowing them to authenticate."><input type="checkbox" id="builder-flag-on" class="h-4 w-4 rounded border-gray-600 bg-gray-900 text-red-600 focus:ring-red-500" checked> <span class="ml-2">on</span></label>
+                            <label class="flex items-center" title="Removes all passwords and allows authentication with any password."><input type="checkbox" id="builder-flag-nopass" class="h-4 w-4 rounded border-gray-600 bg-gray-900 text-red-600 focus:ring-red-500"> <span class="ml-2">nopass</span></label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="relative">
+                    <label for="builder-commands" class="block text-sm font-medium text-gray-300 mb-1">Command Rules</label>
+                    <p class="text-xs text-gray-500 mb-2">Hint: Use `+` to add, `-` to remove. Use `@` for categories. E.g., `+get`, `-@dangerous`</p>
+                    <textarea id="builder-commands" rows="5" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm transition-colors" placeholder="+@read&#10;-@dangerous&#10;+get"></textarea>
+                    <p id="builder-commands-error" class="text-xs text-red-400 mt-1 h-4"></p>
+                    <div id="category-autocomplete" class="hidden absolute z-10 w-full bg-gray-900 border border-gray-600 rounded-md shadow-lg max-h-48 overflow-y-auto"></div>
+                    <div id="category-hint" class="hidden absolute z-10 w-full bg-blue-900/80 backdrop-blur-sm border border-blue-700 rounded-md p-2 mt-1 text-xs text-blue-200"></div>
+                </div>
+                
+                <div>
+                    <label for="builder-keys" class="block text-sm font-medium text-gray-300 mb-1">Key Patterns</label>
+                    <p class="text-xs text-gray-500 mb-2">Hint: Use `~` for all permissions, `%R~` for read-only, `%W~` for write-only. E.g., `~user:*`</p>
+                    <textarea id="builder-keys" rows="5" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm transition-colors" placeholder="~app:*&#10;%R~log:*"></textarea>
+                    <p id="builder-keys-error" class="text-xs text-red-400 mt-1 h-4"></p>
+                </div>
+
+                <div>
+                    <label for="builder-channels" class="block text-sm font-medium text-gray-300 mb-1">Channel Patterns</label>
+                    <p class="text-xs text-gray-500 mb-2">Hint: Use `&` to prefix channel patterns. E.g., `&notifications:*`</p>
+                    <textarea id="builder-channels" rows="5" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm transition-colors" placeholder="&news:*"></textarea>
+                    <p id="builder-channels-error" class="text-xs text-red-400 mt-1 h-4"></p>
+                </div>
+                
+                <div class="md:col-span-2 lg:col-span-4 border-t border-gray-700 pt-4 space-y-3">
+                     <label for="builder-output" class="block text-sm font-medium text-gray-300 mb-1">Generated Command</label>
+                     <div class="flex space-x-2">
+                         <input type="text" id="builder-output" readonly class="font-fira w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm text-gray-400 cursor-not-allowed">
+                         <button id="builder-copy-btn" class="bg-gray-600 hover:bg-gray-500 text-white font-bold p-2 rounded-md transition duration-200" title="Copy to Clipboard">
+                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                         </button>
+                     </div>
+                     <button id="builder-use-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition duration-200">Use This Command</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- START: SHA256 Implementation (for password hashing) ---
+        async function sha256(message) {
+            const msgBuffer = new TextEncoder().encode(message);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            return hashHex;
+        }
+        // --- END: SHA256 Implementation ---
+
+        // --- START: REDIS DEFINITIONS ---
+        const categoryDescriptions = {
+            '@keyspace': 'Commands that operate on keys, not values (e.g., DEL, EXPIRE, RENAME).',
+            '@read': 'Read-only commands that retrieve data (e.g., GET, HGETALL, SMEMBERS).',
+            '@write': 'Commands that modify data (e.g., SET, HSET, SADD).',
+            '@set': 'Commands for the Set data type (e.g., SADD, SREM, SINTER).',
+            '@sortedset': 'Commands for the Sorted Set data type (e.g., ZADD, ZRANGE, ZREM).',
+            '@list': 'Commands for the List data type (e.g., LPUSH, RPOP, LRANGE).',
+            '@hash': 'Commands for the Hash data type (e.g., HSET, HGET, HDEL).',
+            '@string': 'Commands for the String data type (e.g., GET, SET, INCR).',
+            '@bitmap': 'Commands that operate on bitmaps (e.g., GETBIT, SETBIT, BITCOUNT).',
+            '@hyperloglog': 'Commands for the HyperLogLog data type (e.g., PFADD, PFCOUNT).',
+            '@geo': 'Commands for geospatial data (e.g., GEOADD, GEODIST).',
+            '@stream': 'Commands for the Stream data type (e.g., XADD, XREAD, XGROUP).',
+            '@pubsub': 'Commands related to Publish/Subscribe (e.g., PUBLISH, SUBSCRIBE).',
+            '@admin': 'Administrative commands (e.g., CONFIG, SHUTDOWN, ACL).',
+            '@fast': 'Commands that are generally fast and non-blocking.',
+            '@slow': 'Commands that can be slow or block for a long time.',
+            '@blocking': 'Commands that can block the connection (e.g., BLPOP).',
+            '@dangerous': 'Commands considered dangerous (e.g., FLUSHALL, DEBUG, SHUTDOWN).',
+            '@connection': 'Commands related to the client connection (e.g., AUTH, PING, SELECT).',
+            '@transaction': 'Commands related to transactions (e.g., MULTI, EXEC, DISCARD).',
+            '@scripting': 'Commands for executing scripts (e.g., EVAL, SCRIPT LOAD).',
+            '@all': 'Grants access to all commands, including those loaded via modules in the future.'
+        };
+
+        const redisCommandInfo = {
+            // Keyspace
+            'del': { categories: ['@keyspace', '@write'], keySpec: { type: 'w', first: 1, last: -1, step: 1 } },
+            'dump': { categories: ['@keyspace', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'exists': { categories: ['@keyspace', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: -1, step: 1 } },
+            'expire': { categories: ['@keyspace', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'keys': { categories: ['@keyspace', '@read', '@slow', '@dangerous'] },
+            'migrate': { categories: ['@keyspace', '@write', '@slow', '@dangerous'] },
+            'move': { categories: ['@keyspace', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'object': { categories: ['@keyspace', '@read', '@slow'], keySpec: { type: 'r', first: 2, last: 2, step: 1 } },
+            'persist': { categories: ['@keyspace', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'pexpire': { categories: ['@keyspace', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'pttl': { categories: ['@keyspace', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'randomkey': { categories: ['@keyspace', '@read', '@slow'] },
+            'rename': { categories: ['@keyspace', '@write'], keySpec: { type: 'w', first: 1, last: 2, step: 1 } },
+            'renamenx': { categories: ['@keyspace', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 2, step: 1 } },
+            'restore': { categories: ['@keyspace', '@write', '@slow', '@dangerous'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'scan': { categories: ['@keyspace', '@read', '@slow'] },
+            'sort': { categories: ['@keyspace', '@write', '@slow', '@dangerous'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'ttl': { categories: ['@keyspace', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'type': { categories: ['@keyspace', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'unlink': { categories: ['@keyspace', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: -1, step: 1 } },
+            'wait': { categories: ['@keyspace', '@slow'] },
+
+            // String
+            'append': { categories: ['@string', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'bitcount': { categories: ['@bitmap', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'bitfield': { categories: ['@bitmap', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'bitop': { categories: ['@bitmap', '@write', '@slow'], keySpec: { type: 'w', first: 2, last: -1, step: 1 } },
+            'bitpos': { categories: ['@bitmap', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'decr': { categories: ['@string', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'decrby': { categories: ['@string', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'get': { categories: ['@string', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'getbit': { categories: ['@bitmap', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'getrange': { categories: ['@string', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'getset': { categories: ['@string', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'incr': { categories: ['@string', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'incrby': { categories: ['@string', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'incrbyfloat': { categories: ['@string', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'mget': { categories: ['@string', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: -1, step: 1 } },
+            'mset': { categories: ['@string', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: -1, step: 2 } },
+            'msetnx': { categories: ['@string', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: -1, step: 2 } },
+            'psetex': { categories: ['@string', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'set': { categories: ['@string', '@write'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'setbit': { categories: ['@bitmap', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'setex': { categories: ['@string', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'setnx': { categories: ['@string', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'setrange': { categories: ['@string', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'strlen': { categories: ['@string', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            
+            // Hash
+            'hdel': { categories: ['@hash', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'hexists': { categories: ['@hash', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'hget': { categories: ['@hash', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'hgetall': { categories: ['@hash', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'hincrby': { categories: ['@hash', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'hincrbyfloat': { categories: ['@hash', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'hkeys': { categories: ['@hash', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'hlen': { categories: ['@hash', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'hmget': { categories: ['@hash', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'hmset': { categories: ['@hash', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'hscan': { categories: ['@hash', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'hset': { categories: ['@hash', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'hsetnx': { categories: ['@hash', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'hvals': { categories: ['@hash', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'hstrlen': { categories: ['@hash', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+
+            // List
+            'blpop': { categories: ['@list', '@write', '@slow', '@blocking'], keySpec: { type: 'w', first: 1, last: -2, step: 1 } },
+            'brpop': { categories: ['@list', '@write', '@slow', '@blocking'], keySpec: { type: 'w', first: 1, last: -2, step: 1 } },
+            'brpoplpush': { categories: ['@list', '@write', '@slow', '@blocking'], keySpec: { type: 'w', first: 1, last: 2, step: 1 } },
+            'lindex': { categories: ['@list', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'linsert': { categories: ['@list', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'llen': { categories: ['@list', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'lpop': { categories: ['@list', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'lpush': { categories: ['@list', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'lpushx': { categories: ['@list', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'lrange': { categories: ['@list', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'lrem': { categories: ['@list', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'lset': { categories: ['@list', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'ltrim': { categories: ['@list', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'rpop': { categories: ['@list', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'rpoplpush': { categories: ['@list', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 2, step: 1 } },
+            'rpush': { categories: ['@list', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'rpushx': { categories: ['@list', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+
+            // Set
+            'sadd': { categories: ['@set', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'scard': { categories: ['@set', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'sdiff': { categories: ['@set', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: -1, step: 1 } },
+            'sdiffstore': { categories: ['@set', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: -1, step: 1 } },
+            'sinter': { categories: ['@set', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: -1, step: 1 } },
+            'sinterstore': { categories: ['@set', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: -1, step: 1 } },
+            'sismember': { categories: ['@set', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'smembers': { categories: ['@set', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'smove': { categories: ['@set', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 2, step: 1 } },
+            'spop': { categories: ['@set', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'srandmember': { categories: ['@set', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'srem': { categories: ['@set', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'sunion': { categories: ['@set', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: -1, step: 1 } },
+            'sunionstore': { categories: ['@set', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: -1, step: 1 } },
+            'sscan': { categories: ['@set', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+
+            // Sorted Set
+            'zadd': { categories: ['@sortedset', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'zcard': { categories: ['@sortedset', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'zcount': { categories: ['@sortedset', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'zincrby': { categories: ['@sortedset', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'zinterstore': { categories: ['@sortedset', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'zlexcount': { categories: ['@sortedset', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'zrange': { categories: ['@sortedset', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'zrangebylex': { categories: ['@sortedset', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'zrevrangebylex': { categories: ['@sortedset', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'zrangebyscore': { categories: ['@sortedset', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'zrank': { categories: ['@sortedset', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'zrem': { categories: ['@sortedset', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'zremrangebylex': { categories: ['@sortedset', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'zremrangebyrank': { categories: ['@sortedset', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'zremrangebyscore': { categories: ['@sortedset', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'zrevrange': { categories: ['@sortedset', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'zrevrangebyscore': { categories: ['@sortedset', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'zrevrank': { categories: ['@sortedset', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'zscore': { categories: ['@sortedset', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+            'zunionstore': { categories: ['@sortedset', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
+            'zscan': { categories: ['@sortedset', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
+
+            // Pub/Sub
+            'publish': { categories: ['@pubsub', '@fast'], channelSpec: { type: 'p', first: 1 } },
+            'pubsub': { categories: ['@pubsub', '@slow', '@dangerous'] },
+            'psubscribe': { categories: ['@pubsub', '@slow'], channelSpec: { type: 's', first: 1, last: -1 } },
+            'punsubscribe': { categories: ['@pubsub', '@slow'] },
+            'subscribe': { categories: ['@pubsub', '@slow'], channelSpec: { type: 's', first: 1, last: -1 } },
+            'unsubscribe': { categories: ['@pubsub', '@slow'] },
+            
+            // Scripting
+            'eval': { categories: ['@scripting', '@slow', '@dangerous'] },
+            'evalsha': { categories: ['@scripting', '@slow', '@dangerous'] },
+            'script': { categories: ['@scripting', '@slow'] },
+            
+            // Connection
+            'auth': { categories: ['@connection', '@fast'] },
+            'client': { categories: ['@connection', '@slow', '@dangerous'] },
+            'echo': { categories: ['@connection', '@fast'] },
+            'ping': { categories: ['@connection', '@fast'] },
+            'quit': { categories: ['@connection'] },
+            'select': { categories: ['@connection', '@fast'] },
+
+            // Admin / Dangerous
+            'acl': { categories: ['@admin', '@dangerous'] },
+            'bgrewriteaof': { categories: ['@admin', '@dangerous'] },
+            'bgsave': { categories: ['@admin', '@dangerous'] },
+            'config': { categories: ['@admin', '@dangerous'] },
+            'cluster': { categories: ['@admin', '@dangerous'] },
+            'command': { categories: ['@admin', '@dangerous'] },
+            'dbsize': { categories: ['@admin', '@fast'] },
+            'debug': { categories: ['@admin', '@dangerous'] },
+            'flushall': { categories: ['@admin', '@write', '@slow', '@dangerous'] },
+            'flushdb': { categories: ['@admin', '@write', '@slow', '@dangerous'] },
+            'info': { categories: ['@admin', '@slow', '@dangerous'] },
+            'lastsave': { categories: ['@admin', '@fast'] },
+            'monitor': { categories: ['@admin', '@slow', '@dangerous'] },
+            'psync': { categories: ['@admin', '@dangerous'] },
+            'replconf': { categories: ['@admin', '@dangerous'] },
+            'role': { categories: ['@admin', '@slow', '@dangerous'] },
+            'save': { categories: ['@admin', '@slow', '@dangerous'] },
+            'shutdown': { categories: ['@admin', '@slow', '@dangerous'] },
+            'slaveof': { categories: ['@admin', '@slow', '@dangerous'] },
+            'slowlog': { categories: ['@admin', '@slow'] },
+            'sync': { categories: ['@admin', '@dangerous'] },
+            'time': { categories: ['@admin', '@fast'] },
+
+        };
+
+        const redisCategories = {};
+        Object.entries(redisCommandInfo).forEach(([cmd, info]) => {
+            info.categories.forEach(cat => {
+                if (!redisCategories[cat]) {
+                    redisCategories[cat] = [];
+                }
+                redisCategories[cat].push(cmd);
+            });
+        });
+        const availableCategories = Object.keys(redisCategories);
+        if (!availableCategories.includes('@all')) {
+            availableCategories.push('@all');
+        }
+        availableCategories.sort();
+        // --- END: REDIS DEFINITIONS ---
+
+        // --- START: ACL SIMULATOR CORE LOGIC ---
+        class User {
+            constructor(name) {
+                this.name = name;
+                this.flags = {
+                    on: false,
+                    off: true,
+                    nopass: false,
+                };
+                this.passwords = new Set(); // Stores plaintext, will be hashed on SETUSER
+                this.commandRules = []; // ['+@all', '-set']
+                this.keyPatterns = []; // ['~app:*', '%R~log:*']
+                this.channelPatterns = new Set(); // ['&news:*']
+            }
+        }
+
+        let Users = new Map();
+
+        function createDefaultUser() {
+            const defaultUser = new User('default');
+            defaultUser.flags.on = true;
+            defaultUser.flags.off = false;
+            defaultUser.flags.nopass = true;
+            defaultUser.commandRules.push('+@all');
+            defaultUser.keyPatterns.push('~*');
+            defaultUser.channelPatterns.add('&*');
+            Users.set('default', defaultUser);
+        }
+        
+        function globStringToRegex(glob) {
+            const specialChars = '\\^$.|?+()[]{}';
+            let regexString = '';
+            for (let i = 0; i < glob.length; i++) {
+                const char = glob[i];
+                if (char === '*') {
+                    regexString += '.*';
+                } else if (char === '?') {
+                    regexString += '.';
+                } else if (char === '\\\\') {
+                    if (i + 1 < glob.length) {
+                        regexString += '\\' + glob[i+1];
+                        i++;
+                    } else {
+                        regexString += '\\\\';
+                    }
+                }
+                else if (specialChars.includes(char)) {
+                    regexString += '\\' + char;
+                } else {
+                    regexString += char;
+                }
+            }
+            return new RegExp('^' + regexString + '$');
+        }
+
+        class ParsedUser {
+            constructor(user) {
+                this.name = user.name;
+                this.flags = {...user.flags};
+                this.passwords = new Set(user.passwords);
+                this.commandRules = [...user.commandRules];
+                this.keyPatterns = user.keyPatterns.map(p => {
+                    if (p.startsWith('%R~')) return { pattern: globStringToRegex(p.substring(3)), permissions: { r: true, w: false } };
+                    if (p.startsWith('%W~')) return { pattern: globStringToRegex(p.substring(3)), permissions: { r: false, w: true } };
+                    if (p.startsWith('~')) return { pattern: globStringToRegex(p.substring(1)), permissions: { r: true, w: true } };
+                }).filter(Boolean);
+                this.channelPatterns = new Set(Array.from(user.channelPatterns).map(p => globStringToRegex(p.substring(1))));
+                this.allKeys = user.keyPatterns.includes('~*');
+                this.allChannels = user.channelPatterns.has('&*');
+            }
+        }
+
+        async function processACLCommand(input) {
+            const parts = input.trim().split(/\s+/);
+            const command = (parts.shift() || '').toLowerCase();
+            const subcommand = (parts.shift() || '').toLowerCase();
+
+            if (command !== 'acl') {
+                logMessage(`ERROR: Unknown command '${command}'. Only ACL commands are supported.`, 'error');
+                return;
+            }
+
+            switch(subcommand) {
+                case 'setuser':
+                    await handleSetUser(parts);
+                    break;
+                case 'getuser':
+                    handleGetUser(parts);
+                    break;
+                case 'deluser':
+                    handleDelUser(parts);
+                    break;
+                case 'list':
+                    handleListUsers();
+                    break;
+                case 'users':
+                    handleListUsers(true);
+                    break;
+                 case 'dryrun':
+                    handleDryRun(parts);
+                    break;
+                default:
+                    logMessage(`ERROR: Unsupported ACL subcommand '${subcommand}'.`, 'error');
+            }
+            updateUI();
+        }
+
+        async function handleSetUser(args) {
+            if (args.length < 1) {
+                logMessage('ERROR: SETUSER requires a username.', 'error');
+                return;
+            }
+            const username = args.shift();
+            let user = Users.get(username);
+            if (!user) {
+                user = new User(username);
+                Users.set(username, user);
+                logMessage(`> Created new user '${username}'.`, 'info');
+            }
+            
+            logMessage(`> Modifying user '${username}' with rules: ${args.join(' ')}`, 'info');
+
+            for (const rule of args) {
+                if (rule === 'on') { user.flags.on = true; user.flags.off = false; }
+                else if (rule === 'off') { user.flags.on = false; user.flags.off = true; }
+                else if (rule === 'nopass') { user.flags.nopass = true; user.passwords.clear(); }
+                else if (rule === 'resetpass') { user.flags.nopass = false; user.passwords.clear(); }
+                else if (rule.startsWith('>')) {
+                    user.flags.nopass = false;
+                    const hash = await sha256(rule.substring(1));
+                    user.passwords.add(hash);
+                }
+                else if (rule.startsWith('#')) {
+                    user.flags.nopass = false;
+                    user.passwords.add(rule.substring(1));
+                }
+                else if (rule.startsWith('<')) {
+                     const hash = await sha256(rule.substring(1));
+                     user.passwords.delete(hash);
+                }
+                 else if (rule.startsWith('!')) {
+                    user.passwords.delete(rule.substring(1));
+                }
+                else if (rule === 'allkeys' || rule === '~*') { user.keyPatterns = ['~*']; }
+                else if (rule === 'resetkeys') { user.keyPatterns = []; }
+                else if (rule.startsWith('~') || rule.startsWith('%R~') || rule.startsWith('%W~')) {
+                    user.keyPatterns.push(rule);
+                }
+                else if (rule === 'allchannels' || rule === '&*') { user.channelPatterns = new Set(['&*']); }
+                else if (rule === 'resetchannels') { user.channelPatterns = new Set(); }
+                else if (rule.startsWith('&')) { user.channelPatterns.add(rule); }
+                else if (rule === 'allcommands') user.commandRules.push('+@all');
+                else if (rule === 'nocommands') user.commandRules.push('-@all');
+                else if (rule.startsWith('+') || rule.startsWith('-')) {
+                    user.commandRules.push(rule);
+                } else {
+                    logMessage(`Warning: Ignoring unknown rule modifier '${rule}' for user '${username}'.`, 'warn');
+                }
+            };
+            logMessage(`OK: User '${username}' updated.`, 'success');
+        }
+        
+        function handleListUsers(namesOnly = false) {
+             logMessage('> ACL LIST', 'info');
+             const users = Array.from(Users.values());
+             if (users.length === 0) {
+                 logMessage('(empty list)', 'info');
+                 return;
+             }
+             users.forEach(user => {
+                 if (namesOnly) {
+                     logMessage(user.name, 'data');
+                 } else {
+                     const rules = [];
+                     if(user.flags.on) rules.push('on');
+                     if(user.flags.nopass) rules.push('nopass');
+                     user.passwords.forEach(p => rules.push(`#${p.substring(0,10)}...`));
+                     rules.push(...user.commandRules);
+                     rules.push(...user.keyPatterns);
+                     rules.push(...Array.from(user.channelPatterns));
+                     
+                     logMessage(`user ${user.name} ${rules.join(' ')}`, 'data');
+                 }
+             });
+        }
+
+        function handleGetUser(args) {
+            const username = args[0];
+            logMessage(`> ACL GETUSER ${username}`, 'info');
+            const user = Users.get(username);
+            if (!user) {
+                logMessage(`(nil)`, 'data');
+                return;
+            }
+
+            logMessage('flags:', 'data-title');
+            const flags = Object.entries(user.flags).filter(([,v])=>v).map(([k])=>k);
+            logMessage(`  ${flags.join(' ')}`, 'data');
+            
+            logMessage('passwords:', 'data-title');
+            user.passwords.forEach(p => logMessage(`  #${p}`, 'data'));
+
+            logMessage('command rules:', 'data-title');
+            logMessage(`  ${user.commandRules.join(' ')}`, 'data');
+
+            logMessage('key patterns:', 'data-title');
+            user.keyPatterns.forEach(kp => logMessage(`  ${kp}`, 'data'));
+            
+            logMessage('channel patterns:', 'data-title');
+            user.channelPatterns.forEach(cp => logMessage(`  ${cp}`, 'data'));
+        }
+
+        function handleDelUser(args) {
+            let deletedCount = 0;
+            args.forEach(username => {
+                if (username === 'default') {
+                    logMessage(`ERROR: Cannot delete the 'default' user.`, 'error');
+                } else if (Users.has(username)) {
+                    Users.delete(username);
+                    deletedCount++;
+                    logMessage(`> Deleted user '${username}'.`, 'info');
+                }
+            });
+            logMessage(`(integer) ${deletedCount}`, 'success');
+        }
+
+        function handleDryRun(args) {
+            const username = args.shift();
+            const command = args.join(' ');
+            logMessage(`> ACL DRYRUN ${username} ${command}`, 'info');
+            checkPermissions(username, command);
+        }
+
+        function checkPermissions(username, commandString) {
+            const user = Users.get(username);
+            if (!user) {
+                logMessage(`Permission denied: User '${username}' does not exist.`, 'error');
+                return;
+            }
+            
+            const parsedUser = new ParsedUser(user);
+
+            if (!parsedUser.flags.on) {
+                logMessage(`Permission denied: User '${username}' is disabled.`, 'error');
+                return;
+            }
+
+            const parts = commandString.trim().split(/\s+/);
+            const cmd = parts[0].toLowerCase();
+            const args = parts.slice(1);
+            const cmdInfo = redisCommandInfo[cmd];
+
+            // 1. Check Command Permission
+            let allowed = false;
+            let denied = false;
+
+            const allCmdsRule = parsedUser.commandRules.find(r => r === '+@all' || r === '-@all');
+            allowed = (allCmdsRule === '+@all');
+
+            for (const rule of parsedUser.commandRules) {
+                const type = rule.charAt(0);
+                const target = rule.substring(1);
+
+                if (target.startsWith('@')) {
+                    const category = target;
+                    if (cmdInfo && cmdInfo.categories.includes(category)) {
+                        if (type === '+') allowed = true;
+                        if (type === '-') denied = true;
+                    }
+                } else {
+                    if (target === cmd) {
+                        if (type === '+') allowed = true;
+                        if (type === '-') denied = true;
+                    }
+                }
+            }
+
+            if (denied) allowed = false;
+
+            if (!allowed) {
+                logMessage(`Permission denied: User '${username}' cannot run command '${cmd}'.`, 'error');
+                return;
+            }
+
+            // 2. Check Key/Channel Permissions
+            if (cmdInfo) {
+                if (cmdInfo.keySpec) {
+                    const keys = extractKeys(args, cmdInfo.keySpec);
+                    for (const key of keys) {
+                        if (!checkKeyAccess(parsedUser, key.name, key.type)) {
+                             logMessage(`Permission denied: User '${username}' has no ${key.type === 'r' ? 'READ' : 'WRITE'} access to key '${key.name}'.`, 'error');
+                             return;
+                        }
+                    }
+                }
+                if (cmdInfo.channelSpec) {
+                    const channels = extractChannels(args, cmdInfo.channelSpec);
+                     for (const channel of channels) {
+                        if (!checkChannelAccess(parsedUser, channel)) {
+                             logMessage(`Permission denied: User '${username}' has no access to channel '${channel}'.`, 'error');
+                             return;
+                        }
+                    }
+                }
+            }
+            
+            logMessage(`OK: User '${username}' can execute '${commandString}'.`, 'success');
+        }
+
+        function checkKeyAccess(parsedUser, key, requiredAccess) { // requiredAccess: 'r' or 'w'
+            if (parsedUser.allKeys) return true;
+            for (const p of parsedUser.keyPatterns) {
+                if (p.pattern.test(key)) {
+                    if (requiredAccess === 'r' && p.permissions.r) return true;
+                    if (requiredAccess === 'w' && p.permissions.w) return true;
+                }
+            }
+            return false;
+        }
+
+        function checkChannelAccess(parsedUser, channel) {
+            if (parsedUser.allChannels) return true;
+             for (const p of parsedUser.channelPatterns) {
+                if (p.test(channel)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function extractKeys(args, spec) {
+            const keys = [];
+            const keyType = spec.type;
+            if (spec.last === -1) {
+                for(let i = spec.first - 1; i < args.length; i += spec.step) {
+                    keys.push({name: args[i], type: keyType.includes('r') ? 'r' : 'w' });
+                }
+            } else {
+                 for(let i = spec.first - 1; i < spec.last; i += spec.step) {
+                     if (args[i]) keys.push({name: args[i], type: keyType.includes('r') ? 'r' : 'w'});
+                }
+            }
+            return keys;
+        }
+
+         function extractChannels(args, spec) {
+            const channels = [];
+            if (spec.last === -1) {
+                for(let i = spec.first - 1; i < args.length; i++) {
+                    channels.push(args[i]);
+                }
+            } else {
+                 for(let i = spec.first - 1; i < spec.last; i++) {
+                     if (args[i]) channels.push(args[i]);
+                }
+            }
+            return channels;
+        }
+        // --- END: ACL SIMULATOR CORE LOGIC ---
+
+        // --- START: UI MANAGEMENT ---
+        const commandInput = document.getElementById('acl-command-input');
+        const runBtn = document.getElementById('run-command-btn');
+        const dryRunUserSelect = document.getElementById('dryrun-user-select');
+        const dryRunCommandInput = document.getElementById('dryrun-command-input');
+        const checkPermissionBtn = document.getElementById('check-permission-btn');
+        const userListDiv = document.getElementById('user-list');
+        const outputLogDiv = document.getElementById('output-log');
+        const clearLogBtn = document.getElementById('clear-log-btn');
+
+        // Command Builder UI Elements
+        const builderUsername = document.getElementById('builder-username');
+        const builderFlagOn = document.getElementById('builder-flag-on');
+        const builderFlagNopass = document.getElementById('builder-flag-nopass');
+        const builderPasswords = document.getElementById('builder-passwords');
+        const builderCommands = document.getElementById('builder-commands');
+        const builderKeys = document.getElementById('builder-keys');
+        const builderChannels = document.getElementById('builder-channels');
+        const builderOutput = document.getElementById('builder-output');
+        const builderCopyBtn = document.getElementById('builder-copy-btn');
+        const builderUseBtn = document.getElementById('builder-use-btn');
+        const builderResetBtn = document.getElementById('builder-reset-btn');
+        const commandBuilderContainer = document.getElementById('command-builder');
+        const categoryAutocomplete = document.getElementById('category-autocomplete');
+        const categoryHint = document.getElementById('category-hint');
+        const builderCommandsError = document.getElementById('builder-commands-error');
+        const builderKeysError = document.getElementById('builder-keys-error');
+        const builderChannelsError = document.getElementById('builder-channels-error');
+        let highlightedAutocompleteIndex = -1;
+
+        function logMessage(message, type = 'info') {
+            const p = document.createElement('p');
+            const timestamp = new Date().toLocaleTimeString();
+            let colorClass = 'text-gray-400';
+            
+            const pre = document.createElement('span');
+            pre.className = 'text-gray-500 mr-2';
+            pre.textContent = `[${timestamp}]`;
+            
+            const msgSpan = document.createElement('span');
+
+            switch (type) {
+                case 'error': colorClass = 'text-red-400'; break;
+                case 'success': colorClass = 'text-green-400'; break;
+                case 'warn': colorClass = 'text-yellow-400'; break;
+                case 'data': colorClass = 'text-cyan-300'; break;
+                case 'data-title': colorClass = 'text-cyan-500 font-semibold'; break;
+            }
+            msgSpan.className = colorClass;
+            msgSpan.textContent = message;
+
+            p.appendChild(pre);
+            p.appendChild(msgSpan);
+            outputLogDiv.appendChild(p);
+            outputLogDiv.scrollTop = outputLogDiv.scrollHeight;
+        }
+        
+        function updateUserList() {
+            userListDiv.innerHTML = '';
+            if (Users.size === 0) {
+                 userListDiv.innerHTML = '<p class="text-gray-500">No users defined.</p>';
+                 return;
+            }
+            Users.forEach(user => {
+                const card = document.createElement('div');
+                card.className = 'user-card bg-gray-900 p-3 rounded-lg shadow-md border border-gray-700';
+                
+                const statusColor = user.flags.on ? 'bg-green-500' : 'bg-red-500';
+
+                const rulesSummary = user.commandRules.slice(0, 3).join(' ') + (user.commandRules.length > 3 ? '...' : '');
+
+                card.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center">
+                            <span class="w-3 h-3 rounded-full ${statusColor} mr-3"></span>
+                            <span class="font-bold text-lg text-white">${user.name}</span>
+                        </div>
+                        <div>
+                             <button class="text-xs text-blue-400 hover:underline edit-btn" data-user="${user.name}">Edit</button>
+                             ${user.name !== 'default' ? `<button class="text-xs text-red-400 hover:underline ml-2 deluser-btn" data-user="${user.name}">Delete</button>` : ''}
+                        </div>
+                    </div>
+                    <div class="mt-2 text-sm text-gray-400 font-fira pl-6">${rulesSummary}</div>
+                `;
+                userListDiv.appendChild(card);
+            });
+        }
+        
+        function updateDryRunSelect() {
+            const currentVal = dryRunUserSelect.value;
+            dryRunUserSelect.innerHTML = '';
+            Users.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.name;
+                option.textContent = user.name;
+                dryRunUserSelect.appendChild(option);
+            });
+            if (Array.from(Users.keys()).includes(currentVal)) {
+                dryRunUserSelect.value = currentVal;
+            }
+        }
+
+        function updateUI() {
+            updateUserList();
+            updateDryRunSelect();
+        }
+
+        // --- START: COMMAND BUILDER LOGIC & VALIDATION ---
+        function validateBuilderInputs() {
+            let isValid = true;
+
+            // Reset states
+            [builderCommands, builderKeys, builderChannels].forEach(el => {
+                el.classList.remove('border-red-500', 'focus:ring-red-500');
+                el.classList.add('border-gray-700', 'focus:ring-red-500');
+            });
+            [builderCommandsError, builderKeysError, builderChannelsError].forEach(el => {
+                el.textContent = '';
+            });
+
+            // Validate Command Rules
+            const commandRules = builderCommands.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
+            for (const rule of commandRules) {
+                if (!rule.startsWith('+') && !rule.startsWith('-')) {
+                    builderCommands.classList.add('border-red-500', 'focus:ring-red-500');
+                    builderCommands.classList.remove('border-gray-700');
+                    builderCommandsError.textContent = `Rule "${rule}" must start with + or -.`;
+                    isValid = false;
+                    break;
+                }
+            }
+
+            // Validate Key Patterns
+            const keyPatterns = builderKeys.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
+            for (const pattern of keyPatterns) {
+                if (!pattern.startsWith('~') && !pattern.startsWith('%R~') && !pattern.startsWith('%W~')) {
+                    builderKeys.classList.add('border-red-500', 'focus:ring-red-500');
+                    builderKeys.classList.remove('border-gray-700');
+                    builderKeysError.textContent = `Pattern "${pattern}" must start with ~, %R~, or %W~.`;
+                    isValid = false;
+                    break;
+                }
+            }
+
+            // Validate Channel Patterns
+            const channelPatterns = builderChannels.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
+            for (const pattern of channelPatterns) {
+                if (!pattern.startsWith('&')) {
+                    builderChannels.classList.add('border-red-500', 'focus:ring-red-500');
+                    builderChannels.classList.remove('border-gray-700');
+                    builderChannelsError.textContent = `Pattern "${pattern}" must start with &.`;
+                    isValid = false;
+                    break;
+                }
+            }
+            
+            return isValid;
+        }
+
+        function generateAclString() {
+            const isValid = validateBuilderInputs();
+
+            if (isValid) {
+                builderUseBtn.disabled = false;
+                builderCopyBtn.disabled = false;
+                builderUseBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                builderCopyBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            } else {
+                builderUseBtn.disabled = true;
+                builderCopyBtn.disabled = true;
+                builderUseBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                builderCopyBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+
+            const username = builderUsername.value.trim();
+            if (!username || !isValid) {
+                builderOutput.value = '';
+                return;
+            }
+
+            let parts = ['ACL', 'SETUSER', username];
+
+            if (builderFlagOn.checked) parts.push('on');
+            if (builderFlagNopass.checked) parts.push('nopass');
+
+            const passwords = builderPasswords.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
+            passwords.forEach(pw => {
+                parts.push(`>${pw}`);
+            });
+
+            const commandRules = builderCommands.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
+            parts.push(...commandRules);
+            
+            const keyPatterns = builderKeys.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
+            parts.push(...keyPatterns);
+
+            const channelPatterns = builderChannels.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
+            parts.push(...channelPatterns);
+            
+            builderOutput.value = parts.join(' ');
+        }
+        
+        function resetBuilder() {
+            builderUsername.value = '';
+            builderPasswords.value = '';
+            builderFlagOn.checked = true;
+            builderFlagNopass.checked = false;
+            builderCommands.value = '';
+            builderKeys.value = '';
+            builderChannels.value = '';
+            generateAclString(); // This will also reset validation states
+        }
+
+        function populateBuilderFromUser(username) {
+            const user = Users.get(username);
+            if (!user) return;
+            
+            builderUsername.value = user.name;
+            builderPasswords.value = ''; // We don't store plaintext passwords to show back
+            builderFlagOn.checked = user.flags.on;
+            builderFlagNopass.checked = user.flags.nopass;
+            builderCommands.value = user.commandRules.join('\n');
+            builderKeys.value = user.keyPatterns.join('\n');
+            builderChannels.value = Array.from(user.channelPatterns).join('\n');
+            
+            generateAclString();
+            logMessage(`Builder populated with settings for user '${username}'.`, 'info');
+        }
+
+        function copyToClipboard(text) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                logMessage('Copied to clipboard!', 'success');
+            } catch (err) {
+                logMessage('Failed to copy to clipboard.', 'error');
+            }
+            document.body.removeChild(textArea);
+        }
+        // --- END: COMMAND BUILDER LOGIC & VALIDATION ---
+
+        // --- START: AUTOCOMPLETE & HINT LOGIC ---
+        function updateAutocompleteHighlight() {
+            const items = categoryAutocomplete.querySelectorAll('.autocomplete-item');
+            if (!items || items.length === 0) return;
+
+            items.forEach((item, index) => {
+                if (index === highlightedAutocompleteIndex) {
+                    item.classList.add('autocomplete-highlight');
+                    item.scrollIntoView({ block: 'nearest' });
+                } else {
+                    item.classList.remove('autocomplete-highlight');
+                }
+            });
+        }
+
+        function handleCategoryAutocomplete(event) {
+            const text = builderCommands.value;
+            const cursorPos = builderCommands.selectionStart;
+            
+            const textToCursor = text.substring(0, cursorPos);
+            const lastAtIndex = textToCursor.lastIndexOf('@');
+            const lastSpaceIndex = textToCursor.lastIndexOf(' ');
+            const lastNewlineIndex = textToCursor.lastIndexOf('\n');
+            const lastWordStartIndex = Math.max(lastSpaceIndex, lastNewlineIndex);
+
+            if (lastAtIndex > lastWordStartIndex) {
+                const searchTerm = textToCursor.substring(lastAtIndex);
+                const filtered = availableCategories.filter(cat => cat.startsWith(searchTerm));
+                
+                if (filtered.length > 0) {
+                    populateAutocomplete(filtered);
+                    categoryAutocomplete.classList.remove('hidden');
+                } else {
+                    categoryAutocomplete.classList.add('hidden');
+                    highlightedAutocompleteIndex = -1;
+                }
+            } else {
+                categoryAutocomplete.classList.add('hidden');
+                highlightedAutocompleteIndex = -1;
+            }
+        }
+
+        function populateAutocomplete(categories) {
+            categoryAutocomplete.innerHTML = '';
+            highlightedAutocompleteIndex = -1;
+            categories.forEach(cat => {
+                const item = document.createElement('div');
+                item.textContent = cat;
+                item.className = 'p-2 cursor-pointer autocomplete-item font-fira text-sm';
+                item.dataset.value = cat;
+                item.addEventListener('click', onAutocompleteItemClick);
+                categoryAutocomplete.appendChild(item);
+            });
+        }
+
+        function onAutocompleteItemClick(event) {
+            const selectedCategory = event.target.dataset.value;
+            const text = builderCommands.value;
+            const cursorPos = builderCommands.selectionStart;
+
+            const textToCursor = text.substring(0, cursorPos);
+            const lastAtIndex = textToCursor.lastIndexOf('@');
+            
+            const textBefore = text.substring(0, lastAtIndex);
+            const textAfter = text.substring(cursorPos);
+
+            builderCommands.value = textBefore + selectedCategory + ' ' + textAfter;
+            
+            const newCursorPos = (textBefore + selectedCategory + ' ').length;
+            builderCommands.focus();
+            builderCommands.setSelectionRange(newCursorPos, newCursorPos);
+
+            categoryAutocomplete.classList.add('hidden');
+            highlightedAutocompleteIndex = -1;
+            builderCommands.dispatchEvent(new Event('input'));
+        }
+        
+        function getWordAtCursor(text, position) {
+            const pre = text.slice(0, position);
+            const post = text.slice(position);
+            const preMatch = pre.match(/[\S]+$/);
+            const postMatch = post.match(/^[\S]+/);
+            return (preMatch ? preMatch[0] : '') + (postMatch ? postMatch[0] : '');
+        }
+
+        function checkCursorForCategory() {
+            const text = builderCommands.value;
+            const cursorPos = builderCommands.selectionStart;
+            const word = getWordAtCursor(text, cursorPos);
+
+            if (word.startsWith('@') && categoryDescriptions[word]) {
+                categoryHint.textContent = categoryDescriptions[word];
+                categoryHint.classList.remove('hidden');
+            } else {
+                categoryHint.classList.add('hidden');
+            }
+        }
+        // --- END: AUTOCOMPLETE & HINT LOGIC ---
+
+        // --- START: EVENT LISTENERS ---
+        runBtn.addEventListener('click', () => {
+            const command = commandInput.value;
+            if (command) {
+                logMessage(`> ${command}`, 'info');
+                processACLCommand(command);
+                commandInput.value = '';
+            }
+        });
+
+        commandInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') runBtn.click();
+        });
+        
+        checkPermissionBtn.addEventListener('click', () => {
+            const user = dryRunUserSelect.value;
+            const command = dryRunCommandInput.value;
+            if (user && command) {
+                 logMessage(`> ACL DRYRUN ${user} ${command}`, 'info');
+                 checkPermissions(user, command);
+            }
+        });
+        
+        dryRunCommandInput.addEventListener('keydown', (e) => {
+             if (e.key === 'Enter') checkPermissionBtn.click();
+        });
+
+        clearLogBtn.addEventListener('click', () => {
+            outputLogDiv.innerHTML = '';
+            logMessage('Log cleared.', 'info');
+        });
+
+        userListDiv.addEventListener('click', (e) => {
+            if (e.target.matches('.edit-btn')) {
+                const username = e.target.dataset.user;
+                populateBuilderFromUser(username);
+            }
+            if (e.target.matches('.deluser-btn')) {
+                const username = e.target.dataset.user;
+                processACLCommand(`acl deluser ${username}`);
+            }
+        });
+
+        commandBuilderContainer.addEventListener('input', generateAclString);
+        builderResetBtn.addEventListener('click', resetBuilder);
+
+        builderCopyBtn.addEventListener('click', () => {
+            if (builderOutput.value) copyToClipboard(builderOutput.value);
+        });
+
+        builderUseBtn.addEventListener('click', () => {
+            if (builderOutput.value) {
+                commandInput.value = builderOutput.value;
+                logMessage('Command populated in ACL input.', 'info');
+                commandInput.focus();
+            }
+        });
+        
+        builderCommands.addEventListener('input', handleCategoryAutocomplete);
+        builderCommands.addEventListener('keydown', (e) => {
+            if (categoryAutocomplete.classList.contains('hidden')) return;
+            const items = categoryAutocomplete.querySelectorAll('.autocomplete-item');
+            if (items.length === 0 && e.key !== 'Escape') return;
+
+            switch (e.key) {
+                case 'ArrowDown':
+                    e.preventDefault();
+                    highlightedAutocompleteIndex = (highlightedAutocompleteIndex + 1) % items.length;
+                    updateAutocompleteHighlight();
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    highlightedAutocompleteIndex = (highlightedAutocompleteIndex - 1 + items.length) % items.length;
+                    updateAutocompleteHighlight();
+                    break;
+                case 'Enter':
+                    if (highlightedAutocompleteIndex > -1) {
+                        e.preventDefault();
+                        items[highlightedAutocompleteIndex].click();
+                    }
+                    break;
+                case 'Escape':
+                    categoryAutocomplete.classList.add('hidden');
+                    highlightedAutocompleteIndex = -1;
+                    break;
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!builderCommands.contains(e.target) && !categoryAutocomplete.contains(e.target)) {
+                 categoryAutocomplete.classList.add('hidden');
+                 highlightedAutocompleteIndex = -1;
+            }
+        });
+
+        builderCommands.addEventListener('keyup', checkCursorForCategory);
+        builderCommands.addEventListener('click', checkCursorForCategory);
+        builderCommands.addEventListener('focus', checkCursorForCategory);
+        builderCommands.addEventListener('blur', () => categoryHint.classList.add('hidden'));
+        // --- END: EVENT LISTENERS ---
+
+        // --- START: INITIALIZATION ---
+        function initialize() {
+            createDefaultUser();
+            logMessage('Redis ACL Simulator Initialized.', 'success');
+            logMessage('Use the builder below to create users, or type ACL commands directly.', 'info');
+            processACLCommand("acl SETUSER worker on +@read +@list ~app:* ~log:* -@dangerous >samplepassword");
+            updateUI();
+            generateAclString();
+        }
+
+        initialize();
+        // --- END: INITIALIZATION ---
+
+    </script>
+</body>
+</html>
+
