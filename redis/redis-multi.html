@@ -28,7 +28,7 @@
             opacity: 0;
             transform: translateX(50px) scale(0.8);
         }
-        .status-indicator {
+        .status-indicator, .dirty-flag {
             transition: all 0.3s ease-in-out;
         }
         .console-line {
@@ -61,7 +61,7 @@
         <!-- Header -->
         <header class="text-center mb-8">
             <h1 class="text-3xl md:text-4xl font-bold text-red-500">Redis Transaction Visualizer</h1>
-            <p class="text-gray-400 mt-2">See how `MULTI`, `EXEC`, and `DISCARD` work behind the scenes.</p>
+            <p class="text-gray-400 mt-2">See how `MULTI`, `EXEC`, `WATCH`, and `DISCARD` work behind the scenes.</p>
         </header>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -80,59 +80,71 @@
                     </button>
                 </div>
                 <div id="console-output" class="flex-grow bg-black rounded-md p-4 text-sm font-mono overflow-y-auto h-80 mb-4">
-                    <!-- Console output will be dynamically added here -->
-                    <div class="text-gray-500">Welcome! Type 'MULTI' to begin a transaction or try an example below.</div>
+                    <div class="text-gray-500">Welcome! Try an example or type commands below.</div>
                 </div>
                 <div class="relative">
                     <span class="absolute left-3 top-1/2 -translate-y-1/2 text-red-500 font-bold">&gt;</span>
-                    <input type="text" id="command-input" class="w-full bg-gray-900 border-2 border-gray-700 rounded-md py-2 pl-8 pr-4 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500" placeholder="e.g., SET name value">
+                    <input type="text" id="command-input" class="w-full bg-gray-900 border-2 border-gray-700 rounded-md py-2 pl-8 pr-4 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500" placeholder="e.g., WATCH key">
                 </div>
-                 <div class="text-xs text-gray-500 mt-2">Supported: MULTI, EXEC, DISCARD, SET, GET, INCR, DECR, PING, SADD, LPUSH.</div>
+                 <div class="text-xs text-gray-500 mt-2">Supported: MULTI, EXEC, DISCARD, WATCH, UNWATCH, SET, GET, INCR, DECR, PING, SADD, LPUSH, RESET.</div>
 
                  <!-- Example Buttons -->
                  <div class="mt-6">
                     <h3 class="text-lg font-semibold mb-3 text-gray-300">Example Scenarios</h3>
                     <div class="flex flex-wrap gap-3">
+                         <button id="example-watch" class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">
+                            Optimistic Locking (WATCH)
+                        </button>
                         <button id="example-fcfs" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">
-                            FCFS Registration
+                            FCFS Registration (수강신청)
                         </button>
                         <button id="example-discard" class="bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">
                             Discard Transaction
-                        </button>
-                         <button id="example-simple" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">
-                            Simple INCR
                         </button>
                     </div>
                 </div>
             </div>
 
             <!-- Right Panel: Server State -->
-            <div class="bg-gray-800 rounded-lg shadow-2xl p-6">
-                <div class="flex items-center mb-4">
+            <div class="bg-gray-800 rounded-lg shadow-2xl p-6 space-y-4">
+                <div class="flex items-center">
                     <svg class="w-6 h-6 text-red-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
                     <h2 class="text-xl font-semibold">Redis Server State</h2>
                 </div>
 
                 <!-- Transaction State -->
-                <div class="mb-6">
+                <div>
                     <div class="flex justify-between items-center mb-2">
                         <h3 class="font-semibold text-gray-300">Transaction State</h3>
-                        <div id="transaction-status" class="status-indicator px-3 py-1 text-sm font-bold rounded-full bg-gray-600 text-gray-200">
-                            INACTIVE
+                        <div class="flex items-center gap-2">
+                            <div id="dirty-flag" class="dirty-flag hidden px-3 py-1 text-sm font-bold rounded-full bg-red-600 text-white">
+                                DIRTY
+                            </div>
+                            <div id="transaction-status" class="status-indicator px-3 py-1 text-sm font-bold rounded-full bg-gray-600 text-gray-200">
+                                INACTIVE
+                            </div>
                         </div>
                     </div>
-                    <div class="bg-gray-900 rounded-lg p-4 h-48">
+                    <div class="bg-gray-900 rounded-lg p-4 h-40">
                         <h4 class="font-medium text-gray-400 mb-2 border-b border-gray-700 pb-2">Command Queue</h4>
-                        <div id="command-queue" class="space-y-2 overflow-y-auto h-32">
+                        <div id="command-queue" class="space-y-2 overflow-y-auto h-24">
                              <div class="text-center text-gray-500 pt-4">Queue is empty</div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Watched Keys -->
+                <div>
+                    <h3 class="font-semibold text-gray-300 mb-2">Watched Keys</h3>
+                    <div id="watched-keys" class="bg-gray-900 rounded-lg p-4 h-24 overflow-y-auto">
+                        <div class="text-center text-gray-500 pt-2">Not watching any keys</div>
                     </div>
                 </div>
 
                 <!-- Data Store -->
                 <div>
                     <h3 class="font-semibold text-gray-300 mb-2">In-Memory Data</h3>
-                    <div id="data-store" class="bg-gray-900 rounded-lg p-4 h-48 overflow-y-auto">
+                    <div id="data-store" class="bg-gray-900 rounded-lg p-4 h-32 overflow-y-auto">
                         <div class="text-center text-gray-500 pt-4">No data yet</div>
                     </div>
                 </div>
@@ -145,9 +157,11 @@
         const commandInput = document.getElementById('command-input');
         const consoleOutput = document.getElementById('console-output');
         const transactionStatus = document.getElementById('transaction-status');
+        const dirtyFlag = document.getElementById('dirty-flag');
         const commandQueue = document.getElementById('command-queue');
         const dataStore = document.getElementById('data-store');
-        const exampleSimpleBtn = document.getElementById('example-simple');
+        const watchedKeysEl = document.getElementById('watched-keys');
+        const exampleWatchBtn = document.getElementById('example-watch');
         const exampleFcfsBtn = document.getElementById('example-fcfs');
         const exampleDiscardBtn = document.getElementById('example-discard');
         const exampleResetBtn = document.getElementById('example-reset');
@@ -156,14 +170,15 @@
         let inTransaction = false;
         let queue = [];
         const data = {};
+        let watchedKeys = [];
+        let isDirty = false;
         let isDemoRunning = false;
 
         // --- Event Listeners ---
         commandInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && commandInput.value.trim() !== '') {
                 if (isDemoRunning) return;
-                const commandStr = commandInput.value.trim();
-                processCommand(commandStr);
+                processCommand(commandInput.value.trim());
                 commandInput.value = '';
             }
         });
@@ -173,18 +188,23 @@
             if (isDemoRunning) return;
             isDemoRunning = true;
 
-            const buttons = [exampleSimpleBtn, exampleFcfsBtn, exampleDiscardBtn, exampleResetBtn];
+            const buttons = [exampleWatchBtn, exampleFcfsBtn, exampleDiscardBtn, exampleResetBtn];
             buttons.forEach(btn => btn.disabled = true);
 
             for (const cmd of commands) {
+                if (cmd.startsWith('//')) {
+                    logToConsole(cmd, 'comment');
+                    await new Promise(r => setTimeout(r, 1200));
+                    continue;
+                }
                 commandInput.value = cmd;
                 commandInput.focus();
-                await new Promise(r => setTimeout(r, 150)); // typing effect
+                await new Promise(r => setTimeout(r, 150));
                 
                 processCommand(commandInput.value.trim());
                 commandInput.value = '';
                 
-                await new Promise(r => setTimeout(r, 1000)); // wait for animation
+                await new Promise(r => setTimeout(r, 1200));
             }
             
             buttons.forEach(btn => btn.disabled = false);
@@ -192,23 +212,26 @@
         }
 
         // --- Example Button Listeners ---
-        exampleSimpleBtn.addEventListener('click', () => {
-            logToConsole('// --- Running Simple INCR Transaction --- //', 'comment');
-            const commands = [
-                'SET counter 100',
+        exampleWatchBtn.addEventListener('click', () => {
+             const commands = [
+                '// --- Simulating Optimistic Lock with WATCH --- //',
+                'SET balance 100',
+                'WATCH balance',
+                'GET balance',
+                "// --- Another client modifies 'balance' while we are watching! --- //",
+                'SET balance 500',
                 'MULTI',
-                'INCR counter',
-                'GET counter',
+                'SET balance 80',
                 'EXEC'
             ];
             runCommandsSequentially(commands);
         });
-
+        
         exampleFcfsBtn.addEventListener('click', () => {
             const studentId = `student:${Math.floor(1000 + Math.random() * 9000)}`;
-            logToConsole(`// --- Simulating Course Registration (수강신청) for ${studentId} --- //`, 'comment');
-            logToConsole('// --- All commands must succeed or fail together atomically. --- //', 'comment');
             const commands = [
+                `// --- Simulating Course Registration (수강신청) for ${studentId} --- //`,
+                '// --- All commands must succeed or fail together atomically. --- //',
                 'SET course:CS101:spots 5',
                 'MULTI',
                 'DECR course:CS101:spots',
@@ -220,8 +243,8 @@
         });
 
         exampleDiscardBtn.addEventListener('click', () => {
-             logToConsole('// --- Simulating a Discarded Transaction --- //', 'comment');
             const commands = [
+                '// --- Simulating a Discarded Transaction --- //',
                 'SET user:status active',
                 'MULTI',
                 'SET user:status inactive',
@@ -234,51 +257,40 @@
 
         exampleResetBtn.addEventListener('click', () => {
             if (isDemoRunning) return;
-            if (inTransaction) {
-                handleDiscard();
-            }
-            // Clear state
-            Object.keys(data).forEach(key => delete data[key]);
-            queue = [];
-            inTransaction = false;
-
-            // Clear UI
             consoleOutput.innerHTML = '';
-            updateDataStoreUI();
-            updateQueueUI();
-            updateTransactionStatus(false);
+            resetState();
             logToConsole('State has been reset.', 'redis');
         });
 
         // --- Core Logic ---
+        function resetState() {
+            unwatchAllKeys();
+            if (inTransaction) {
+                queue = [];
+                inTransaction = false;
+            }
+            Object.keys(data).forEach(key => delete data[key]);
+            updateAllUI();
+        }
+
         function processCommand(commandStr) {
             logToConsole(commandStr, 'user');
             const parts = commandStr.split(/\s+/);
             const command = parts[0].toUpperCase();
             const args = parts.slice(1);
 
-            const validCommands = ['MULTI', 'EXEC', 'DISCARD', 'SET', 'GET', 'INCR', 'DECR', 'PING', 'SADD', 'LPUSH'];
+            const validCommands = ['MULTI', 'EXEC', 'DISCARD', 'SET', 'GET', 'INCR', 'DECR', 'PING', 'SADD', 'LPUSH', 'WATCH', 'UNWATCH', 'RESET'];
             if (!validCommands.includes(command)) {
                 logToConsole(`(error) ERR unknown command '${command}'`, 'redis');
                 return;
             }
 
-            // Syntax check before queueing
-            if (inTransaction) {
-                let error = null;
-                if ((command === 'SET' && args.length !== 2) || 
-                    (['GET', 'INCR', 'DECR'].includes(command) && args.length !== 1) ||
-                    (['SADD', 'LPUSH'].includes(command) && args.length < 2)) {
-                    error = `(error) ERR wrong number of arguments for '${command.toLowerCase()}' command`;
-                }
-                if (error) {
-                    logToConsole(error, 'redis');
-                    // Real Redis flags transaction to fail on EXEC. Here we just show the error.
-                    return;
-                }
+            const modifyingCommands = ['SET', 'INCR', 'DECR', 'SADD', 'LPUSH'];
+            if (modifyingCommands.includes(command)) {
+                touchWatchedKey(args[0]);
             }
 
-            if (inTransaction && !['EXEC', 'DISCARD'].includes(command)) {
+            if (inTransaction && !['EXEC', 'DISCARD', 'WATCH', 'UNWATCH'].includes(command)) {
                 queueCommand(command, args, commandStr);
                 return;
             }
@@ -286,18 +298,53 @@
             switch (command) {
                 case 'MULTI': handleMulti(); break;
                 case 'EXEC': handleExec(); break;
-                case 'DISCARD': handleDiscard(); break;
+                case 'DISCARD': handleDiscard(true); break;
+                case 'WATCH': handleWatch(args); break;
+                case 'UNWATCH': unwatchAllKeys(); logToConsole('OK', 'redis'); break;
+                case 'RESET': handleResetCommand(); break;
                 case 'SET': handleSet(args[0], args[1], true); break;
                 case 'GET': handleGet(args[0], true); break;
                 case 'INCR': handleIncr(args[0], true); break;
                 case 'DECR': handleDecr(args[0], true); break;
-                case 'PING': logToConsole('PONG', 'redis'); break;
                 case 'SADD': handleSadd(args[0], args[1], true); break;
                 case 'LPUSH': handleLpush(args[0], args.slice(0).join(' '), true); break;
+                case 'PING': logToConsole('PONG', 'redis'); break;
             }
         }
         
         // --- Command Handlers ---
+        function handleResetCommand() {
+            resetState();
+            logToConsole('OK', 'redis');
+        }
+
+        function handleWatch(keys) {
+            if (inTransaction) {
+                logToConsole('(error) ERR WATCH inside MULTI is not allowed', 'redis');
+                return;
+            }
+            keys.forEach(key => {
+                if (!watchedKeys.includes(key)) watchedKeys.push(key);
+            });
+            updateWatchedKeysUI();
+            logToConsole('OK', 'redis');
+        }
+
+        function unwatchAllKeys() {
+            watchedKeys = [];
+            isDirty = false;
+            updateWatchedKeysUI();
+            updateDirtyFlagUI();
+        }
+
+        function touchWatchedKey(key) {
+            if (watchedKeys.includes(key)) {
+                isDirty = true;
+                updateDirtyFlagUI();
+                watchedKeys = [];
+                updateWatchedKeysUI();
+            }
+        }
 
         function handleMulti() {
             if (inTransaction) {
@@ -314,28 +361,33 @@
                 logToConsole('(error) ERR EXEC without MULTI', 'redis');
                 return;
             }
-            
-            if (queue.length === 0) {
-                 logToConsole('(empty array)', 'redis');
-                 inTransaction = false;
-                 updateTransactionStatus(false);
-                 return;
-            }
 
-            logToConsole(`(array) ${queue.length} replies:`, 'redis-array-start');
-            executeQueue();
+            if (isDirty) {
+                logToConsole('(nil)', 'redis');
+            } else if (queue.length === 0) {
+                 logToConsole('(empty array)', 'redis');
+            } else {
+                 logToConsole(`(array) ${queue.length} replies:`, 'redis-array-start');
+                 executeQueue();
+                 return; 
+            }
+            
+            queue = [];
+            inTransaction = false;
+            unwatchAllKeys();
+            updateAllUI();
         }
 
-        function handleDiscard() {
-             if (!inTransaction) {
-                logToConsole('(error) ERR DISCARD without MULTI', 'redis');
+        function handleDiscard(shouldLog) {
+            if (!inTransaction) {
+                if(shouldLog) logToConsole('(error) ERR DISCARD without MULTI', 'redis');
                 return;
             }
-            inTransaction = false;
             queue = [];
-            updateTransactionStatus(false);
-            updateQueueUI();
-            logToConsole('OK', 'redis');
+            inTransaction = false;
+            unwatchAllKeys();
+            updateAllUI();
+            if(shouldLog) logToConsole('OK', 'redis');
         }
 
         function handleSet(key, value, shouldLog) {
@@ -350,93 +402,54 @@
         }
 
         function handleGet(key, shouldLog) {
-            if (!key) {
-                if(shouldLog) logToConsole(`(error) ERR wrong number of arguments for 'get' command`, 'redis');
-                return '(error)';
-            }
+            if (!key) { if(shouldLog) logToConsole(`(error) ERR wrong number of arguments for 'get' command`, 'redis'); return '(error)'; }
             const value = data[key] === undefined ? '(nil)' : `"${data[key]}"`;
-            if(shouldLog) logToConsole(value, 'redis');
-            return value;
+            if(shouldLog) logToConsole(value, 'redis'); return value;
         }
-        
+
         function handleIncr(key, shouldLog) {
-             if (!key) {
-                if(shouldLog) logToConsole(`(error) ERR wrong number of arguments for 'incr' command`, 'redis');
-                return '(error)';
-            }
+            if (!key) { if(shouldLog) logToConsole(`(error) ERR wrong number of arguments for 'incr' command`, 'redis'); return '(error)'; }
             let value = parseInt(data[key], 10);
             if (isNaN(value)) {
-                 if (data[key] !== undefined) {
-                    if(shouldLog) logToConsole('(error) ERR value is not an integer or out of range', 'redis');
-                    return '(error)';
-                 }
+                 if (data[key] !== undefined) { if(shouldLog) logToConsole('(error) ERR value is not an integer or out of range', 'redis'); return '(error)'; }
                  value = 0;
             }
-            value++;
-            data[key] = value.toString();
-            updateDataStoreUI();
+            value++; data[key] = value.toString(); updateDataStoreUI();
             const result = `(integer) ${value}`;
-            if(shouldLog) logToConsole(result, 'redis');
-            return result;
+            if(shouldLog) logToConsole(result, 'redis'); return result;
         }
 
         function handleDecr(key, shouldLog) {
-             if (!key) {
-                if(shouldLog) logToConsole(`(error) ERR wrong number of arguments for 'decr' command`, 'redis');
-                return '(error)';
-            }
+            if (!key) { if(shouldLog) logToConsole(`(error) ERR wrong number of arguments for 'decr' command`, 'redis'); return '(error)'; }
             let value = parseInt(data[key], 10);
             if (isNaN(value)) {
-                 if (data[key] !== undefined) {
-                    if(shouldLog) logToConsole('(error) ERR value is not an integer or out of range', 'redis');
-                    return '(error)';
-                 }
+                 if (data[key] !== undefined) { if(shouldLog) logToConsole('(error) ERR value is not an integer or out of range', 'redis'); return '(error)'; }
                  value = 0;
             }
-            value--;
-            data[key] = value.toString();
-            updateDataStoreUI();
+            value--; data[key] = value.toString(); updateDataStoreUI();
             const result = `(integer) ${value}`;
-            if(shouldLog) logToConsole(result, 'redis');
-            return result;
+            if(shouldLog) logToConsole(result, 'redis'); return result;
         }
 
         function handleSadd(key, value, shouldLog) {
-            if (!key || value === undefined) {
-                if(shouldLog) logToConsole(`(error) ERR wrong number of arguments for 'sadd' command`, 'redis');
-                return '(error)';
-            }
-            if (data[key] === undefined) data[key] = []; // Represent set as array
-            if (!Array.isArray(data[key])) {
-                if (shouldLog) logToConsole(`(error) WRONGTYPE Operation against a key holding the wrong kind of value`, 'redis');
-                return '(error)';
-            }
+            if (!key || value === undefined) { if(shouldLog) logToConsole(`(error) ERR wrong number of arguments for 'sadd' command`, 'redis'); return '(error)'; }
+            if (data[key] === undefined) data[key] = [];
+            if (!Array.isArray(data[key])) { if (shouldLog) logToConsole(`(error) WRONGTYPE Operation against a key holding the wrong kind of value`, 'redis'); return '(error)'; }
             let added = 0;
-            if (!data[key].includes(value)) {
-                data[key].push(value);
-                added = 1;
-            }
+            if (!data[key].includes(value)) { data[key].push(value); added = 1; }
             updateDataStoreUI();
             const result = `(integer) ${added}`;
-            if (shouldLog) logToConsole(result, 'redis');
-            return result;
+            if (shouldLog) logToConsole(result, 'redis'); return result;
         }
 
         function handleLpush(key, value, shouldLog) {
-            if (!key || value === undefined) {
-                if(shouldLog) logToConsole(`(error) ERR wrong number of arguments for 'lpush' command`, 'redis');
-                return '(error)';
-            }
-            if (data[key] === undefined) data[key] = []; // Represent list as array
-             if (!Array.isArray(data[key])) {
-                if (shouldLog) logToConsole(`(error) WRONGTYPE Operation against a key holding the wrong kind of value`, 'redis');
-                return '(error)';
-            }
-            data[key].unshift(value); // Add to beginning
+            if (!key || value === undefined) { if(shouldLog) logToConsole(`(error) ERR wrong number of arguments for 'lpush' command`, 'redis'); return '(error)'; }
+            if (data[key] === undefined) data[key] = [];
+            if (!Array.isArray(data[key])) { if (shouldLog) logToConsole(`(error) WRONGTYPE Operation against a key holding the wrong kind of value`, 'redis'); return '(error)'; }
+            data[key].unshift(value);
             updateDataStoreUI();
             const result = `(integer) ${data[key].length}`;
-            if (shouldLog) logToConsole(result, 'redis');
-            return result;
+            if (shouldLog) logToConsole(result, 'redis'); return result;
         }
 
         function queueCommand(command, args, commandStr) {
@@ -453,13 +466,10 @@
             for (let i = 0; i < executionQueue.length; i++) {
                 const { command, args, id } = executionQueue[i];
                 const queueItem = document.getElementById(id);
-                
                 if (queueItem) queueItem.classList.add('executing');
-
-                await new Promise(resolve => setTimeout(resolve, 600)); // Animation delay
+                await new Promise(resolve => setTimeout(resolve, 600));
 
                 let result;
-                // Simulate actual execution
                 switch (command) {
                     case 'SET': result = handleSet(args[0], args[1], false); break;
                     case 'GET': result = handleGet(args[0], false); break;
@@ -476,57 +486,79 @@
                     queueItem.classList.remove('executing');
                     queueItem.classList.add('leaving');
                 }
-                 await new Promise(resolve => setTimeout(resolve, 400)); // Exit animation
-                 updateQueueUI();
+                await new Promise(resolve => setTimeout(resolve, 400));
+                updateQueueUI();
             }
             
             inTransaction = false;
-            updateTransactionStatus(false);
+            unwatchAllKeys();
+            updateAllUI();
         }
 
         // --- UI Update Functions ---
+        function updateAllUI() {
+            updateTransactionStatus(inTransaction);
+            updateDirtyFlagUI();
+            updateQueueUI();
+            updateDataStoreUI();
+            updateWatchedKeysUI();
+        }
+
         function updateTransactionStatus(active) {
             if (active) {
                 transactionStatus.textContent = 'ACTIVE';
-                transactionStatus.classList.remove('bg-gray-600', 'text-gray-200');
+                transactionStatus.classList.remove('bg-gray-600');
                 transactionStatus.classList.add('bg-green-500', 'text-white');
             } else {
                 transactionStatus.textContent = 'INACTIVE';
                 transactionStatus.classList.remove('bg-green-500', 'text-white');
-                transactionStatus.classList.add('bg-gray-600', 'text-gray-200');
+                transactionStatus.classList.add('bg-gray-600');
             }
+        }
+        
+        function updateDirtyFlagUI() {
+            if (isDirty) {
+                dirtyFlag.classList.remove('hidden');
+            } else {
+                dirtyFlag.classList.add('hidden');
+            }
+        }
+
+        function updateWatchedKeysUI() {
+            if (watchedKeys.length === 0) {
+                watchedKeysEl.innerHTML = `<div class="text-center text-gray-500 pt-2">Not watching any keys</div>`;
+                return;
+            }
+            watchedKeysEl.innerHTML = watchedKeys.map(key => `
+                <div class="flex items-center font-mono text-sm">
+                    <svg class="w-4 h-4 text-purple-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                    <span class="text-purple-300">${key}</span>
+                </div>
+            `).join('');
         }
 
         function updateQueueUI() {
             if (queue.length === 0) {
-                commandQueue.innerHTML = `<div class="text-center text-gray-500 pt-4">Queue is empty</div>`;
-                return;
+                commandQueue.innerHTML = `<div class="text-center text-gray-500 pt-4">Queue is empty</div>`; return;
             }
+            if (commandQueue.querySelector('.text-gray-500')) commandQueue.innerHTML = '';
             
-            if (commandQueue.querySelector('.text-gray-500')) {
-                commandQueue.innerHTML = '';
-            }
-
             const existingIds = [...commandQueue.children].map(c => c.id);
             const newCommands = queue.filter(cmd => !existingIds.includes(cmd.id));
 
-            for (const cmd of newCommands) {
+            newCommands.forEach(cmd => {
                 const div = document.createElement('div');
                 div.id = cmd.id;
                 div.className = 'command-item entering bg-gray-700 p-2 rounded-md font-mono text-sm';
                 div.textContent = cmd.commandStr;
                 commandQueue.appendChild(div);
-                requestAnimationFrame(() => {
-                     div.classList.remove('entering');
-                });
-            }
+                requestAnimationFrame(() => div.classList.remove('entering'));
+            });
 
             existingIds.forEach(id => {
                 if (!queue.find(cmd => cmd.id === id)) {
                     const el = document.getElementById(id);
-                    if (el && !el.classList.contains('leaving')) {
-                       el.remove();
-                    }
+                    if (el && !el.classList.contains('leaving')) el.remove();
                 }
             });
         }
@@ -534,25 +566,21 @@
         function updateDataStoreUI() {
             const keys = Object.keys(data);
             if (keys.length === 0) {
-                dataStore.innerHTML = `<div class="text-center text-gray-500 pt-4">No data yet</div>`;
-                return;
+                dataStore.innerHTML = `<div class="text-center text-gray-500 pt-4">No data yet</div>`; return;
             }
-
             dataStore.innerHTML = keys.map(key => {
                 const value = data[key];
                 let displayValue;
                 if (Array.isArray(value)) {
-                    // Truncate long arrays for display
                     const items = value.length > 5 ? [...value.slice(0, 5), '...'] : value;
                     displayValue = `<span class="text-gray-400">(list/set)</span> [${items.map(v => `<span class="text-green-400">"${v}"</span>`).join(', ')}]`;
                 } else {
                     displayValue = `"${value}"`;
                 }
-                return `
-                    <div class="flex items-start font-mono text-sm mb-2">
-                        <div class="font-bold text-red-400 mr-2 flex-shrink-0">${key}:</div>
-                        <div class="text-blue-300 break-all">${displayValue}</div>
-                    </div>`
+                return `<div class="flex items-start font-mono text-sm mb-2">
+                            <div class="font-bold text-red-400 mr-2 flex-shrink-0">${key}:</div>
+                            <div class="text-blue-300 break-all">${displayValue}</div>
+                        </div>`
             }).join('');
         }
 
