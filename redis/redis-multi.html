@@ -84,6 +84,25 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
         .has-tooltip:hover .tooltip { visibility: visible; opacity: 1; }
+        
+        /* Custom styles for range slider */
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #EF4444; /* red-500 */
+            cursor: pointer;
+            border-radius: 50%;
+            margin-top: -6px; /* centers thumb on the track */
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #EF4444; /* red-500 */
+            cursor: pointer;
+            border-radius: 50%;
+        }
     </style>
 </head>
 <body class="text-white p-4 md:p-8">
@@ -94,7 +113,7 @@
             <h1 class="text-3xl md:text-4xl font-bold text-red-500">Redis Transaction Visualizer</h1>
             <p class="text-gray-400 mt-2">See how `MULTI`, `EXEC`, `WATCH`, and `DISCARD` work behind the scenes.</p>
         </header>
-
+        
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
             
             <!-- Left Panel: Client and Console -->
@@ -132,6 +151,7 @@
                         <button id="example-watch" class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">Optimistic Locking</button>
                         <button id="example-fcfs" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">FCFS Registration</button>
                         <button id="example-queue" class="bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">Queue Processing</button>
+                        <button id="example-latency" class="bg-sky-600 hover:bg-sky-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">Latency Demo</button>
                         <button id="example-error" class="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">Transaction Error</button>
                         <button id="example-discard" class="bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">Discard Transaction</button>
                         <button id="example-complex-fail" class="bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">Complex Failure</button>
@@ -179,7 +199,7 @@
                         <h3 class="font-semibold text-gray-300">Transaction State</h3>
                         <div id="transaction-status" class="status-indicator px-3 py-1 text-sm font-bold rounded-full bg-gray-600 text-gray-200">INACTIVE</div>
                     </div>
-                    <div class="bg-gray-900 rounded-lg p-4 h-32 flex flex-col">
+                    <div class="bg-gray-900 rounded-lg p-4 h-40 flex flex-col">
                         <h4 class="font-medium text-gray-400 mb-2 border-b border-gray-700 pb-2 flex-shrink-0">Command Queue</h4>
                         <div id="command-queue" class="space-y-2 overflow-y-auto flex-grow"><div class="text-center text-gray-500 pt-4">Queue is empty</div></div>
                     </div>
@@ -197,6 +217,18 @@
                     <div id="data-store" class="bg-gray-900 rounded-lg p-4 h-32 overflow-y-auto"><div class="text-center text-gray-500 pt-4">No data yet</div></div>
                 </div>
             </div>
+        </div>
+
+        <!-- Latency Simulator -->
+        <div class="max-w-xl mx-auto mt-8 bg-gray-800 p-4 rounded-lg shadow-lg">
+            <div class="flex items-center justify-between">
+                <label for="latency-slider" class="font-medium text-gray-300 flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    Simulated Network Latency:
+                </label>
+                <span id="latency-value" class="font-mono text-lg text-yellow-400">0 ms</span>
+            </div>
+            <input type="range" id="latency-slider" min="0" max="500" step="10" value="0" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer mt-2">
         </div>
     </div>
 
@@ -233,6 +265,8 @@
         const dataStore = document.getElementById('data-store');
         const watchedKeysEl = document.getElementById('watched-keys');
         const toastElement = document.getElementById('toast-notification');
+        const latencySlider = document.getElementById('latency-slider');
+        const latencyValue = document.getElementById('latency-value');
         
         // Flag Elements
         const flagMulti = document.getElementById('flag-multi');
@@ -244,6 +278,7 @@
         const exampleWatchBtn = document.getElementById('example-watch');
         const exampleFcfsBtn = document.getElementById('example-fcfs');
         const exampleQueueBtn = document.getElementById('example-queue');
+        const exampleLatencyBtn = document.getElementById('example-latency');
         const exampleErrorBtn = document.getElementById('example-error');
         const exampleDiscardBtn = document.getElementById('example-discard');
         const exampleComplexFailBtn = document.getElementById('example-complex-fail');
@@ -264,6 +299,7 @@
             data: {},
             watchedKeys: [],
             isDemoRunning: false,
+            networkLatency: 0,
             flags: {
                 multi: false,
                 dirtyCas: false,
@@ -291,12 +327,17 @@
                 commandInput.value = '';
             }
         });
+        
+        latencySlider.addEventListener('input', (e) => {
+            state.networkLatency = parseInt(e.target.value, 10);
+            latencyValue.textContent = `${state.networkLatency} ms`;
+        });
 
         // --- Demo Runner ---
         async function runCommandsSequentially(commands) {
             if (state.isDemoRunning) return;
             state.isDemoRunning = true;
-            const buttons = [exampleWatchBtn, exampleFcfsBtn, exampleQueueBtn, exampleDiscardBtn, exampleResetBtn, exampleErrorBtn, exampleComplexFailBtn];
+            const buttons = [exampleWatchBtn, exampleFcfsBtn, exampleQueueBtn, exampleLatencyBtn, exampleDiscardBtn, exampleResetBtn, exampleErrorBtn, exampleComplexFailBtn];
             buttons.forEach(btn => btn.disabled = true);
             for (const cmd of commands) {
                 if (cmd.startsWith('//')) {
@@ -306,9 +347,9 @@
                 }
                 commandInput.value = cmd; commandInput.focus();
                 await new Promise(r => setTimeout(r, 150));
-                processCommand(commandInput.value.trim());
+                await processCommand(commandInput.value.trim());
                 commandInput.value = '';
-                await new Promise(r => setTimeout(r, 1200));
+                await new Promise(r => setTimeout(r, 500)); // Shorter delay between commands in demo
             }
             buttons.forEach(btn => btn.disabled = false);
             state.isDemoRunning = false;
@@ -318,6 +359,7 @@
         exampleWatchBtn.addEventListener('click', () => runCommandsSequentially(['// --- Simulating Optimistic Lock with WATCH --- //', 'SET balance 100', 'WATCH balance', 'GET balance', "// --- Another client modifies 'balance' while we are watching! --- //", 'SET balance 500', 'MULTI', 'SET balance 80', 'EXEC']));
         exampleFcfsBtn.addEventListener('click', () => { const studentId = `student:${Math.floor(1000 + Math.random() * 9000)}`; runCommandsSequentially([`// --- Simulating Course Registration (수강신청) for ${studentId} --- //`, '// --- All commands must succeed or fail together atomically. --- //', 'SET course:CS101:spots 5', 'MULTI', 'DECR course:CS101:spots', `SADD course:CS101:registered ${studentId}`, `LPUSH course:CS101:log "Registered ${studentId} at ${new Date().toLocaleTimeString('en-US', { hour12: false})}"`, 'EXEC']); });
         exampleQueueBtn.addEventListener('click', () => runCommandsSequentially(['// --- Simulating atomic task processing from a queue --- //', 'LPUSH tasks "process:video:123"', 'LPUSH tasks "send:email:456"', 'LPUSH tasks "generate:report:789"', 'MULTI', 'RPOP tasks', 'SET last_processed_by worker-01', 'EXEC']));
+        exampleLatencyBtn.addEventListener('click', () => runCommandsSequentially(['// --- Demonstrating Network Latency Impact --- //', '// First, set latency to 300ms.', 'SET_LATENCY 300', '// Run 3 commands individually. Each will be delayed.', 'SET user:1:name alice', 'SET user:1:email alice@example.com', 'INCR user:1:logins', '// Now, run the same commands in a transaction.', '// The whole batch is sent at once, paying the latency cost only once.', 'MULTI', 'SET user:2:name bob', 'SET user:2:email bob@example.com', 'INCR user:2:logins', 'EXEC', '// Set latency back to 0ms', 'SET_LATENCY 0']));
         exampleErrorBtn.addEventListener('click', () => runCommandsSequentially(['// --- Simulating a Transaction Error --- //', 'SET product:stock 10', 'MULTI', 'INCR product:stock', '// --- This command has a syntax error (missing value) --- //', 'SET product:price', 'GET product:stock', 'EXEC']));
         exampleDiscardBtn.addEventListener('click', () => runCommandsSequentially(['// --- Simulating a Discarded Transaction --- //', 'SET user:status active', 'MULTI', 'SET user:status inactive', 'GET user:status', 'DISCARD', 'GET user:status']));
         exampleComplexFailBtn.addEventListener('click', () => runCommandsSequentially(['// --- A scenario where everything goes wrong --- //', 'SET account:balance 1000', '// 1. WATCH the key for changes.', 'WATCH account:balance', '// 2. Another client changes the key, setting CLIENT_DIRTY_CAS.', 'SET account:balance 50', '// 3. Start a transaction, setting CLIENT_MULTI.', 'MULTI', '// 4. Queue a command with a syntax error, setting CLIENT_DIRTY_EXEC.', 'SET transaction:log', '// 5. Attempt to EXEC. It will fail due to the dirty flags.', 'EXEC']));
@@ -335,15 +377,16 @@
         });
 
         // --- Core Logic ---
+        function simulateLatency() { if (state.networkLatency === 0) return Promise.resolve(); logToConsole(`... waiting ${state.networkLatency}ms (network latency) ...`, 'comment'); return new Promise(r => setTimeout(r, state.networkLatency)); }
         function resetState() { unwatchAllKeys(); state.inTransaction = false; state.queue = []; state.flags.multi = false; state.flags.dirtyExec = false; Object.keys(state.data).forEach(key => delete state.data[key]); updateAllUI(); }
-        function processCommand(commandStr) { logToConsole(commandStr, 'user'); const parts = commandStr.split(/\s+/); const command = parts[0].toUpperCase(); const args = parts.slice(1); const modifyingCommands = ['SET', 'INCR', 'DECR', 'SADD', 'LPUSH', 'LPOP', 'RPOP', 'SPOP']; if (modifyingCommands.includes(command)) touchWatchedKey(args[0]); if (state.inTransaction && !['EXEC', 'DISCARD', 'WATCH', 'UNWATCH'].includes(command)) { queueCommand(command, args, commandStr); return; } switch (command) { case 'MULTI': handleMulti(); break; case 'EXEC': handleExec(); break; case 'DISCARD': handleDiscard(true); break; case 'WATCH': handleWatch(args); break; case 'UNWATCH': unwatchAllKeys(); logToConsole('OK', 'redis'); break; case 'RESET': handleResetCommand(); break; case 'SET': handleSet(args[0], args[1], true); break; case 'GET': handleGet(args[0], true); break; case 'INCR': handleIncr(args[0], true); break; case 'DECR': handleDecr(args[0], true); break; case 'SADD': handleSadd(args[0], args.slice(1), true); break; case 'LPUSH': handleLpush(args[0], args.slice(1), true); break; case 'LPOP': handleLpop(args[0], true); break; case 'RPOP': handleRpop(args[0], true); break; case 'SPOP': handleSpop(args[0], true); break; case 'PING': logToConsole('PONG', 'redis'); break; default: logToConsole(`(error) ERR unknown command '${command}'`, 'redis'); } }
+        async function processCommand(commandStr) { logToConsole(commandStr, 'user'); const parts = commandStr.split(/\s+/); const command = parts[0].toUpperCase(); const args = parts.slice(1); if (command === 'SET_LATENCY') { const newLatency = parseInt(args[0], 10); if (!isNaN(newLatency)) { state.networkLatency = newLatency; latencySlider.value = newLatency; latencyValue.textContent = `${newLatency} ms`; logToConsole(`(visualizer) Network latency set to ${newLatency}ms`, 'redis'); } return; } const modifyingCommands = ['SET', 'INCR', 'DECR', 'SADD', 'LPUSH', 'LPOP', 'RPOP', 'SPOP']; if (modifyingCommands.includes(command)) touchWatchedKey(args[0]); if (state.inTransaction && !['EXEC', 'DISCARD', 'WATCH', 'UNWATCH'].includes(command)) { queueCommand(command, args, commandStr); return; } await simulateLatency(); switch (command) { case 'MULTI': handleMulti(); break; case 'EXEC': await handleExec(); break; case 'DISCARD': handleDiscard(true); break; case 'WATCH': handleWatch(args); break; case 'UNWATCH': unwatchAllKeys(); logToConsole('OK', 'redis'); break; case 'RESET': handleResetCommand(); break; case 'SET': handleSet(args[0], args[1], true); break; case 'GET': handleGet(args[0], true); break; case 'INCR': handleIncr(args[0], true); break; case 'DECR': handleDecr(args[0], true); break; case 'SADD': handleSadd(args[0], args.slice(1), true); break; case 'LPUSH': handleLpush(args[0], args.slice(1), true); break; case 'LPOP': handleLpop(args[0], true); break; case 'RPOP': handleRpop(args[0], true); break; case 'SPOP': handleSpop(args[0], true); break; case 'PING': logToConsole('PONG', 'redis'); break; default: logToConsole(`(error) ERR unknown command '${command}'`, 'redis'); } }
         function validateCommand(command, args) { const specs = { 'SET': 2, 'GET': 1, 'INCR': 1, 'DECR': 1, 'SADD': -2, 'LPUSH': -2, 'LPOP': 1, 'RPOP': 1, 'SPOP': 1, 'WATCH': -1, 'UNWATCH': 0, 'MULTI': 0, 'EXEC': 0, 'DISCARD': 0, 'RESET': 0, 'PING': 0 }; const arity = specs[command]; if (arity === undefined) return `unknown command '${command}'`; if (arity >= 0 && args.length !== arity) return `wrong number of arguments for '${command.toLowerCase()}' command`; if (arity < 0 && args.length < Math.abs(arity)) return `wrong number of arguments for '${command.toLowerCase()}' command`; return null; }
         function handleResetCommand() { resetState(); logToConsole('OK', 'redis'); }
         function handleWatch(keys) { if (state.inTransaction) { logToConsole('(error) ERR WATCH inside MULTI is not allowed', 'redis'); return; } keys.forEach(key => { if (!state.watchedKeys.includes(key)) state.watchedKeys.push(key); }); updateWatchedKeysUI(); logToConsole('OK', 'redis'); }
         function unwatchAllKeys() { state.watchedKeys = []; state.flags.dirtyCas = false; updateWatchedKeysUI(); updateFlagsUI(); }
         function touchWatchedKey(key) { if (state.watchedKeys.includes(key)) { state.flags.dirtyCas = true; showToast(`Key "${key}" was modified. Transaction will be aborted, and all watches are cleared.`); state.watchedKeys = []; updateWatchedKeysUI(); updateFlagsUI(); } }
         function handleMulti() { if (state.inTransaction) { logToConsole('(error) ERR MULTI calls can not be nested', 'redis'); return; } state.inTransaction = true; state.flags.multi = true; updateTransactionStatus(true); updateFlagsUI(); logToConsole('OK', 'redis'); }
-        function handleExec() { if (!state.inTransaction) { logToConsole('(error) ERR EXEC without MULTI', 'redis'); return; } if (state.flags.dirtyExec) { logToConsole('(error) EXECABORT Transaction discarded because of previous errors.', 'redis'); } else if (state.flags.dirtyCas) { logToConsole('(nil)', 'redis'); } else if (state.queue.length === 0) { logToConsole('(empty array)', 'redis'); } else { logToConsole(`(array) ${state.queue.length} replies:`, 'redis-array-start'); executeQueue(); return; } state.queue = []; state.inTransaction = false; state.flags.multi = false; state.flags.dirtyExec = false; unwatchAllKeys(); updateAllUI(); }
+        async function handleExec() { if (!state.inTransaction) { logToConsole('(error) ERR EXEC without MULTI', 'redis'); return; } if (state.flags.dirtyExec) { logToConsole('(error) EXECABORT Transaction discarded because of previous errors.', 'redis'); } else if (state.flags.dirtyCas) { logToConsole('(nil)', 'redis'); } else if (state.queue.length === 0) { logToConsole('(empty array)', 'redis'); } else { logToConsole(`(array) ${state.queue.length} replies:`, 'redis-array-start'); await executeQueue(); return; } state.queue = []; state.inTransaction = false; state.flags.multi = false; state.flags.dirtyExec = false; unwatchAllKeys(); updateAllUI(); }
         function handleDiscard(shouldLog) { if (!state.inTransaction) { if(shouldLog) logToConsole('(error) ERR DISCARD without MULTI', 'redis'); return; } state.queue = []; state.inTransaction = false; state.flags.multi = false; state.flags.dirtyExec = false; unwatchAllKeys(); updateAllUI(); if(shouldLog) logToConsole('OK', 'redis'); }
         function handleSet(key, value, shouldLog) { if (!key || value === undefined) { if(shouldLog) logToConsole(`(error) ERR wrong number of arguments for 'set' command`, 'redis'); return '(error)'; } state.data[key] = value; updateDataStoreUI(); if(shouldLog) logToConsole('OK', 'redis'); return 'OK'; }
         function handleGet(key, shouldLog) { const value = state.data[key] === undefined ? '(nil)' : `"${state.data[key]}"`; if(shouldLog) logToConsole(value, 'redis'); return value; }
@@ -355,7 +398,55 @@
         function handleRpop(key, shouldLog) { if (!Array.isArray(state.data[key])) { const result = state.data[key] === undefined ? '(nil)' : `(error) WRONGTYPE Operation against a key holding the wrong kind of value`; if (shouldLog) logToConsole(result, 'redis'); return result; } const value = state.data[key].pop(); const result = value === undefined ? '(nil)' : `"${value}"`; if (shouldLog) logToConsole(result, 'redis'); updateDataStoreUI(); return result; }
         function handleSpop(key, shouldLog) { if (!Array.isArray(state.data[key])) { const result = state.data[key] === undefined ? '(nil)' : `(error) WRONGTYPE Operation against a key holding the wrong kind of value`; if (shouldLog) logToConsole(result, 'redis'); return result; } const value = state.data[key].pop(); /* Simplification: real SPOP is random */ const result = value === undefined ? '(nil)' : `"${value}"`; if (shouldLog) logToConsole(result, 'redis'); updateDataStoreUI(); return result; }
         function queueCommand(command, args, commandStr) { const error = validateCommand(command, args); if (error) { logToConsole(`(error) ERR ${error}`, 'redis'); state.flags.dirtyExec = true; updateFlagsUI(); } else { logToConsole('QUEUED', 'redis'); } const cmdObj = { command, args, commandStr, id: `cmd-${Date.now()}-${Math.random()}` }; state.queue.push(cmdObj); updateQueueUI(); }
-        async function executeQueue() { state.flags.denyBlocking = true; updateFlagsUI(); await new Promise(resolve => setTimeout(resolve, 500)); const executionQueue = [...state.queue]; state.queue = []; for (let i = 0; i < executionQueue.length; i++) { const { command, args, id } = executionQueue[i]; const queueItem = document.getElementById(id); if (queueItem) queueItem.classList.add('executing'); await new Promise(resolve => setTimeout(resolve, 700)); let result; switch (command) { case 'SET': result = handleSet(args[0], args[1], false); break; case 'GET': result = handleGet(args[0], false); break; case 'INCR': result = handleIncr(args[0], false); break; case 'DECR': result = handleDecr(args[0], false); break; case 'SADD': result = handleSadd(args[0], args.slice(1), false); break; case 'LPUSH': result = handleLpush(args[0], args.slice(1), false); break; case 'LPOP': result = handleLpop(args[0], false); break; case 'RPOP': result = handleRpop(args[0], false); break; case 'SPOP': result = handleSpop(args[0], false); break; case 'PING': result = 'PONG'; break; default: result = `(error) ERR unknown command '${command}'`; } logToConsole(`${i+1}) ${result}`, 'redis-array'); if (queueItem) { queueItem.classList.remove('executing'); queueItem.classList.add('leaving'); } await new Promise(resolve => setTimeout(resolve, 500)); updateQueueUI(); } state.flags.denyBlocking = false; state.inTransaction = false; state.flags.multi = false; unwatchAllKeys(); updateAllUI(); }
+        async function executeQueue() {
+            state.flags.denyBlocking = true;
+            updateFlagsUI();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            const executionQueue = [...state.queue];
+            
+            for (let i = 0; i < executionQueue.length; i++) {
+                const { command, args, id } = executionQueue[i];
+                const queueItem = document.getElementById(id);
+
+                if (queueItem) {
+                    queueItem.classList.add('executing');
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, 700));
+
+                let result;
+                switch (command) {
+                    case 'SET': result = handleSet(args[0], args[1], false); break;
+                    case 'GET': result = handleGet(args[0], false); break;
+                    case 'INCR': result = handleIncr(args[0], false); break;
+                    case 'DECR': result = handleDecr(args[0], false); break;
+                    case 'SADD': result = handleSadd(args[0], args.slice(1), false); break;
+                    case 'LPUSH': result = handleLpush(args[0], args.slice(1), false); break;
+                    case 'LPOP': result = handleLpop(args[0], false); break;
+                    case 'RPOP': result = handleRpop(args[0], false); break;
+                    case 'SPOP': result = handleSpop(args[0], false); break;
+                    case 'PING': result = 'PONG'; break;
+                    default: result = `(error) ERR unknown command '${command}'`;
+                }
+                logToConsole(`${i+1}) ${result}`, 'redis-array');
+
+                if (queueItem) {
+                    queueItem.classList.remove('executing');
+                    queueItem.classList.add('leaving');
+                    // Wait for the leaving animation to finish, then remove the element
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    queueItem.remove();
+                }
+            }
+            
+            state.queue = []; // Clear the state queue *after* the loop is finished
+            state.flags.denyBlocking = false;
+            state.inTransaction = false;
+            state.flags.multi = false;
+            unwatchAllKeys();
+            updateAllUI(); // Final UI sync
+        }
         function updateAllUI() { updateTransactionStatus(state.inTransaction); updateFlagsUI(); updateQueueUI(); updateDataStoreUI(); updateWatchedKeysUI(); }
         function updateFlagsUI() { flagMulti.classList.toggle('active', state.flags.multi); flagDirtyCas.classList.toggle('error', state.flags.dirtyCas); flagDirtyExec.classList.toggle('error', state.flags.dirtyExec); flagDenyBlocking.classList.toggle('temp-active', state.flags.denyBlocking); }
         function updateTransactionStatus(active) {
@@ -501,4 +592,6 @@
     </script>
 </body>
 </html>
+
+
 
