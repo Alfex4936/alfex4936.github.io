@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF--8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Listpack Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827;
+            color: #d1d5db;
+        }
+        .mono {
+            font-family: 'Fira Code', monospace;
+        }
+        .byte-box {
+            transition: all 0.3s ease-in-out;
+            transform-origin: center;
+        }
+        .byte-box:hover {
+            transform: translateY(-4px) scale(1.05);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
+        }
+        .tooltip {
+            position: absolute;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.3s, visibility 0.3s;
+            z-index: 10;
+        }
+        .byte-box:hover .tooltip {
+            visibility: visible;
+            opacity: 1;
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .active-entry {
+            outline: 3px solid #3b82f6;
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+            transform: scale(1.02);
+            border-radius: 0.5rem;
+        }
+        .control-btn {
+            background-color: #374151; /* bg-gray-700 */
+            color: white;
+            font-weight: 600;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            transition: background-color 0.2s, opacity 0.2s, transform 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        .control-btn:hover:not(:disabled) {
+            background-color: #4b5563; /* hover:bg-gray-600 */
+            transform: translateY(-2px);
+        }
+        .control-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .entry-container.collapsed .hidden-byte {
+            display: none;
+        }
+        .entry-container:not(.collapsed) .ellipsis-byte {
+            display: none;
+        }
+        .collapsible-label {
+            cursor: pointer;
+        }
+        .collapsible-label .toggle-icon {
+            transition: transform 0.3s ease-in-out;
+        }
+        .entry-container:not(.collapsed) .toggle-icon {
+            transform: rotate(180deg);
+        }
+        #hex-dump-output {
+            background-color: #0c1221;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            white-space: pre;
+            overflow-x: auto;
+            color: #9ca3af; /* text-gray-400 */
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        .toggle-icon-hex {
+            transition: transform 0.3s ease-in-out;
+        }
+        #hex-dump-container.is-collapsed .toggle-icon-hex {
+            transform: rotate(-90deg);
+        }
+        #hex-dump-container.is-collapsed #hex-dump-output {
+            display: none;
+        }
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .toggle-icon-analysis {
+            transition: transform 0.3s ease-in-out;
+        }
+        #encoding-analysis-container.is-collapsed .toggle-icon-analysis {
+            transform: rotate(-90deg);
+        }
+        #encoding-analysis-container.is-collapsed #encoding-analysis-output {
+            display: none;
+        }
+
+        @keyframes pulse-yellow {
+            0% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(250, 204, 21, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0); }
+        }
+        .pulse-animation {
+            animation: pulse-yellow 1s ease-in-out;
+        }
+
+        #encoding-analysis-output {
+            white-space: pre-wrap;
+            line-height: 1.7;
+        }
+        #encoding-analysis-output h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #fff;
+            border-bottom: 1px solid #374151;
+            padding-bottom: 0.5rem;
+            margin-top: 1.5rem;
+        }
+        #encoding-analysis-output ul {
+            list-style-type: disc;
+            padding-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        #encoding-analysis-output li {
+            margin-bottom: 0.5rem;
+        }
+        #encoding-analysis-output code {
+            background-color: #1f2937;
+            color: #f9fafb;
+            padding: 0.2em 0.4em;
+            border-radius: 0.25rem;
+            font-size: 0.9em;
+        }
+        #encoding-analysis-output strong {
+            color: #a5b4fc; /* indigo-300 */
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="w-full max-w-7xl mx-auto bg-gray-900 rounded-2xl shadow-2xl p-6 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-white mb-2">Interactive Listpack Visualizer</h1>
+            <p class="text-lg text-gray-400">See how Redis serializes lists of strings efficiently.</p>
+        </header>
+
+        <main>
+            <!-- Input Section -->
+            <div class="mb-8 p-6 bg-gray-800 rounded-xl space-y-4">
+                <div>
+                    <label for="string-input" class="block text-lg font-semibold text-gray-200 mb-3">Enter comma-separated values:</label>
+                    <div class="flex flex-col sm:flex-row gap-4">
+                        <input type="text" id="string-input" class="flex-grow bg-gray-700 text-white rounded-lg px-4 py-2 border border-gray-600 focus:ring-2 focus:ring-blue-500 focus:outline-none transition" placeholder="e.g., hello, world, 123, -500">
+                         <button id="visualize-btn" class="control-btn bg-blue-600 hover:bg-blue-700">Visualize</button>
+                    </div>
+                </div>
+                 <div class="border-t border-gray-700 pt-4">
+                    <label for="target-size-input" class="block text-lg font-semibold text-gray-200 mb-3">...or generate random data:</label>
+                     <div class="flex flex-col sm:flex-row gap-4 items-center">
+                        <button id="suggest-btn" class="control-btn bg-teal-600 hover:bg-teal-700 w-full sm:w-auto">✨ Suggest Examples</button>
+                        <span class="text-gray-500">or</span>
+                        <input type="number" id="target-size-input" class="bg-gray-700 text-white rounded-lg px-4 py-2 border border-gray-600 focus:ring-2 focus:ring-blue-500 focus:outline-none transition w-full sm:w-48" placeholder="Target size in bytes">
+                        <button id="generate-by-size-btn" class="control-btn bg-emerald-600 hover:bg-emerald-700 w-full sm:w-auto">Generate by Size</button>
+                        <button id="download-btn" class="control-btn bg-indigo-600 hover:bg-indigo-700 w-full sm:w-auto">Download .bin</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Visualization Output -->
+            <div id="visualization-output" class="p-6 bg-gray-800 rounded-xl min-h-[200px] fade-in">
+                 <div id="welcome-message" class="text-center text-gray-500 py-10">
+                    <svg class="mx-auto h-12 w-12 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 O 001-2-2V7a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <h3 class="mt-2 text-sm font-medium text-gray-400">Ready to Visualize</h3>
+                    <p class="mt-1 text-sm text-gray-500">Enter some data above and click "Visualize".</p>
+                  </div>
+            </div>
+            
+            <!-- Encoding Analysis Section -->
+            <div id="encoding-analysis-container" class="mt-8 p-6 bg-gray-800 rounded-xl hidden fade-in is-collapsed">
+                 <h2 id="encoding-analysis-toggle" class="text-2xl font-bold text-white flex justify-between items-center cursor-pointer">
+                    <span>Encoding Analysis</span>
+                     <svg class="toggle-icon-analysis w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                </h2>
+                 <div id="encoding-analysis-output" class="text-gray-300 min-h-[100px] mt-4"></div>
+            </div>
+
+            <!-- Hex Dump View -->
+            <div id="hex-dump-container" class="mt-8 p-6 bg-gray-800 rounded-xl hidden fade-in is-collapsed">
+                <h2 id="hex-dump-toggle" class="text-2xl font-bold text-white flex justify-between items-center cursor-pointer">
+                    <span>Raw Hex Dump</span>
+                     <svg class="toggle-icon-hex w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                </h2>
+                <pre id="hex-dump-output" class="mono mt-4"></pre>
+            </div>
+            
+            <!-- Interactive Controls -->
+            <div id="interactive-controls" class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8 hidden fade-in">
+                <!-- Traversal -->
+                <div class="p-6 bg-gray-800 rounded-xl">
+                    <h3 class="text-xl font-bold text-white mb-4">Interactive Traversal</h3>
+                    <p class="text-sm text-gray-400 mb-4">Click "Prev" to see an animation of how `backlen` enables reverse traversal.</p>
+                    <div class="flex justify-center gap-2 flex-wrap">
+                        <button id="btn-first" class="control-btn">First</button>
+                        <button id="btn-prev" class="control-btn">Prev</button>
+                        <button id="btn-next" class="control-btn">Next</button>
+                        <button id="btn-last" class="control-btn">Last</button>
+                    </div>
+                </div>
+                <!-- Memory Savings -->
+                <div id="memory-savings" class="p-6 bg-gray-800 rounded-xl flex flex-col items-center justify-center text-center">
+                    <!-- Content will be generated by JS -->
+                </div>
+            </div>
+
+            <!-- Explanation Section -->
+            <div id="explanation" class="mt-8 p-6 bg-gray-800 rounded-xl hidden fade-in">
+                <h2 class="text-2xl font-bold text-white mb-4">How it Works</h2>
+                <div class="space-y-4 text-gray-300">
+                    <p><strong class="font-semibold text-blue-400">Listpack</strong> is a memory-efficient format to store a list of strings. It's a single, contiguous block of memory, which is great for cache performance.</p>
+                    <ul class="list-disc list-inside space-y-2 pl-4">
+                        <li><strong class="font-semibold text-green-400">Header (6 bytes):</strong> The first 4 bytes store the total size of the listpack, and the next 2 bytes store the number of elements.</li>
+                        <li><strong class="font-semibold text-yellow-400">Entries:</strong> Each entry consists of an <span class="mono text-yellow-300">encoding-type</span>, the <span class="mono text-yellow-300">element-data</span>, and a <span class="mono text-yellow-300">backlen</span>.</li>
+                        <li>
+                            <strong class="font-semibold text-purple-400">Encoding:</strong> Listpack uses variable-length encoding for both integers and strings to save space. The specific type is chosen based on the value or byte length of the data:
+                            <ul class="list-['-_'] list-inside pl-6 mt-2 text-gray-400">
+                                <li><strong>Integers:</strong> Stored as <code>7-bit</code>, <code>13-bit</code>, <code>16-bit</code>, <code>24-bit</code>, <code>32-bit</code>, or <code>64-bit</code> values.</li>
+                                <li><strong>Strings:</strong> Length is stored using <code>6-bit</code>, <code>12-bit</code>, or <code>32-bit</code> encodings based on the string's byte length.</li>
+                            </ul>
+                        </li>
+                        <li><strong class="font-semibold text-pink-400">Backlen:</strong> This is the magic for traversing backward! It stores the length of the *previous* entry, allowing efficient navigation from tail to head. It's also variable-length encoded.</li>
+                        <li><strong class="font-semibold text-red-400">EOF (1 byte):</strong> A final `0xFF` byte marks the end of the listpack.</li>
+                    </ul>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        const stringInput = document.getElementById('string-input');
+        const visualizeBtn = document.getElementById('visualize-btn');
+        const suggestBtn = document.getElementById('suggest-btn');
+        const downloadBtn = document.getElementById('download-btn');
+        const targetSizeInput = document.getElementById('target-size-input');
+        const generateBySizeBtn = document.getElementById('generate-by-size-btn');
+        const visualizationOutput = document.getElementById('visualization-output');
+        const welcomeMessage = document.getElementById('welcome-message');
+        const explanationDiv = document.getElementById('explanation');
+        const interactiveControls = document.getElementById('interactive-controls');
+        const memorySavingsDiv = document.getElementById('memory-savings');
+        const hexDumpContainer = document.getElementById('hex-dump-container');
+        const hexDumpOutput = document.getElementById('hex-dump-output');
+        const encodingAnalysisContainer = document.getElementById('encoding-analysis-container');
+        const encodingAnalysisOutput = document.getElementById('encoding-analysis-output');
+        const encodingAnalysisToggle = document.getElementById('encoding-analysis-toggle');
+        const hexDumpToggle = document.getElementById('hex-dump-toggle');
+
+        // Traversal buttons
+        const btnFirst = document.getElementById('btn-first');
+        const btnPrev = document.getElementById('btn-prev');
+        const btnNext = document.getElementById('btn-next');
+        const btnLast = document.getElementById('btn-last');
+
+        // State
+        let currentElementIndex = -1;
+        let entryDomElements = [];
+        let currentElements = [];
+        let allBytes = [];
+        let isAnimating = false;
+
+        // Constants
+        const LP_HDR_SIZE = 6;
+        const LP_EOF = 0xFF;
+        const LP_ENCODING_7BIT_UINT = 0x00;
+        const LP_ENCODING_6BIT_STR = 0x80;
+        const LP_ENCODING_13BIT_INT = 0xC0;
+        const LP_ENCODING_12BIT_STR = 0xE0;
+        const LP_ENCODING_16BIT_INT = 0xF1;
+        const LP_ENCODING_24BIT_INT = 0xF2;
+        const LP_ENCODING_32BIT_INT = 0xF3;
+        const LP_ENCODING_64BIT_INT = 0xF4;
+        const LP_ENCODING_32BIT_STR = 0xF0;
+        const COLLAPSE_THRESHOLD = 12;
+        const VISIBLE_BYTES_EACH_SIDE = 5;
+        const MAX_RENDER_ENTRIES = 250; // Performance optimization
+
+        // Event Listeners
+        visualizeBtn.addEventListener('click', visualizeListpack);
+        suggestBtn.addEventListener('click', suggestTestCases);
+        downloadBtn.addEventListener('click', downloadBinary);
+        generateBySizeBtn.addEventListener('click', generateBySize);
+        stringInput.addEventListener('keyup', (e) => {
+            if (e.key === 'Enter') visualizeListpack();
+        });
+        btnFirst.addEventListener('click', () => updateTraversal(0));
+        btnPrev.addEventListener('click', handlePrevClick);
+        btnNext.addEventListener('click', () => updateTraversal(currentElementIndex + 1));
+        btnLast.addEventListener('click', () => updateTraversal(currentElements.length - 1));
+
+        encodingAnalysisToggle.addEventListener('click', () => {
+            encodingAnalysisContainer.classList.toggle('is-collapsed');
+        });
+
+        hexDumpToggle.addEventListener('click', () => {
+            hexDumpContainer.classList.toggle('is-collapsed');
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (document.activeElement === stringInput || document.activeElement === targetSizeInput || isAnimating) return;
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                btnPrev.click();
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                btnNext.click();
+            }
+        });
+
+        function visualizeListpack() {
+            const input = stringInput.value.trim();
+            if (!input) {
+                welcomeMessage.style.display = 'block';
+                visualizationOutput.innerHTML = '';
+                visualizationOutput.appendChild(welcomeMessage);
+                explanationDiv.classList.add('hidden');
+                interactiveControls.classList.add('hidden');
+                hexDumpContainer.classList.add('hidden');
+                encodingAnalysisContainer.classList.add('hidden');
+                return;
+            }
+            
+            welcomeMessage.style.display = 'none';
+            explanationDiv.classList.remove('hidden');
+            interactiveControls.classList.remove('hidden');
+            encodingAnalysisContainer.classList.remove('hidden');
+
+            currentElements = input.split(',').map(s => s.trim()).filter(s => s.length > 0);
+            const listpack = createListpack(currentElements);
+            
+            allBytes = listpack.allBytes;
+            
+            renderListpack(listpack);
+            renderHexDump(listpack.allBytes);
+            calculateMemorySavings(currentElements, listpack.totalBytes);
+            resetTraversal();
+            
+            const analysisMarkdown = generateManualAnalysis(currentElements);
+            encodingAnalysisOutput.innerHTML = marked.parse(analysisMarkdown);
+        }
+        
+        const charPools = {
+            english: 'abcdefghijklmnopqrstuvwxyz',
+            korean: '가나다라마바사아자차카타파하최석원',
+            japanese: 'あいうえおかきくけこさしすせそ',
+            emoji: '😀🚀✨❤️👍😊👋'
+        };
+
+        const randomChoice = (arr) => arr[Math.floor(Math.random() * arr.length)];
+        const makeString = (len, pool) => {
+            let text = '';
+            for (let i = 0; i < len; i++) text += randomChoice(pool);
+            return text;
+        };
+        
+        const generators = [
+            () => Math.floor(Math.random() * 128), // 7-bit int
+            () => -Math.floor(Math.random() * 4096), // 13-bit int
+            () => Math.floor(Math.random() * 65535) - 32768, // 16-bit int
+            () => makeString(Math.floor(Math.random() * 5) + 3, charPools.english), // short ascii
+            () => makeString(Math.floor(Math.random() * 4) + 2, charPools.korean + charPools.japanese), // short CJK
+            () => makeString(Math.floor(Math.random() * 3) + 2, charPools.emoji), // short emoji
+            () => makeString(Math.floor(Math.random() * 30) + 65, charPools.english + ' '), // long string
+            () => (Math.floor(Math.random() * 4294967295) - 2147483648).toString() // 32-bit int
+        ];
+        
+        function getRandomElement() {
+            return randomChoice(generators)();
+        }
+
+        function suggestTestCases() {
+            const shuffled = [...generators].sort(() => 0.5 - Math.random());
+            const numElements = Math.floor(Math.random() * 3) + 5; // 5 to 7 elements
+            const results = shuffled.slice(0, numElements).map(gen => gen());
+            stringInput.value = results.join(', ');
+            visualizeListpack();
+        }
+        
+        function generateBySize() {
+            const targetSize = parseInt(targetSizeInput.value, 10);
+            if (isNaN(targetSize) || targetSize < 50) {
+                alert("Please enter a valid target size of at least 50 bytes.");
+                return;
+            }
+
+            generateBySizeBtn.disabled = true;
+            generateBySizeBtn.innerHTML = '<div class="spinner"></div>';
+
+            setTimeout(() => {
+                let elements = [];
+                let currentSize = 0;
+                let safetyCounter = 0;
+                const maxElements = 50000;
+
+                while (currentSize < targetSize && safetyCounter < maxElements) {
+                    elements.push(getRandomElement());
+                    // Rough estimation to avoid re-calculating the whole listpack in the loop
+                    currentSize += String(elements[elements.length-1]).length + 3; // +3 for avg encoding/backlen
+                    safetyCounter++;
+                }
+
+                stringInput.value = elements.join(', ');
+                visualizeListpack();
+
+                generateBySizeBtn.disabled = false;
+                generateBySizeBtn.innerHTML = 'Generate by Size';
+            }, 10);
+        }
+
+        function getAnalysisMarkdownForElement(el) {
+            let markdown = '';
+            const isInteger = /^-?\d+$/.test(String(el));
+
+            if (isInteger) {
+                const value = BigInt(el);
+                let encodingType = '', explanation = '';
+                if (value >= 0 && value <= 127) {
+                    encodingType = '7-bit Unsigned Integer';
+                    explanation = `The value \`${value}\` fits within the 0-127 range, making this the most compact integer encoding (1 byte).`;
+                } else if (value >= -4096 && value <= 4095) {
+                    encodingType = '13-bit Signed Integer';
+                    explanation = `The value \`${value}\` is outside the 7-bit range but fits within the -4096 to 4095 range of a 13-bit integer. This encoding uses 2 bytes.`;
+                } else if (value >= -32768 && value <= 32767) {
+                    encodingType = '16-bit Signed Integer';
+                    explanation = `The value \`${value}\` exceeds the 13-bit range but fits within the -32,768 to 32,767 range of a 16-bit integer (3 bytes).`;
+                } else if (value >= -8388608 && value <= 8388607) {
+                    encodingType = '24-bit Signed Integer';
+                    explanation = `The value \`${value}\` exceeds the 16-bit range but fits within the -8,388,608 to 8,388,607 range of a 24-bit integer (4 bytes).`;
+                } else if (value >= -2147483648 && value <= 2147483647) {
+                    encodingType = '32-bit Signed Integer';
+                    explanation = `The value \`${value}\` exceeds the 24-bit range but fits within the standard 32-bit signed integer range (5 bytes).`;
+                } else {
+                    encodingType = '64-bit Signed Integer';
+                    explanation = `The value \`${value}\` is very large and requires a full 64-bit signed integer representation (9 bytes).`;
+                }
+                markdown += `* **Value**: \`${value}\`\n* **Encoding Type**: ${encodingType}\n\n**Explanation**: ${explanation}\n\n`;
+            } else { // It's a string
+                const byteLength = new TextEncoder().encode(el).length;
+                let encodingType = '', explanation = '', totalSize = 0;
+                if (byteLength < 64) {
+                    encodingType = '6-bit String Length';
+                    totalSize = 1 + byteLength;
+                    explanation = `The string has a UTF-8 byte length of ${byteLength}. Since ${byteLength} is less than 64, listpack chooses the most compact 6-bit string encoding. This uses a single prefix byte to store the length, followed by the ${byteLength} data bytes.`;
+                } else if (byteLength < 4096) {
+                    encodingType = '12-bit String Length';
+                    totalSize = 2 + byteLength;
+                    explanation = `The string's byte length of ${byteLength} is greater than 63 but less than 4096. It fits the 12-bit string encoding, which uses a two-byte prefix for the length.`;
+                } else {
+                    encodingType = '32-bit String Length';
+                    totalSize = 5 + byteLength;
+                    explanation = `With a byte length of ${byteLength}, this long string requires the 32-bit string encoding, which uses a five-byte prefix to store the length.`;
+                }
+                markdown += `* **Value**: \`"${String(el).substring(0, 30)}${String(el).length > 30 ? '...' : ''}"\`\n* **Byte Length**: ${byteLength} bytes\n* **Encoding Type**: ${encodingType}\n\n**Explanation**: ${explanation} Total size for this entry's content is ${totalSize} bytes.\n\n`;
+            }
+            return markdown;
+        }
+
+        function generateManualAnalysis(elements) {
+            let markdown = '';
+            
+            if (elements.length > MAX_RENDER_ENTRIES) {
+                const firstChunk = elements.slice(0, 5);
+                const lastChunk = elements.slice(elements.length - 5);
+                markdown += `*NOTE: Analysis is truncated for performance. Showing the first 5 and last 5 of ${elements.length} entries.*\n\n`;
+
+                firstChunk.forEach((el, index) => {
+                    markdown += `### Element ${index + 1}: "${String(el).substring(0, 30)}${String(el).length > 30 ? '...' : ''}"\n\n`;
+                    markdown += getAnalysisMarkdownForElement(el);
+                });
+
+                markdown += `### ... (${elements.length - 10} more entries) ...\n\n`;
+
+                lastChunk.forEach((el, i) => {
+                    const index = elements.length - 5 + i;
+                    markdown += `### Element ${index + 1}: "${String(el).substring(0, 30)}${String(el).length > 30 ? '...' : ''}"\n\n`;
+                    markdown += getAnalysisMarkdownForElement(el);
+                });
+            } else {
+                 elements.forEach((el, index) => {
+                    markdown += `### Element ${index + 1}: "${String(el).substring(0, 30)}${String(el).length > 30 ? '...' : ''}"\n\n`;
+                    markdown += getAnalysisMarkdownForElement(el);
+                });
+            }
+            return markdown;
+        }
+
+        function createListpack(elements) {
+            let finalEntries = [];
+            for(const el of elements){
+                finalEntries.push(encodeEntry(el));
+            }
+            let allBytes = [];
+            allBytes.push(...toLittleEndian(0,4));
+            allBytes.push(...toLittleEndian(finalEntries.length, 2));
+            let prevTotalEntrySize = 0;
+            for(const entry of finalEntries){
+                const entryContentSize = entry.encodingBytes.length + entry.dataBytes.length;
+                const backlenBytes = encodeBacklen(prevTotalEntrySize);
+                allBytes.push(...entry.encodingBytes);
+                allBytes.push(...entry.dataBytes);
+                allBytes.push(...backlenBytes);
+                prevTotalEntrySize = entryContentSize + backlenBytes.length;
+            }
+            allBytes.push(LP_EOF);
+            const finalTotalBytes = allBytes.length;
+            const totalBytesHeader = toLittleEndian(finalTotalBytes, 4);
+            for(let i=0; i<4; i++) allBytes[i] = totalBytesHeader[i];
+            return { totalBytes: finalTotalBytes, numElements:finalEntries.length, entries: finalEntries, allBytes: allBytes };
+        }
+
+        function encodeEntry(el) {
+            let encodingBytes = [], dataBytes = [], encodingType = '', notes = '';
+            const isInteger = /^-?\d+$/.test(String(el));
+            let value = isInteger ? BigInt(el) : 0;
+
+            if (isInteger && value >= 0 && value <= 127) {
+                encodingType = "7-bit Unsigned Int"; encodingBytes = [Number(value)]; notes = `Value ${value} fits in 7 bits.`;
+            } else if (isInteger && value >= -4096 && value <= 4095) {
+                encodingType = "13-bit Signed Int"; let val = value < 0 ? (BigInt(1) << BigInt(13)) + value : value; encodingBytes = [(Number(val >> BigInt(8)) | LP_ENCODING_13BIT_INT), Number(val & BigInt(0xff))]; notes = `Value ${value} fits in 13 bits.`;
+            } else if (isInteger && value >= -32768 && value <= 32767) {
+                encodingType = "16-bit Signed Int"; let val = value < 0 ? (BigInt(1) << BigInt(16)) + value : value; encodingBytes = [LP_ENCODING_16BIT_INT, Number(val & BigInt(0xff)), Number((val >> BigInt(8)) & BigInt(0xff))]; notes = `Value ${value} fits in 16 bits.`;
+            } else if (isInteger && value >= -8388608 && value <= 8388607) {
+                encodingType = "24-bit Signed Int"; let val = value < 0 ? (BigInt(1) << BigInt(24)) + value : value; encodingBytes = [LP_ENCODING_24BIT_INT, Number(val & BigInt(0xff)), Number((val >> BigInt(8)) & BigInt(0xff)), Number((val >> BigInt(16)) & BigInt(0xff))]; notes = `Value ${value} fits in 24 bits.`;
+            } else if (isInteger && value >= -2147483648 && value <= 2147483647) {
+                 encodingType = "32-bit Signed Int"; let val = value < 0 ? (BigInt(1) << BigInt(32)) + value : value; encodingBytes = [LP_ENCODING_32BIT_INT]; for (let i = 0; i < 4; i++) encodingBytes.push(Number((val >> BigInt(i * 8)) & BigInt(0xff))); notes = `Value ${value} fits in 32 bits.`;
+            } else if (isInteger) {
+                encodingType = "64-bit Signed Int"; let val = value; encodingBytes = [LP_ENCODING_64BIT_INT]; for (let i = 0; i < 8; i++) encodingBytes.push(Number((val >> BigInt(i * 8)) & BigInt(0xff))); notes = `Value ${value} requires 64 bits.`;
+            } else {
+                dataBytes = Array.from(new TextEncoder().encode(String(el))); const len = dataBytes.length;
+                if (len < 64) {
+                    encodingType = "6-bit String"; encodingBytes = [len | LP_ENCODING_6BIT_STR]; notes = `String length ${len} fits in 6 bits.`;
+                } else if (len < 4096) {
+                    encodingType = "12-bit String"; encodingBytes = [(len >> 8) | LP_ENCODING_12BIT_STR, len & 0xff]; notes = `String length ${len} fits in 12 bits.`;
+                } else {
+                    encodingType = "32-bit String"; encodingBytes = [LP_ENCODING_32BIT_STR, len & 0xff, (len >> 8) & 0xff, (len >> 16) & 0xff, (len >> 24) & 0xff]; notes = `String length ${len} requires 32 bits.`;
+                }
+            }
+            return { original: el, encodingType, notes, encodingBytes, dataBytes, totalLength: encodingBytes.length + dataBytes.length };
+        }
+        
+        function encodeBacklen(len) {
+            if (len === 0) return [0];
+            if (len <= 127) return [len];
+            if (len < 16383) return [len >> 7, (len & 127) | 128];
+            if (len < 2097151) return [len >> 14, ((len >> 7) & 127) | 128, (len & 127) | 128];
+            if (len < 268435455) return [len >> 21, ((len >> 14) & 127) | 128, ((len >> 7) & 127) | 128, (len & 127) | 128];
+            return [len >> 28, ((len >> 21) & 127) | 128, ((len >> 14) & 127) | 128, ((len >> 7) & 127) | 128, (len & 127) | 128];
+        }
+
+        function renderListpack(listpack) {
+            visualizationOutput.innerHTML = '';
+            entryDomElements = [];
+
+            const summaryDiv = document.createElement('div');
+            summaryDiv.className = 'text-center mb-4';
+            summaryDiv.innerHTML = `<p class="text-xl font-bold text-white">Total Size: <span class="mono text-blue-400">${listpack.totalBytes} bytes</span></p>`;
+            visualizationOutput.appendChild(summaryDiv);
+
+            const container = document.createElement('div');
+            container.className = 'flex flex-wrap gap-1 p-2 bg-gray-900/50 rounded-lg';
+            
+            const headerContainer = document.createElement('div');
+            headerContainer.className = 'w-full flex flex-wrap gap-1 items-center';
+            headerContainer.appendChild(createSectionLabel('Header', 'bg-green-800 text-green-200'));
+            const totalBytesLE = toLittleEndian(listpack.totalBytes, 4);
+            const numElementsLE = toLittleEndian(listpack.numElements, 2);
+            totalBytesLE.forEach((byte, i) => headerContainer.appendChild(createByteBox(byte, 'Total Bytes', 'bg-green-600', `Value: ${listpack.totalBytes} (Little Endian)`)));
+            numElementsLE.forEach((byte, i) => headerContainer.appendChild(createByteBox(byte, 'Num Elements', 'bg-green-500', `Value: ${listpack.numElements} (Little Endian)`)));
+            container.appendChild(headerContainer);
+
+            let prevTotalEntrySize = 0;
+            
+            const renderEntry = (entry, i) => {
+                 const isLong = entry.dataBytes.length > COLLAPSE_THRESHOLD;
+                const entryContainer = document.createElement('div');
+                entryContainer.className = `w-full flex flex-wrap gap-1 items-center entry-container transition-all duration-300 ${isLong ? 'collapsed' : ''}`;
+                entryContainer.dataset.index = i;
+                
+                const label = createSectionLabel(`Entry ${i+1}: "${entry.original}"`, 'bg-blue-800 text-blue-200', isLong);
+                if (String(entry.original).length > 40) {
+                    label.title = entry.original;
+                }
+                entryContainer.appendChild(label);
+                
+                entry.encodingBytes.forEach(byte => entryContainer.appendChild(createByteBox(byte, 'Encoding', 'bg-blue-600', entry.encodingType + ' - ' + entry.notes)));
+                
+                if (entry.dataBytes.length > 0) {
+                     if (isLong) {
+                        for (let j = 0; j < VISIBLE_BYTES_EACH_SIDE; j++) {
+                            entryContainer.appendChild(createByteBox(entry.dataBytes[j], 'Data', 'bg-blue-500', `Char: '${String.fromCharCode(entry.dataBytes[j])}'`));
+                        }
+                        const hiddenCount = entry.dataBytes.length - (VISIBLE_BYTES_EACH_SIDE * 2);
+                        if (hiddenCount > 0) {
+                            entryContainer.appendChild(createEllipsisBox(hiddenCount));
+                            for (let j = VISIBLE_BYTES_EACH_SIDE; j < entry.dataBytes.length - VISIBLE_BYTES_EACH_SIDE; j++) {
+                                const box = createByteBox(entry.dataBytes[j], 'Data', 'bg-blue-500', `Char: '${String.fromCharCode(entry.dataBytes[j])}'`);
+                                box.classList.add('hidden-byte');
+                                entryContainer.appendChild(box);
+                            }
+                        }
+                        for (let j = Math.max(VISIBLE_BYTES_EACH_SIDE, entry.dataBytes.length - VISIBLE_BYTES_EACH_SIDE); j < entry.dataBytes.length; j++) {
+                            entryContainer.appendChild(createByteBox(entry.dataBytes[j], 'Data', 'bg-blue-500', `Char: '${String.fromCharCode(entry.dataBytes[j])}'`));
+                        }
+                    } else {
+                        entry.dataBytes.forEach(byte => entryContainer.appendChild(createByteBox(byte, 'Data', 'bg-blue-500', `Char: '${String.fromCharCode(byte)}'`)));
+                    }
+                }
+                
+                const backlenBytes = encodeBacklen(prevTotalEntrySize);
+                backlenBytes.forEach(byte => entryContainer.appendChild(createByteBox(byte, 'Backlen', 'bg-purple-600', `Length of previous entry: ${prevTotalEntrySize} bytes`)));
+                
+                const entryContentSize = entry.encodingBytes.length + entry.dataBytes.length;
+                prevTotalEntrySize += entryContentSize + backlenBytes.length;
+
+                container.appendChild(entryContainer);
+                entryDomElements.push(entryContainer);
+            }
+
+            if (listpack.entries.length > MAX_RENDER_ENTRIES) {
+                const head = listpack.entries.slice(0, MAX_RENDER_ENTRIES / 2);
+                const tail = listpack.entries.slice(listpack.entries.length - MAX_RENDER_ENTRIES / 2);
+                let currentPrevSize = 0;
+
+                head.forEach((entry, i) => {
+                    renderEntry(entry, i);
+                    // This is still an approximation for the visualizer but much better
+                    const entryContentSize = entry.encodingBytes.length + entry.dataBytes.length;
+                    const backlenBytes = encodeBacklen(currentPrevSize);
+                    currentPrevSize += entryContentSize + backlenBytes.length;
+                });
+
+                const placeholder = document.createElement('div');
+                placeholder.className = 'w-full text-center py-4 text-gray-500 mono';
+                placeholder.textContent = `... ${listpack.entries.length - MAX_RENDER_ENTRIES} more entries not rendered for performance ...`;
+                container.appendChild(placeholder);
+
+                // Recalculate prevTotalEntrySize for the tail chunk to be accurate
+                let sizeUpToTail = LP_HDR_SIZE;
+                let prevSizeForTail = 0;
+                for(let i=0; i<listpack.entries.length - (MAX_RENDER_ENTRIES / 2); i++) {
+                     const entry = listpack.entries[i];
+                     const entryContentSize = entry.encodingBytes.length + entry.dataBytes.length;
+                     const backlenBytes = encodeBacklen(prevSizeForTail);
+                     prevSizeForTail += entryContentSize + backlenBytes.length;
+                }
+                prevTotalEntrySize = prevSizeForTail; // Set the correct starting backlen for the tail
+
+                tail.forEach((entry, i) => {
+                    renderEntry(entry, listpack.entries.length - (MAX_RENDER_ENTRIES / 2) + i);
+                });
+                
+            } else {
+                listpack.entries.forEach(renderEntry);
+            }
+
+
+            const eofContainer = document.createElement('div');
+            eofContainer.className = 'w-full flex flex-wrap gap-1 items-center';
+            eofContainer.appendChild(createSectionLabel('EOF', 'bg-red-800 text-red-200'));
+            eofContainer.appendChild(createByteBox(LP_EOF, 'End of Listpack', 'bg-red-600', 'Marks the termination of the listpack.'));
+            container.appendChild(eofContainer);
+
+            visualizationOutput.appendChild(container);
+
+             visualizationOutput.querySelectorAll('.collapsible-label').forEach(label => {
+                label.addEventListener('click', e => {
+                    e.stopPropagation();
+                    e.currentTarget.closest('.entry-container')?.classList.toggle('collapsed');
+                });
+            });
+        }
+        
+        function renderHexDump(bytes) {
+            let output = '';
+            const MAX_LINES = 200; // Truncate hex dump as well
+            if (bytes.length > MAX_LINES * 16) {
+                for (let i = 0; i < 100 * 16; i += 16) {
+                    const chunk = bytes.slice(i, i + 16);
+                    const offset = i.toString(16).toUpperCase().padStart(8, '0');
+                    const hexPart = chunk.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+                    const asciiPart = chunk.map(b => (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.').join('');
+                    output += `${offset}  ${hexPart.padEnd(16 * 3 - 1)}  |${asciiPart.padEnd(16)}|\n`;
+                }
+                output += `... (${bytes.length - 200 * 16} more bytes not shown) ...\n`;
+                 for (let i = bytes.length - 100*16; i < bytes.length; i += 16) {
+                    const chunk = bytes.slice(i, i + 16);
+                    if(chunk.length === 0) continue;
+                    const offset = i.toString(16).toUpperCase().padStart(8, '0');
+                    const hexPart = chunk.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+                    const asciiPart = chunk.map(b => (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.').join('');
+                    output += `${offset}  ${hexPart.padEnd(16 * 3 - 1)}  |${asciiPart.padEnd(16)}|\n`;
+                }
+            } else {
+                 for (let i = 0; i < bytes.length; i += 16) {
+                    const chunk = bytes.slice(i, i + 16);
+                    const offset = i.toString(16).toUpperCase().padStart(8, '0');
+                    const hexPart = chunk.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+                    const asciiPart = chunk.map(b => (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.').join('');
+                    output += `${offset}  ${hexPart.padEnd(16 * 3 - 1)}  |${asciiPart.padEnd(16)}|\n`;
+                }
+            }
+            hexDumpOutput.textContent = output;
+            hexDumpContainer.classList.remove('hidden');
+        }
+
+        function downloadBinary() {
+            if (allBytes.length === 0) return;
+            const uint8Bytes = new Uint8Array(allBytes);
+            const blob = new Blob([uint8Bytes], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'listpack.bin';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function createByteBox(byte, type, bgColor, tooltipText = '') {
+            const box = document.createElement('div');
+            const typeClass = type.toLowerCase().split(' ')[0];
+            box.dataset.type = typeClass;
+            box.className = `relative byte-box w-20 h-20 rounded-lg flex flex-col items-center justify-center text-white font-bold shadow-lg ${bgColor} text-center p-1`;
+            const hex = byte.toString(16).toUpperCase().padStart(2, '0');
+            box.innerHTML = `<span class="mono text-2xl">0x${hex}</span><span class="text-xs font-medium uppercase tracking-wider opacity-80">${type}</span>`;
+            if (tooltipText) {
+                const tooltip = document.createElement('div');
+                tooltip.className = 'tooltip w-48 p-2 bg-gray-900 text-white text-xs rounded-md shadow-lg border border-gray-700';
+                tooltip.textContent = tooltipText;
+                box.appendChild(tooltip);
+            }
+            return box;
+        }
+        
+        function createEllipsisBox(hiddenCount) {
+            const box = document.createElement('div');
+            box.className = 'ellipsis-byte w-20 h-20 rounded-lg flex flex-col items-center justify-center text-white font-bold bg-gray-600 text-center p-1';
+            box.innerHTML = `<span class="text-2xl">...</span><span class="text-xs font-medium">${hiddenCount} more</span>`;
+            return box;
+        }
+
+        function createSectionLabel(text, bgColor, isCollapsible = false) {
+            const label = document.createElement('div');
+            label.className = `w-full my-2 py-1 px-3 rounded-md text-sm font-semibold ${bgColor} flex items-center justify-between`;
+            const shortText = text.length > 50 ? text.substring(0, 47) + '...' : text;
+            
+            let content = `<span>${shortText}</span>`;
+            if (isCollapsible) {
+                label.classList.add('collapsible-label');
+                const iconSVG = `
+                    <svg class="toggle-icon w-5 h-5 text-blue-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                    </svg>`;
+                content += iconSVG;
+            }
+            label.innerHTML = content;
+            return label;
+        }
+
+        function toLittleEndian(val, bytes) {
+            const arr = [];
+            for (let i = 0; i < bytes; i++) arr.push((val >> (i * 8)) & 0xff);
+            return arr;
+        }
+
+        function calculateMemorySavings(elements, listpackBytes) {
+            const jsonString = JSON.stringify(elements);
+            const jsonBytes = new TextEncoder().encode(jsonString).length;
+            const savings = jsonBytes - listpackBytes;
+            const savingsPercent = jsonBytes > 0 ? (savings / jsonBytes * 100).toFixed(1) : 0;
+            memorySavingsDiv.innerHTML = `<h3 class="text-xl font-bold text-white mb-3">Memory Efficiency</h3><p class="mono text-lg"><span class="text-blue-400">Listpack:</span> ${listpackBytes} bytes</p><p class="mono text-lg"><span class="text-gray-400">JSON Array:</span> ${jsonBytes} bytes</p><p class="mt-4 text-2xl font-bold ${savings > 0 ? 'text-green-400' : 'text-red-400'}">${savings > 0 ? `Saved ${savings} bytes (${savingsPercent}%)` : `Used ${-savings} more bytes`}</p>`;
+        }
+        
+        function resetTraversal() {
+            currentElementIndex = -1;
+            highlightElement(-1);
+        }
+        
+        function setAllTraversalButtonsDisabled(state) {
+            btnFirst.disabled = state;
+            btnPrev.disabled = state;
+            btnNext.disabled = state;
+            btnLast.disabled = state;
+        }
+
+        async function handlePrevClick() {
+            if (currentElementIndex <= 0 || isAnimating) return;
+
+            isAnimating = true;
+            setAllTraversalButtonsDisabled(true);
+
+            const fromIndex = currentElementIndex;
+            const toIndex = currentElementIndex - 1;
+            
+            const fromElement = entryDomElements.find(el => parseInt(el.dataset.index, 10) === fromIndex);
+            const toElement = entryDomElements.find(el => parseInt(el.dataset.index, 10) === toIndex);
+
+            if (!fromElement || !toElement) {
+                // This can happen if one of the elements is not rendered
+                updateTraversal(toIndex);
+                isAnimating = false;
+                return;
+            }
+
+            fromElement.classList.remove('active-entry');
+
+            const backlenBoxes = fromElement.querySelectorAll('[data-type="backlen"]');
+            backlenBoxes.forEach(box => {
+                box.classList.add('pulse-animation');
+                box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            });
+            
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            backlenBoxes.forEach(box => box.classList.remove('pulse-animation'));
+
+            toElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            toElement.classList.add('pulse-animation');
+            
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            toElement.classList.remove('pulse-animation');
+            
+            updateTraversal(toIndex);
+            isAnimating = false;
+        }
+
+        function updateTraversal(newIndex) {
+            if (isAnimating) return;
+            if (newIndex >= 0 && newIndex < currentElements.length) {
+                currentElementIndex = newIndex;
+            } else if (newIndex < 0) {
+                 currentElementIndex = 0;
+            } else if (newIndex >= currentElements.length) {
+                currentElementIndex = currentElements.length -1;
+            }
+            highlightElement(currentElementIndex);
+        }
+
+        function highlightElement(index) {
+            entryDomElements.forEach(el => el.classList.remove('active-entry'));
+            if (index >= 0 && index < currentElements.length) {
+                const targetElement = entryDomElements.find(el => parseInt(el.dataset.index, 10) === index);
+                if (targetElement) {
+                    targetElement.classList.add('active-entry');
+                    targetElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+                }
+            }
+
+            const visibleEntries = entryDomElements.map(el => parseInt(el.dataset.index, 10));
+            const firstVisible = visibleEntries[0];
+            const lastVisible = visibleEntries[visibleEntries.length - 1];
+
+            const atStart = index <= 0;
+            const atEnd = index >= currentElements.length - 1;
+            
+            btnFirst.disabled = atStart;
+            btnPrev.disabled = atStart;
+            btnNext.disabled = atEnd;
+            btnLast.disabled = atEnd;
+        }
+        
+        // Initial example
+        stringInput.value = 'hello, 12345, -99, this is a very long string that should definitely be collapsed by default, 안녕하세요';
+        visualizeListpack();
+
+    </script>
+</body>
+</html>
+

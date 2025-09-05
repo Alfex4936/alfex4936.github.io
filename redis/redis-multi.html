@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redis MULTI/EXEC Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* Tailwind gray-900 */
+        }
+        .command-item {
+            transition: all 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+            transform-origin: left center;
+        }
+        .command-item.entering {
+            opacity: 0;
+            transform: translateX(-50px);
+        }
+        .command-item.executing {
+            transform: scale(1.05) translateX(20px);
+            background-color: #3B82F6 !important; /* Tailwind blue-500 */
+            color: white !important;
+        }
+        .command-item.leaving {
+            opacity: 0;
+            transform: translateX(50px) scale(0.8);
+        }
+        .status-indicator {
+            transition: all 0.3s ease-in-out;
+        }
+        .console-line {
+            border-bottom: 1px solid #374151; /* Tailwind gray-700 */
+            padding-bottom: 8px;
+            margin-bottom: 8px;
+        }
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1F2937; /* Tailwind gray-800 */
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4B5563; /* Tailwind gray-600 */
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6B7280; /* Tailwind gray-500 */
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body class="text-white p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-red-500">Redis Transaction Visualizer</h1>
+            <p class="text-gray-400 mt-2">See how `MULTI`, `EXEC`, and `DISCARD` work behind the scenes.</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            
+            <!-- Left Panel: Client and Console -->
+            <div class="bg-gray-800 rounded-lg shadow-2xl p-6 flex flex-col">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center">
+                        <svg class="w-6 h-6 text-blue-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                        <h2 class="text-xl font-semibold">Redis Client CLI</h2>
+                    </div>
+                    <button id="example-reset" class="bg-gray-700 hover:bg-red-700 text-gray-300 hover:text-white p-2 rounded-full transition duration-200" title="Reset State">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="console-output" class="flex-grow bg-black rounded-md p-4 text-sm font-mono overflow-y-auto h-80 mb-4">
+                    <!-- Console output will be dynamically added here -->
+                    <div class="text-gray-500">Welcome! Type 'MULTI' to begin a transaction or try an example below.</div>
+                </div>
+                <div class="relative">
+                    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-red-500 font-bold">&gt;</span>
+                    <input type="text" id="command-input" class="w-full bg-gray-900 border-2 border-gray-700 rounded-md py-2 pl-8 pr-4 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500" placeholder="e.g., SET name value">
+                </div>
+                 <div class="text-xs text-gray-500 mt-2">Supported: MULTI, EXEC, DISCARD, SET, GET, INCR, DECR, PING, SADD, LPUSH.</div>
+
+                 <!-- Example Buttons -->
+                 <div class="mt-6">
+                    <h3 class="text-lg font-semibold mb-3 text-gray-300">Example Scenarios</h3>
+                    <div class="flex flex-wrap gap-3">
+                        <button id="example-fcfs" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">
+                            FCFS Registration
+                        </button>
+                        <button id="example-discard" class="bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">
+                            Discard Transaction
+                        </button>
+                         <button id="example-simple" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">
+                            Simple INCR
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Server State -->
+            <div class="bg-gray-800 rounded-lg shadow-2xl p-6">
+                <div class="flex items-center mb-4">
+                    <svg class="w-6 h-6 text-red-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
+                    <h2 class="text-xl font-semibold">Redis Server State</h2>
+                </div>
+
+                <!-- Transaction State -->
+                <div class="mb-6">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="font-semibold text-gray-300">Transaction State</h3>
+                        <div id="transaction-status" class="status-indicator px-3 py-1 text-sm font-bold rounded-full bg-gray-600 text-gray-200">
+                            INACTIVE
+                        </div>
+                    </div>
+                    <div class="bg-gray-900 rounded-lg p-4 h-48">
+                        <h4 class="font-medium text-gray-400 mb-2 border-b border-gray-700 pb-2">Command Queue</h4>
+                        <div id="command-queue" class="space-y-2 overflow-y-auto h-32">
+                             <div class="text-center text-gray-500 pt-4">Queue is empty</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Data Store -->
+                <div>
+                    <h3 class="font-semibold text-gray-300 mb-2">In-Memory Data</h3>
+                    <div id="data-store" class="bg-gray-900 rounded-lg p-4 h-48 overflow-y-auto">
+                        <div class="text-center text-gray-500 pt-4">No data yet</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const commandInput = document.getElementById('command-input');
+        const consoleOutput = document.getElementById('console-output');
+        const transactionStatus = document.getElementById('transaction-status');
+        const commandQueue = document.getElementById('command-queue');
+        const dataStore = document.getElementById('data-store');
+        const exampleSimpleBtn = document.getElementById('example-simple');
+        const exampleFcfsBtn = document.getElementById('example-fcfs');
+        const exampleDiscardBtn = document.getElementById('example-discard');
+        const exampleResetBtn = document.getElementById('example-reset');
+
+        // Application State
+        let inTransaction = false;
+        let queue = [];
+        const data = {};
+        let isDemoRunning = false;
+
+        // --- Event Listeners ---
+        commandInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && commandInput.value.trim() !== '') {
+                if (isDemoRunning) return;
+                const commandStr = commandInput.value.trim();
+                processCommand(commandStr);
+                commandInput.value = '';
+            }
+        });
+
+        // --- Demo Runner ---
+        async function runCommandsSequentially(commands) {
+            if (isDemoRunning) return;
+            isDemoRunning = true;
+
+            const buttons = [exampleSimpleBtn, exampleFcfsBtn, exampleDiscardBtn, exampleResetBtn];
+            buttons.forEach(btn => btn.disabled = true);
+
+            for (const cmd of commands) {
+                commandInput.value = cmd;
+                commandInput.focus();
+                await new Promise(r => setTimeout(r, 150)); // typing effect
+                
+                processCommand(commandInput.value.trim());
+                commandInput.value = '';
+                
+                await new Promise(r => setTimeout(r, 1000)); // wait for animation
+            }
+            
+            buttons.forEach(btn => btn.disabled = false);
+            isDemoRunning = false;
+        }
+
+        // --- Example Button Listeners ---
+        exampleSimpleBtn.addEventListener('click', () => {
+            logToConsole('// --- Running Simple INCR Transaction --- //', 'comment');
+            const commands = [
+                'SET counter 100',
+                'MULTI',
+                'INCR counter',
+                'GET counter',
+                'EXEC'
+            ];
+            runCommandsSequentially(commands);
+        });
+
+        exampleFcfsBtn.addEventListener('click', () => {
+            const studentId = `student:${Math.floor(1000 + Math.random() * 9000)}`;
+            logToConsole(`// --- Simulating Course Registration (수강신청) for ${studentId} --- //`, 'comment');
+            logToConsole('// --- All commands must succeed or fail together atomically. --- //', 'comment');
+            const commands = [
+                'SET course:CS101:spots 5',
+                'MULTI',
+                'DECR course:CS101:spots',
+                `SADD course:CS101:registered ${studentId}`,
+                `LPUSH course:CS101:log "Registered ${studentId} at ${new Date().toLocaleTimeString('en-US', { hour12: false})}"`,
+                'EXEC'
+            ];
+            runCommandsSequentially(commands);
+        });
+
+        exampleDiscardBtn.addEventListener('click', () => {
+             logToConsole('// --- Simulating a Discarded Transaction --- //', 'comment');
+            const commands = [
+                'SET user:status active',
+                'MULTI',
+                'SET user:status inactive',
+                'GET user:status',
+                'DISCARD',
+                'GET user:status' // Should still be "active"
+            ];
+            runCommandsSequentially(commands);
+        });
+
+        exampleResetBtn.addEventListener('click', () => {
+            if (isDemoRunning) return;
+            if (inTransaction) {
+                handleDiscard();
+            }
+            // Clear state
+            Object.keys(data).forEach(key => delete data[key]);
+            queue = [];
+            inTransaction = false;
+
+            // Clear UI
+            consoleOutput.innerHTML = '';
+            updateDataStoreUI();
+            updateQueueUI();
+            updateTransactionStatus(false);
+            logToConsole('State has been reset.', 'redis');
+        });
+
+        // --- Core Logic ---
+        function processCommand(commandStr) {
+            logToConsole(commandStr, 'user');
+            const parts = commandStr.split(/\s+/);
+            const command = parts[0].toUpperCase();
+            const args = parts.slice(1);
+
+            const validCommands = ['MULTI', 'EXEC', 'DISCARD', 'SET', 'GET', 'INCR', 'DECR', 'PING', 'SADD', 'LPUSH'];
+            if (!validCommands.includes(command)) {
+                logToConsole(`(error) ERR unknown command '${command}'`, 'redis');
+                return;
+            }
+
+            // Syntax check before queueing
+            if (inTransaction) {
+                let error = null;
+                if ((command === 'SET' && args.length !== 2) || 
+                    (['GET', 'INCR', 'DECR'].includes(command) && args.length !== 1) ||
+                    (['SADD', 'LPUSH'].includes(command) && args.length < 2)) {
+                    error = `(error) ERR wrong number of arguments for '${command.toLowerCase()}' command`;
+                }
+                if (error) {
+                    logToConsole(error, 'redis');
+                    // Real Redis flags transaction to fail on EXEC. Here we just show the error.
+                    return;
+                }
+            }
+
+            if (inTransaction && !['EXEC', 'DISCARD'].includes(command)) {
+                queueCommand(command, args, commandStr);
+                return;
+            }
+
+            switch (command) {
+                case 'MULTI': handleMulti(); break;
+                case 'EXEC': handleExec(); break;
+                case 'DISCARD': handleDiscard(); break;
+                case 'SET': handleSet(args[0], args[1], true); break;
+                case 'GET': handleGet(args[0], true); break;
+                case 'INCR': handleIncr(args[0], true); break;
+                case 'DECR': handleDecr(args[0], true); break;
+                case 'PING': logToConsole('PONG', 'redis'); break;
+                case 'SADD': handleSadd(args[0], args[1], true); break;
+                case 'LPUSH': handleLpush(args[0], args.slice(0).join(' '), true); break;
+            }
+        }
+        
+        // --- Command Handlers ---
+
+        function handleMulti() {
+            if (inTransaction) {
+                logToConsole('(error) ERR MULTI calls can not be nested', 'redis');
+                return;
+            }
+            inTransaction = true;
+            updateTransactionStatus(true);
+            logToConsole('OK', 'redis');
+        }
+
+        function handleExec() {
+            if (!inTransaction) {
+                logToConsole('(error) ERR EXEC without MULTI', 'redis');
+                return;
+            }
+            
+            if (queue.length === 0) {
+                 logToConsole('(empty array)', 'redis');
+                 inTransaction = false;
+                 updateTransactionStatus(false);
+                 return;
+            }
+
+            logToConsole(`(array) ${queue.length} replies:`, 'redis-array-start');
+            executeQueue();
+        }
+
+        function handleDiscard() {
+             if (!inTransaction) {
+                logToConsole('(error) ERR DISCARD without MULTI', 'redis');
+                return;
+            }
+            inTransaction = false;
+            queue = [];
+            updateTransactionStatus(false);
+            updateQueueUI();
+            logToConsole('OK', 'redis');
+        }
+
+        function handleSet(key, value, shouldLog) {
+            if (!key || value === undefined) {
+                if(shouldLog) logToConsole(`(error) ERR wrong number of arguments for 'set' command`, 'redis');
+                return '(error)';
+            }
+            data[key] = value;
+            updateDataStoreUI();
+            if(shouldLog) logToConsole('OK', 'redis');
+            return 'OK';
+        }
+
+        function handleGet(key, shouldLog) {
+            if (!key) {
+                if(shouldLog) logToConsole(`(error) ERR wrong number of arguments for 'get' command`, 'redis');
+                return '(error)';
+            }
+            const value = data[key] === undefined ? '(nil)' : `"${data[key]}"`;
+            if(shouldLog) logToConsole(value, 'redis');
+            return value;
+        }
+        
+        function handleIncr(key, shouldLog) {
+             if (!key) {
+                if(shouldLog) logToConsole(`(error) ERR wrong number of arguments for 'incr' command`, 'redis');
+                return '(error)';
+            }
+            let value = parseInt(data[key], 10);
+            if (isNaN(value)) {
+                 if (data[key] !== undefined) {
+                    if(shouldLog) logToConsole('(error) ERR value is not an integer or out of range', 'redis');
+                    return '(error)';
+                 }
+                 value = 0;
+            }
+            value++;
+            data[key] = value.toString();
+            updateDataStoreUI();
+            const result = `(integer) ${value}`;
+            if(shouldLog) logToConsole(result, 'redis');
+            return result;
+        }
+
+        function handleDecr(key, shouldLog) {
+             if (!key) {
+                if(shouldLog) logToConsole(`(error) ERR wrong number of arguments for 'decr' command`, 'redis');
+                return '(error)';
+            }
+            let value = parseInt(data[key], 10);
+            if (isNaN(value)) {
+                 if (data[key] !== undefined) {
+                    if(shouldLog) logToConsole('(error) ERR value is not an integer or out of range', 'redis');
+                    return '(error)';
+                 }
+                 value = 0;
+            }
+            value--;
+            data[key] = value.toString();
+            updateDataStoreUI();
+            const result = `(integer) ${value}`;
+            if(shouldLog) logToConsole(result, 'redis');
+            return result;
+        }
+
+        function handleSadd(key, value, shouldLog) {
+            if (!key || value === undefined) {
+                if(shouldLog) logToConsole(`(error) ERR wrong number of arguments for 'sadd' command`, 'redis');
+                return '(error)';
+            }
+            if (data[key] === undefined) data[key] = []; // Represent set as array
+            if (!Array.isArray(data[key])) {
+                if (shouldLog) logToConsole(`(error) WRONGTYPE Operation against a key holding the wrong kind of value`, 'redis');
+                return '(error)';
+            }
+            let added = 0;
+            if (!data[key].includes(value)) {
+                data[key].push(value);
+                added = 1;
+            }
+            updateDataStoreUI();
+            const result = `(integer) ${added}`;
+            if (shouldLog) logToConsole(result, 'redis');
+            return result;
+        }
+
+        function handleLpush(key, value, shouldLog) {
+            if (!key || value === undefined) {
+                if(shouldLog) logToConsole(`(error) ERR wrong number of arguments for 'lpush' command`, 'redis');
+                return '(error)';
+            }
+            if (data[key] === undefined) data[key] = []; // Represent list as array
+             if (!Array.isArray(data[key])) {
+                if (shouldLog) logToConsole(`(error) WRONGTYPE Operation against a key holding the wrong kind of value`, 'redis');
+                return '(error)';
+            }
+            data[key].unshift(value); // Add to beginning
+            updateDataStoreUI();
+            const result = `(integer) ${data[key].length}`;
+            if (shouldLog) logToConsole(result, 'redis');
+            return result;
+        }
+
+        function queueCommand(command, args, commandStr) {
+            const cmdObj = { command, args, commandStr, id: `cmd-${Date.now()}-${Math.random()}` };
+            queue.push(cmdObj);
+            updateQueueUI();
+            logToConsole('QUEUED', 'redis');
+        }
+
+        async function executeQueue() {
+            const executionQueue = [...queue];
+            queue = [];
+
+            for (let i = 0; i < executionQueue.length; i++) {
+                const { command, args, id } = executionQueue[i];
+                const queueItem = document.getElementById(id);
+                
+                if (queueItem) queueItem.classList.add('executing');
+
+                await new Promise(resolve => setTimeout(resolve, 600)); // Animation delay
+
+                let result;
+                // Simulate actual execution
+                switch (command) {
+                    case 'SET': result = handleSet(args[0], args[1], false); break;
+                    case 'GET': result = handleGet(args[0], false); break;
+                    case 'INCR': result = handleIncr(args[0], false); break;
+                    case 'DECR': result = handleDecr(args[0], false); break;
+                    case 'SADD': result = handleSadd(args[0], args[1], false); break;
+                    case 'LPUSH': result = handleLpush(args[0], args.slice(0).join(' '), false); break;
+                    case 'PING': result = 'PONG'; break;
+                    default: result = `(error) ERR unknown command '${command}'`;
+                }
+                logToConsole(`${i+1}) ${result}`, 'redis-array');
+
+                if (queueItem) {
+                    queueItem.classList.remove('executing');
+                    queueItem.classList.add('leaving');
+                }
+                 await new Promise(resolve => setTimeout(resolve, 400)); // Exit animation
+                 updateQueueUI();
+            }
+            
+            inTransaction = false;
+            updateTransactionStatus(false);
+        }
+
+        // --- UI Update Functions ---
+        function updateTransactionStatus(active) {
+            if (active) {
+                transactionStatus.textContent = 'ACTIVE';
+                transactionStatus.classList.remove('bg-gray-600', 'text-gray-200');
+                transactionStatus.classList.add('bg-green-500', 'text-white');
+            } else {
+                transactionStatus.textContent = 'INACTIVE';
+                transactionStatus.classList.remove('bg-green-500', 'text-white');
+                transactionStatus.classList.add('bg-gray-600', 'text-gray-200');
+            }
+        }
+
+        function updateQueueUI() {
+            if (queue.length === 0) {
+                commandQueue.innerHTML = `<div class="text-center text-gray-500 pt-4">Queue is empty</div>`;
+                return;
+            }
+            
+            if (commandQueue.querySelector('.text-gray-500')) {
+                commandQueue.innerHTML = '';
+            }
+
+            const existingIds = [...commandQueue.children].map(c => c.id);
+            const newCommands = queue.filter(cmd => !existingIds.includes(cmd.id));
+
+            for (const cmd of newCommands) {
+                const div = document.createElement('div');
+                div.id = cmd.id;
+                div.className = 'command-item entering bg-gray-700 p-2 rounded-md font-mono text-sm';
+                div.textContent = cmd.commandStr;
+                commandQueue.appendChild(div);
+                requestAnimationFrame(() => {
+                     div.classList.remove('entering');
+                });
+            }
+
+            existingIds.forEach(id => {
+                if (!queue.find(cmd => cmd.id === id)) {
+                    const el = document.getElementById(id);
+                    if (el && !el.classList.contains('leaving')) {
+                       el.remove();
+                    }
+                }
+            });
+        }
+        
+        function updateDataStoreUI() {
+            const keys = Object.keys(data);
+            if (keys.length === 0) {
+                dataStore.innerHTML = `<div class="text-center text-gray-500 pt-4">No data yet</div>`;
+                return;
+            }
+
+            dataStore.innerHTML = keys.map(key => {
+                const value = data[key];
+                let displayValue;
+                if (Array.isArray(value)) {
+                    // Truncate long arrays for display
+                    const items = value.length > 5 ? [...value.slice(0, 5), '...'] : value;
+                    displayValue = `<span class="text-gray-400">(list/set)</span> [${items.map(v => `<span class="text-green-400">"${v}"</span>`).join(', ')}]`;
+                } else {
+                    displayValue = `"${value}"`;
+                }
+                return `
+                    <div class="flex items-start font-mono text-sm mb-2">
+                        <div class="font-bold text-red-400 mr-2 flex-shrink-0">${key}:</div>
+                        <div class="text-blue-300 break-all">${displayValue}</div>
+                    </div>`
+            }).join('');
+        }
+
+        function logToConsole(message, source) {
+            const line = document.createElement('div');
+            let content;
+            switch (source) {
+                case 'user': content = `<span class="text-red-500">&gt; ${message}</span>`; break;
+                case 'redis': content = `<span class="text-green-400">${message}</span>`; break;
+                case 'redis-array-start': content = `<span class="text-gray-400">${message}</span>`; break;
+                case 'redis-array': content = `<span class="text-green-400 ml-2">${message}</span>`; break;
+                case 'comment': content = `<span class="text-yellow-500">${message}</span>`; break;
+                default: content = `<span>${message}</span>`;
+            }
+            line.innerHTML = content;
+            line.className = 'console-line';
+            consoleOutput.appendChild(line);
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        }
+    </script>
+</body>
+</html>
+
