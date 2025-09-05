@@ -54,23 +54,36 @@
             background-color: #3B82F6; /* blue-500 */
             box-shadow: 0 0 8px #3B82F6;
         }
-        ::-webkit-scrollbar {
-            width: 8px;
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1F2937; }
+        ::-webkit-scrollbar-thumb { background: #4B5563; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6B7280; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        /* Modal Styles */
+        #export-modal { transition: opacity 0.3s; }
+        #export-modal pre {
+            background-color: #0d1117;
+            border-radius: 8px;
+            padding: 1rem;
+            color: #c9d1d9;
+            overflow-x: auto;
         }
-        ::-webkit-scrollbar-track {
-            background: #1F2937; /* Tailwind gray-800 */
+
+        /* Custom Tooltip Styles */
+        .has-tooltip { position: relative; cursor: help; }
+        .tooltip {
+            visibility: hidden; opacity: 0; position: absolute;
+            bottom: 125%; left: 50%;
+            transform: translateX(-50%);
+            background-color: #1F2937; color: #D1D5DB;
+            text-align: left; padding: 8px 12px; border-radius: 6px;
+            z-index: 10; width: max-content; max-width: 280px;
+            font-size: 0.8rem; line-height: 1.4;
+            transition: opacity 0.2s; pointer-events: none;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
-        ::-webkit-scrollbar-thumb {
-            background: #4B5563; /* Tailwind gray-600 */
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #6B7280; /* Tailwind gray-500 */
-        }
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
+        .has-tooltip:hover .tooltip { visibility: visible; opacity: 1; }
     </style>
 </head>
 <body class="text-white p-4 md:p-8">
@@ -92,39 +105,36 @@
                         <h2 class="text-xl font-semibold">Redis Client CLI</h2>
                     </div>
                     <button id="example-reset" class="bg-gray-700 hover:bg-red-700 text-gray-300 hover:text-white p-2 rounded-full transition duration-200" title="Reset State">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
-                        </svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" /></svg>
                     </button>
                 </div>
                 <div id="console-output" class="flex-grow bg-black rounded-md p-4 text-sm font-mono overflow-y-auto h-80 mb-4">
                     <div class="text-gray-500">Welcome! Try an example or type commands below.</div>
                 </div>
-                <div class="relative">
-                    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-red-500 font-bold">&gt;</span>
-                    <input type="text" id="command-input" class="w-full bg-gray-900 border-2 border-gray-700 rounded-md py-2 pl-8 pr-4 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500" placeholder="e.g., WATCH key">
+                <div class="flex items-center gap-2">
+                    <div class="relative flex-grow">
+                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-red-500 font-bold">&gt;</span>
+                        <input type="text" id="command-input" class="w-full bg-gray-900 border-2 border-gray-700 rounded-md py-2 pl-8 pr-4 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500" placeholder="e.g., WATCH key">
+                    </div>
+                    <div id="export-btn-wrapper" class="relative">
+                        <button id="export-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 disabled:bg-blue-800 disabled:text-gray-400" disabled>
+                            Export Script
+                        </button>
+                        <div class="tooltip" style="text-align: center; left: 50%; transform: translateX(-50%);">Start a transaction (MULTI) and<br>queue a command to enable.</div>
+                    </div>
                 </div>
-                 <div class="text-xs text-gray-500 mt-2">Supported: MULTI, EXEC, DISCARD, WATCH, UNWATCH, SET, GET, INCR, DECR, PING, SADD, LPUSH, RESET.</div>
-
+                 <div class="text-xs text-gray-500 mt-2">Supported: MULTI, EXEC, DISCARD, WATCH, UNWATCH, SET, GET, INCR, DECR, PING, SADD, LPUSH, LPOP, RPOP, SPOP, RESET.</div>
+                 
                  <!-- Example Buttons -->
                  <div class="mt-6">
                     <h3 class="text-lg font-semibold mb-3 text-gray-300">Example Scenarios</h3>
                     <div class="flex flex-wrap gap-3">
-                         <button id="example-watch" class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">
-                            Optimistic Locking
-                        </button>
-                        <button id="example-fcfs" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">
-                            FCFS Registration
-                        </button>
-                         <button id="example-error" class="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">
-                            Transaction Error
-                        </button>
-                        <button id="example-discard" class="bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">
-                            Discard Transaction
-                        </button>
-                        <button id="example-complex-fail" class="bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">
-                            Complex Failure
-                        </button>
+                        <button id="example-watch" class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">Optimistic Locking</button>
+                        <button id="example-fcfs" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">FCFS Registration</button>
+                        <button id="example-queue" class="bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">Queue Processing</button>
+                        <button id="example-error" class="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">Transaction Error</button>
+                        <button id="example-discard" class="bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">Discard Transaction</button>
+                        <button id="example-complex-fail" class="bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">Complex Failure</button>
                     </div>
                 </div>
             </div>
@@ -140,21 +150,25 @@
                 <div>
                     <h3 class="font-semibold text-gray-300 mb-2">Client Flags</h3>
                      <div class="bg-gray-900 rounded-lg p-3 grid grid-cols-2 gap-x-4 gap-y-2 font-mono text-sm">
-                        <div class="flex items-center cursor-help" title="CLIENT_MULTI (1<<3): This client is in a MULTI context.">
+                        <div class="has-tooltip flex items-center">
                             <span class="flag-indicator w-3 h-3 rounded-full mr-3 bg-gray-600" id="flag-multi"></span>
                             <span class="text-gray-400">CLIENT_MULTI</span>
+                            <div class="tooltip"><strong>CLIENT_MULTI (1&lt;&lt;3):</strong><br>This client is in a MULTI context.</div>
                         </div>
-                        <div class="flex items-center cursor-help" title="CLIENT_DIRTY_CAS (1<<5): Watched keys modified. EXEC will fail.">
+                        <div class="has-tooltip flex items-center">
                             <span class="flag-indicator w-3 h-3 rounded-full mr-3 bg-gray-600" id="flag-dirty-cas"></span>
                             <span class="text-gray-400">CLIENT_DIRTY_CAS</span>
+                            <div class="tooltip"><strong>CLIENT_DIRTY_CAS (1&lt;&lt;5):</strong><br>Watched keys modified. EXEC will fail.</div>
                         </div>
-                        <div class="flex items-center cursor-help" title="CLIENT_DIRTY_EXEC (1<<12): EXEC will fail for errors while queueing commands.">
+                        <div class="has-tooltip flex items-center">
                             <span class="flag-indicator w-3 h-3 rounded-full mr-3 bg-gray-600" id="flag-dirty-exec"></span>
                             <span class="text-gray-400">CLIENT_DIRTY_EXEC</span>
+                            <div class="tooltip"><strong>CLIENT_DIRTY_EXEC (1&lt;&lt;12):</strong><br>EXEC will fail for errors while queueing commands.</div>
                         </div>
-                        <div class="flex items-center cursor-help" title="CLIENT_DENY_BLOCKING (1ULL<<41): Client should not be blocked (e.g., during EXEC).">
+                        <div class="has-tooltip flex items-center">
                             <span class="flag-indicator w-3 h-3 rounded-full mr-3 bg-gray-600" id="flag-deny-blocking"></span>
                             <span class="text-gray-400">CLIENT_DENY_BLOCKING</span>
+                            <div class="tooltip"><strong>CLIENT_DENY_BLOCKING (1ULL&lt;&lt;41):</strong><br>Client should not be blocked (e.g., during EXEC).</div>
                         </div>
                     </div>
                 </div>
@@ -163,32 +177,24 @@
                 <div>
                     <div class="flex justify-between items-center mb-2">
                         <h3 class="font-semibold text-gray-300">Transaction State</h3>
-                        <div id="transaction-status" class="status-indicator px-3 py-1 text-sm font-bold rounded-full bg-gray-600 text-gray-200">
-                                INACTIVE
-                        </div>
+                        <div id="transaction-status" class="status-indicator px-3 py-1 text-sm font-bold rounded-full bg-gray-600 text-gray-200">INACTIVE</div>
                     </div>
-                    <div class="bg-gray-900 rounded-lg p-4 h-32">
-                        <h4 class="font-medium text-gray-400 mb-2 border-b border-gray-700 pb-2">Command Queue</h4>
-                        <div id="command-queue" class="space-y-2 overflow-y-auto h-20">
-                             <div class="text-center text-gray-500 pt-4">Queue is empty</div>
-                        </div>
+                    <div class="bg-gray-900 rounded-lg p-4 h-32 flex flex-col">
+                        <h4 class="font-medium text-gray-400 mb-2 border-b border-gray-700 pb-2 flex-shrink-0">Command Queue</h4>
+                        <div id="command-queue" class="space-y-2 overflow-y-auto flex-grow"><div class="text-center text-gray-500 pt-4">Queue is empty</div></div>
                     </div>
                 </div>
 
                 <!-- Watched Keys -->
                 <div>
                     <h3 class="font-semibold text-gray-300 mb-2">Watched Keys</h3>
-                    <div id="watched-keys" class="bg-gray-900 rounded-lg p-4 h-24 overflow-y-auto">
-                        <div class="text-center text-gray-500 pt-2">Not watching any keys</div>
-                    </div>
+                    <div id="watched-keys" class="bg-gray-900 rounded-lg p-4 h-24 overflow-y-auto"><div class="text-center text-gray-500 pt-2">Not watching any keys</div></div>
                 </div>
 
                 <!-- Data Store -->
                 <div>
                     <h3 class="font-semibold text-gray-300 mb-2">In-Memory Data</h3>
-                    <div id="data-store" class="bg-gray-900 rounded-lg p-4 h-32 overflow-y-auto">
-                        <div class="text-center text-gray-500 pt-4">No data yet</div>
-                    </div>
+                    <div id="data-store" class="bg-gray-900 rounded-lg p-4 h-32 overflow-y-auto"><div class="text-center text-gray-500 pt-4">No data yet</div></div>
                 </div>
             </div>
         </div>
@@ -197,6 +203,24 @@
     <!-- Toast Notification -->
     <div id="toast-notification" class="fixed bottom-8 left-1/2 -translate-x-1/2 bg-purple-600 text-white py-2 px-5 rounded-lg shadow-lg text-sm opacity-0 transform translate-y-4">
         A watched key was modified!
+    </div>
+    
+    <!-- Export Modal -->
+    <div id="export-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50 opacity-0 pointer-events-none">
+        <div class="bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl transform scale-95 transition-transform duration-300" id="export-modal-content">
+            <div class="flex justify-between items-center p-4 border-b border-gray-700">
+                <h2 class="text-xl font-semibold">Export Transaction Script</h2>
+                <button id="close-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
+            </div>
+            <div class="p-4">
+                <div id="modal-tabs" class="flex border-b border-gray-700 mb-4">
+                    <!-- Tabs will be generated here -->
+                </div>
+                <div id="modal-content-area" class="max-h-[70vh] overflow-y-auto">
+                    <!-- Code snippets will be shown here -->
+                </div>
+            </div>
+        </div>
     </div>
 
 
@@ -219,10 +243,19 @@
         // Example Buttons
         const exampleWatchBtn = document.getElementById('example-watch');
         const exampleFcfsBtn = document.getElementById('example-fcfs');
+        const exampleQueueBtn = document.getElementById('example-queue');
         const exampleErrorBtn = document.getElementById('example-error');
         const exampleDiscardBtn = document.getElementById('example-discard');
         const exampleComplexFailBtn = document.getElementById('example-complex-fail');
         const exampleResetBtn = document.getElementById('example-reset');
+        
+        // Export Elements
+        const exportBtn = document.getElementById('export-btn');
+        const exportModal = document.getElementById('export-modal');
+        const exportModalContent = document.getElementById('export-modal-content');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        const modalTabs = document.getElementById('modal-tabs');
+        const modalContentArea = document.getElementById('modal-content-area');
 
         // Application State
         const state = {
@@ -263,7 +296,7 @@
         async function runCommandsSequentially(commands) {
             if (state.isDemoRunning) return;
             state.isDemoRunning = true;
-            const buttons = [exampleWatchBtn, exampleFcfsBtn, exampleDiscardBtn, exampleResetBtn, exampleErrorBtn, exampleComplexFailBtn];
+            const buttons = [exampleWatchBtn, exampleFcfsBtn, exampleQueueBtn, exampleDiscardBtn, exampleResetBtn, exampleErrorBtn, exampleComplexFailBtn];
             buttons.forEach(btn => btn.disabled = true);
             for (const cmd of commands) {
                 if (cmd.startsWith('//')) {
@@ -282,327 +315,60 @@
         }
 
         // --- Example Button Listeners ---
-        exampleWatchBtn.addEventListener('click', () => runCommandsSequentially([
-            '// --- Simulating Optimistic Lock with WATCH --- //',
-            'SET balance 100', 'WATCH balance', 'GET balance',
-            "// --- Another client modifies 'balance' while we are watching! --- //",
-            'SET balance 500', 'MULTI', 'SET balance 80', 'EXEC'
-        ]));
-        
-        exampleFcfsBtn.addEventListener('click', () => {
-            const studentId = `student:${Math.floor(1000 + Math.random() * 9000)}`;
-            runCommandsSequentially([
-                `// --- Simulating Course Registration (수강신청) for ${studentId} --- //`,
-                '// --- All commands must succeed or fail together atomically. --- //',
-                'SET course:CS101:spots 5', 'MULTI', 'DECR course:CS101:spots',
-                `SADD course:CS101:registered ${studentId}`,
-                `LPUSH course:CS101:log "Registered ${studentId} at ${new Date().toLocaleTimeString('en-US', { hour12: false})}"`,
-                'EXEC'
-            ]);
+        exampleWatchBtn.addEventListener('click', () => runCommandsSequentially(['// --- Simulating Optimistic Lock with WATCH --- //', 'SET balance 100', 'WATCH balance', 'GET balance', "// --- Another client modifies 'balance' while we are watching! --- //", 'SET balance 500', 'MULTI', 'SET balance 80', 'EXEC']));
+        exampleFcfsBtn.addEventListener('click', () => { const studentId = `student:${Math.floor(1000 + Math.random() * 9000)}`; runCommandsSequentially([`// --- Simulating Course Registration (수강신청) for ${studentId} --- //`, '// --- All commands must succeed or fail together atomically. --- //', 'SET course:CS101:spots 5', 'MULTI', 'DECR course:CS101:spots', `SADD course:CS101:registered ${studentId}`, `LPUSH course:CS101:log "Registered ${studentId} at ${new Date().toLocaleTimeString('en-US', { hour12: false})}"`, 'EXEC']); });
+        exampleQueueBtn.addEventListener('click', () => runCommandsSequentially(['// --- Simulating atomic task processing from a queue --- //', 'LPUSH tasks "process:video:123"', 'LPUSH tasks "send:email:456"', 'LPUSH tasks "generate:report:789"', 'MULTI', 'RPOP tasks', 'SET last_processed_by worker-01', 'EXEC']));
+        exampleErrorBtn.addEventListener('click', () => runCommandsSequentially(['// --- Simulating a Transaction Error --- //', 'SET product:stock 10', 'MULTI', 'INCR product:stock', '// --- This command has a syntax error (missing value) --- //', 'SET product:price', 'GET product:stock', 'EXEC']));
+        exampleDiscardBtn.addEventListener('click', () => runCommandsSequentially(['// --- Simulating a Discarded Transaction --- //', 'SET user:status active', 'MULTI', 'SET user:status inactive', 'GET user:status', 'DISCARD', 'GET user:status']));
+        exampleComplexFailBtn.addEventListener('click', () => runCommandsSequentially(['// --- A scenario where everything goes wrong --- //', 'SET account:balance 1000', '// 1. WATCH the key for changes.', 'WATCH account:balance', '// 2. Another client changes the key, setting CLIENT_DIRTY_CAS.', 'SET account:balance 50', '// 3. Start a transaction, setting CLIENT_MULTI.', 'MULTI', '// 4. Queue a command with a syntax error, setting CLIENT_DIRTY_EXEC.', 'SET transaction:log', '// 5. Attempt to EXEC. It will fail due to the dirty flags.', 'EXEC']));
+        exampleResetBtn.addEventListener('click', () => { if (state.isDemoRunning) return; consoleOutput.innerHTML = ''; resetState(); logToConsole('State has been reset.', 'redis'); });
+
+        // --- Export Modal Logic ---
+        exportBtn.addEventListener('click', () => {
+            generateExportScripts();
+            exportModal.classList.remove('opacity-0', 'pointer-events-none');
+            exportModalContent.classList.remove('scale-95');
         });
-        
-        exampleErrorBtn.addEventListener('click', () => runCommandsSequentially([
-            '// --- Simulating a Transaction Error --- //',
-            'SET product:stock 10', 'MULTI', 'INCR product:stock',
-            '// --- This command has a syntax error (missing value) --- //',
-            'SET product:price',
-            'GET product:stock', 'EXEC'
-        ]));
-
-        exampleDiscardBtn.addEventListener('click', () => runCommandsSequentially([
-            '// --- Simulating a Discarded Transaction --- //',
-            'SET user:status active', 'MULTI', 'SET user:status inactive', 'GET user:status',
-            'DISCARD', 'GET user:status'
-        ]));
-
-        exampleComplexFailBtn.addEventListener('click', () => runCommandsSequentially([
-            '// --- A scenario where everything goes wrong --- //',
-            'SET account:balance 1000',
-            '// 1. WATCH the key for changes.',
-            'WATCH account:balance',
-            '// 2. Another client changes the key, setting CLIENT_DIRTY_CAS.',
-            'SET account:balance 50',
-            '// 3. Start a transaction, setting CLIENT_MULTI.',
-            'MULTI',
-            '// 4. Queue a command with a syntax error, setting CLIENT_DIRTY_EXEC.',
-            'SET transaction:log',
-            '// 5. Attempt to EXEC. It will fail due to the dirty flags.',
-            'EXEC'
-        ]));
-
-        exampleResetBtn.addEventListener('click', () => {
-            if (state.isDemoRunning) return;
-            consoleOutput.innerHTML = '';
-            resetState();
-            logToConsole('State has been reset.', 'redis');
+        closeModalBtn.addEventListener('click', () => {
+             exportModal.classList.add('opacity-0', 'pointer-events-none');
+             exportModalContent.classList.add('scale-95');
         });
 
         // --- Core Logic ---
-        function resetState() {
-            unwatchAllKeys();
-            state.inTransaction = false;
-            state.queue = [];
-            state.flags.multi = false;
-            state.flags.dirtyExec = false;
-            Object.keys(state.data).forEach(key => delete state.data[key]);
-            updateAllUI();
-        }
-
-        function processCommand(commandStr) {
-            logToConsole(commandStr, 'user');
-            const parts = commandStr.split(/\s+/);
-            const command = parts[0].toUpperCase();
-            const args = parts.slice(1);
-            
-            const modifyingCommands = ['SET', 'INCR', 'DECR', 'SADD', 'LPUSH'];
-            if (modifyingCommands.includes(command)) touchWatchedKey(args[0]);
-            
-            if (state.inTransaction && !['EXEC', 'DISCARD', 'WATCH', 'UNWATCH'].includes(command)) {
-                queueCommand(command, args, commandStr);
-                return;
-            }
-
-            switch (command) {
-                case 'MULTI': handleMulti(); break;
-                case 'EXEC': handleExec(); break;
-                case 'DISCARD': handleDiscard(true); break;
-                case 'WATCH': handleWatch(args); break;
-                case 'UNWATCH': unwatchAllKeys(); logToConsole('OK', 'redis'); break;
-                case 'RESET': handleResetCommand(); break;
-                case 'SET': handleSet(args[0], args[1], true); break;
-                case 'GET': handleGet(args[0], true); break;
-                case 'INCR': handleIncr(args[0], true); break;
-                case 'DECR': handleDecr(args[0], true); break;
-                case 'SADD': handleSadd(args[0], args.slice(1), true); break;
-                case 'LPUSH': handleLpush(args[0], args.slice(1), true); break;
-                case 'PING': logToConsole('PONG', 'redis'); break;
-                default: logToConsole(`(error) ERR unknown command '${command}'`, 'redis');
-            }
-        }
-        
-        // --- Command Validation ---
-        function validateCommand(command, args) {
-            const specs = {
-                'SET': 2, 'GET': 1, 'INCR': 1, 'DECR': 1,
-                'SADD': -2, 'LPUSH': -2, 'WATCH': -1,
-                'UNWATCH': 0, 'MULTI': 0, 'EXEC': 0, 'DISCARD': 0,
-                'RESET': 0, 'PING': 0
-            };
-            const arity = specs[command];
-            if (arity === undefined) return `unknown command '${command}'`;
-            if (arity >= 0 && args.length !== arity) return `wrong number of arguments for '${command.toLowerCase()}' command`;
-            if (arity < 0 && args.length < Math.abs(arity)) return `wrong number of arguments for '${command.toLowerCase()}' command`;
-            return null; // No error
-        }
-        
-        // --- Command Handlers ---
-        function handleResetCommand() {
-            resetState();
-            logToConsole('OK', 'redis');
-        }
-
-        function handleWatch(keys) {
-            if (state.inTransaction) {
-                logToConsole('(error) ERR WATCH inside MULTI is not allowed', 'redis');
-                return;
-            }
-            keys.forEach(key => {
-                if (!state.watchedKeys.includes(key)) state.watchedKeys.push(key);
-            });
-            updateWatchedKeysUI(); logToConsole('OK', 'redis');
-        }
-
-        function unwatchAllKeys() {
-            state.watchedKeys = [];
-            state.flags.dirtyCas = false;
-            updateWatchedKeysUI();
-            updateFlagsUI();
-        }
-
-        function touchWatchedKey(key) {
-            if (state.watchedKeys.includes(key)) {
-                state.flags.dirtyCas = true;
-                showToast(`Key "${key}" was modified. Transaction will be aborted, and all watches are cleared.`);
-                state.watchedKeys = [];
-                updateWatchedKeysUI();
-                updateFlagsUI();
-            }
-        }
-
-        function handleMulti() {
-            if (state.inTransaction) {
-                logToConsole('(error) ERR MULTI calls can not be nested', 'redis'); return;
-            }
-            state.inTransaction = true;
-            state.flags.multi = true;
-            updateTransactionStatus(true);
-            updateFlagsUI();
-            logToConsole('OK', 'redis');
-        }
-
-        function handleExec() {
-            if (!state.inTransaction) { logToConsole('(error) ERR EXEC without MULTI', 'redis'); return; }
-            
-            // In real Redis, EXECABORT from DIRTY_EXEC takes precedence over the (nil) from DIRTY_CAS
-            if (state.flags.dirtyExec) {
-                logToConsole('(error) EXECABORT Transaction discarded because of previous errors.', 'redis');
-            } else if (state.flags.dirtyCas) {
-                logToConsole('(nil)', 'redis');
-            } else if (state.queue.length === 0) {
-                logToConsole('(empty array)', 'redis');
-            } else { 
-                logToConsole(`(array) ${state.queue.length} replies:`, 'redis-array-start');
-                executeQueue(); 
-                return;
-            }
-
-            state.queue = [];
-            state.inTransaction = false;
-            state.flags.multi = false;
-            state.flags.dirtyExec = false;
-            unwatchAllKeys();
-            updateAllUI();
-        }
-
-        function handleDiscard(shouldLog) {
-            if (!state.inTransaction) { if(shouldLog) logToConsole('(error) ERR DISCARD without MULTI', 'redis'); return; }
-            state.queue = [];
-            state.inTransaction = false;
-            state.flags.multi = false;
-            state.flags.dirtyExec = false;
-            unwatchAllKeys();
-            updateAllUI();
-            if(shouldLog) logToConsole('OK', 'redis');
-        }
-        
-        function handleSet(key, value, shouldLog) {
-            if (!key || value === undefined) { if(shouldLog) logToConsole(`(error) ERR wrong number of arguments for 'set' command`, 'redis'); return '(error)'; }
-            state.data[key] = value; updateDataStoreUI();
-            if(shouldLog) logToConsole('OK', 'redis'); return 'OK';
-        }
-
-        function handleGet(key, shouldLog) {
-            const value = state.data[key] === undefined ? '(nil)' : `"${state.data[key]}"`;
-            if(shouldLog) logToConsole(value, 'redis'); return value;
-        }
-
-        function handleIncr(key, shouldLog) {
-            let value = parseInt(state.data[key], 10);
-            if (isNaN(value)) {
-                 if (state.data[key] !== undefined) { if(shouldLog) logToConsole('(error) ERR value is not an integer or out of range', 'redis'); return '(error)'; }
-                 value = 0;
-            }
-            value++; state.data[key] = value.toString(); updateDataStoreUI();
-            const result = `(integer) ${value}`;
-            if(shouldLog) logToConsole(result, 'redis'); return result;
-        }
-
-        function handleDecr(key, shouldLog) {
-            let value = parseInt(state.data[key], 10);
-            if (isNaN(value)) {
-                 if (state.data[key] !== undefined) { if(shouldLog) logToConsole('(error) ERR value is not an integer or out of range', 'redis'); return '(error)'; }
-                 value = 0;
-            }
-            value--; state.data[key] = value.toString(); updateDataStoreUI();
-            const result = `(integer) ${value}`;
-            if(shouldLog) logToConsole(result, 'redis'); return result;
-        }
-        
-        function handleSadd(key, values, shouldLog) {
-            if (state.data[key] === undefined) state.data[key] = [];
-            if (!Array.isArray(state.data[key])) { if (shouldLog) logToConsole(`(error) WRONGTYPE Operation against a key holding the wrong kind of value`, 'redis'); return '(error)'; }
-            let added = 0;
-            values.forEach(value => {
-                if (!state.data[key].includes(value)) { state.data[key].push(value); added++; }
-            });
-            updateDataStoreUI();
-            const result = `(integer) ${added}`;
-            if (shouldLog) logToConsole(result, 'redis'); return result;
-        }
-        
-        function handleLpush(key, values, shouldLog) {
-            if (state.data[key] === undefined) state.data[key] = [];
-            if (!Array.isArray(state.data[key])) { if (shouldLog) logToConsole(`(error) WRONGTYPE Operation against a key holding the wrong kind of value`, 'redis'); return '(error)'; }
-            values.reverse().forEach(value => state.data[key].unshift(value));
-            updateDataStoreUI();
-            const result = `(integer) ${state.data[key].length}`;
-            if (shouldLog) logToConsole(result, 'redis'); return result;
-        }
-
-        function queueCommand(command, args, commandStr) {
-            const error = validateCommand(command, args);
-            if (error) {
-                logToConsole(`(error) ERR ${error}`, 'redis');
-                state.flags.dirtyExec = true;
-                updateFlagsUI();
-            } else {
-                logToConsole('QUEUED', 'redis');
-            }
-            const cmdObj = { command, args, commandStr, id: `cmd-${Date.now()}-${Math.random()}` };
-            state.queue.push(cmdObj);
-            updateQueueUI();
-        }
-
-        async function executeQueue() {
-            state.flags.denyBlocking = true;
-            updateFlagsUI();
-
-            // Add a dedicated pause to make the DENY_BLOCKING flag visible
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            const executionQueue = [...state.queue];
-            state.queue = [];
-            for (let i = 0; i < executionQueue.length; i++) {
-                const { command, args, id } = executionQueue[i];
-                const queueItem = document.getElementById(id);
-                if (queueItem) queueItem.classList.add('executing');
-                
-                // Slow down the animation
-                await new Promise(resolve => setTimeout(resolve, 700));
-
-                let result;
-                switch (command) {
-                    case 'SET': result = handleSet(args[0], args[1], false); break;
-                    case 'GET': result = handleGet(args[0], false); break;
-                    case 'INCR': result = handleIncr(args[0], false); break;
-                    case 'DECR': result = handleDecr(args[0], false); break;
-                    case 'SADD': result = handleSadd(args[0], args.slice(1), false); break;
-                    case 'LPUSH': result = handleLpush(args[0], args.slice(1), false); break;
-                    case 'PING': result = 'PONG'; break;
-                    default: result = `(error) ERR unknown command '${command}'`;
-                }
-                logToConsole(`${i+1}) ${result}`, 'redis-array');
-                if (queueItem) {
-                    queueItem.classList.remove('executing');
-                    queueItem.classList.add('leaving');
-                }
-                await new Promise(resolve => setTimeout(resolve, 500));
-                updateQueueUI();
-            }
-            state.flags.denyBlocking = false;
-            state.inTransaction = false;
-            state.flags.multi = false;
-            unwatchAllKeys();
-            updateAllUI();
-        }
-
-        // --- UI Update Functions ---
-        function updateAllUI() {
-            updateTransactionStatus(state.inTransaction);
-            updateFlagsUI();
-            updateQueueUI();
-            updateDataStoreUI();
-            updateWatchedKeysUI();
-        }
-        
-        function updateFlagsUI() {
-            flagMulti.classList.toggle('active', state.flags.multi);
-            flagDirtyCas.classList.toggle('error', state.flags.dirtyCas);
-            flagDirtyExec.classList.toggle('error', state.flags.dirtyExec);
-            flagDenyBlocking.classList.toggle('temp-active', state.flags.denyBlocking);
-        }
-
+        function resetState() { unwatchAllKeys(); state.inTransaction = false; state.queue = []; state.flags.multi = false; state.flags.dirtyExec = false; Object.keys(state.data).forEach(key => delete state.data[key]); updateAllUI(); }
+        function processCommand(commandStr) { logToConsole(commandStr, 'user'); const parts = commandStr.split(/\s+/); const command = parts[0].toUpperCase(); const args = parts.slice(1); const modifyingCommands = ['SET', 'INCR', 'DECR', 'SADD', 'LPUSH', 'LPOP', 'RPOP', 'SPOP']; if (modifyingCommands.includes(command)) touchWatchedKey(args[0]); if (state.inTransaction && !['EXEC', 'DISCARD', 'WATCH', 'UNWATCH'].includes(command)) { queueCommand(command, args, commandStr); return; } switch (command) { case 'MULTI': handleMulti(); break; case 'EXEC': handleExec(); break; case 'DISCARD': handleDiscard(true); break; case 'WATCH': handleWatch(args); break; case 'UNWATCH': unwatchAllKeys(); logToConsole('OK', 'redis'); break; case 'RESET': handleResetCommand(); break; case 'SET': handleSet(args[0], args[1], true); break; case 'GET': handleGet(args[0], true); break; case 'INCR': handleIncr(args[0], true); break; case 'DECR': handleDecr(args[0], true); break; case 'SADD': handleSadd(args[0], args.slice(1), true); break; case 'LPUSH': handleLpush(args[0], args.slice(1), true); break; case 'LPOP': handleLpop(args[0], true); break; case 'RPOP': handleRpop(args[0], true); break; case 'SPOP': handleSpop(args[0], true); break; case 'PING': logToConsole('PONG', 'redis'); break; default: logToConsole(`(error) ERR unknown command '${command}'`, 'redis'); } }
+        function validateCommand(command, args) { const specs = { 'SET': 2, 'GET': 1, 'INCR': 1, 'DECR': 1, 'SADD': -2, 'LPUSH': -2, 'LPOP': 1, 'RPOP': 1, 'SPOP': 1, 'WATCH': -1, 'UNWATCH': 0, 'MULTI': 0, 'EXEC': 0, 'DISCARD': 0, 'RESET': 0, 'PING': 0 }; const arity = specs[command]; if (arity === undefined) return `unknown command '${command}'`; if (arity >= 0 && args.length !== arity) return `wrong number of arguments for '${command.toLowerCase()}' command`; if (arity < 0 && args.length < Math.abs(arity)) return `wrong number of arguments for '${command.toLowerCase()}' command`; return null; }
+        function handleResetCommand() { resetState(); logToConsole('OK', 'redis'); }
+        function handleWatch(keys) { if (state.inTransaction) { logToConsole('(error) ERR WATCH inside MULTI is not allowed', 'redis'); return; } keys.forEach(key => { if (!state.watchedKeys.includes(key)) state.watchedKeys.push(key); }); updateWatchedKeysUI(); logToConsole('OK', 'redis'); }
+        function unwatchAllKeys() { state.watchedKeys = []; state.flags.dirtyCas = false; updateWatchedKeysUI(); updateFlagsUI(); }
+        function touchWatchedKey(key) { if (state.watchedKeys.includes(key)) { state.flags.dirtyCas = true; showToast(`Key "${key}" was modified. Transaction will be aborted, and all watches are cleared.`); state.watchedKeys = []; updateWatchedKeysUI(); updateFlagsUI(); } }
+        function handleMulti() { if (state.inTransaction) { logToConsole('(error) ERR MULTI calls can not be nested', 'redis'); return; } state.inTransaction = true; state.flags.multi = true; updateTransactionStatus(true); updateFlagsUI(); logToConsole('OK', 'redis'); }
+        function handleExec() { if (!state.inTransaction) { logToConsole('(error) ERR EXEC without MULTI', 'redis'); return; } if (state.flags.dirtyExec) { logToConsole('(error) EXECABORT Transaction discarded because of previous errors.', 'redis'); } else if (state.flags.dirtyCas) { logToConsole('(nil)', 'redis'); } else if (state.queue.length === 0) { logToConsole('(empty array)', 'redis'); } else { logToConsole(`(array) ${state.queue.length} replies:`, 'redis-array-start'); executeQueue(); return; } state.queue = []; state.inTransaction = false; state.flags.multi = false; state.flags.dirtyExec = false; unwatchAllKeys(); updateAllUI(); }
+        function handleDiscard(shouldLog) { if (!state.inTransaction) { if(shouldLog) logToConsole('(error) ERR DISCARD without MULTI', 'redis'); return; } state.queue = []; state.inTransaction = false; state.flags.multi = false; state.flags.dirtyExec = false; unwatchAllKeys(); updateAllUI(); if(shouldLog) logToConsole('OK', 'redis'); }
+        function handleSet(key, value, shouldLog) { if (!key || value === undefined) { if(shouldLog) logToConsole(`(error) ERR wrong number of arguments for 'set' command`, 'redis'); return '(error)'; } state.data[key] = value; updateDataStoreUI(); if(shouldLog) logToConsole('OK', 'redis'); return 'OK'; }
+        function handleGet(key, shouldLog) { const value = state.data[key] === undefined ? '(nil)' : `"${state.data[key]}"`; if(shouldLog) logToConsole(value, 'redis'); return value; }
+        function handleIncr(key, shouldLog) { let value = parseInt(state.data[key], 10); if (isNaN(value)) { if (state.data[key] !== undefined) { if(shouldLog) logToConsole('(error) ERR value is not an integer or out of range', 'redis'); return '(error)'; } value = 0; } value++; state.data[key] = value.toString(); updateDataStoreUI(); const result = `(integer) ${value}`; if(shouldLog) logToConsole(result, 'redis'); return result; }
+        function handleDecr(key, shouldLog) { let value = parseInt(state.data[key], 10); if (isNaN(value)) { if (state.data[key] !== undefined) { if(shouldLog) logToConsole('(error) ERR value is not an integer or out of range', 'redis'); return '(error)'; } value = 0; } value--; state.data[key] = value.toString(); updateDataStoreUI(); const result = `(integer) ${value}`; if(shouldLog) logToConsole(result, 'redis'); return result; }
+        function handleSadd(key, values, shouldLog) { if (state.data[key] === undefined) state.data[key] = []; if (!Array.isArray(state.data[key])) { if (shouldLog) logToConsole(`(error) WRONGTYPE Operation against a key holding the wrong kind of value`, 'redis'); return '(error)'; } let added = 0; values.forEach(value => { if (!state.data[key].includes(value)) { state.data[key].push(value); added++; } }); updateDataStoreUI(); const result = `(integer) ${added}`; if (shouldLog) logToConsole(result, 'redis'); return result; }
+        function handleLpush(key, values, shouldLog) { if (state.data[key] === undefined) state.data[key] = []; if (!Array.isArray(state.data[key])) { if (shouldLog) logToConsole(`(error) WRONGTYPE Operation against a key holding the wrong kind of value`, 'redis'); return '(error)'; } values.reverse().forEach(value => state.data[key].unshift(value)); updateDataStoreUI(); const result = `(integer) ${state.data[key].length}`; if (shouldLog) logToConsole(result, 'redis'); return result; }
+        function handleLpop(key, shouldLog) { if (!Array.isArray(state.data[key])) { const result = state.data[key] === undefined ? '(nil)' : `(error) WRONGTYPE Operation against a key holding the wrong kind of value`; if (shouldLog) logToConsole(result, 'redis'); return result; } const value = state.data[key].shift(); const result = value === undefined ? '(nil)' : `"${value}"`; if (shouldLog) logToConsole(result, 'redis'); updateDataStoreUI(); return result; }
+        function handleRpop(key, shouldLog) { if (!Array.isArray(state.data[key])) { const result = state.data[key] === undefined ? '(nil)' : `(error) WRONGTYPE Operation against a key holding the wrong kind of value`; if (shouldLog) logToConsole(result, 'redis'); return result; } const value = state.data[key].pop(); const result = value === undefined ? '(nil)' : `"${value}"`; if (shouldLog) logToConsole(result, 'redis'); updateDataStoreUI(); return result; }
+        function handleSpop(key, shouldLog) { if (!Array.isArray(state.data[key])) { const result = state.data[key] === undefined ? '(nil)' : `(error) WRONGTYPE Operation against a key holding the wrong kind of value`; if (shouldLog) logToConsole(result, 'redis'); return result; } const value = state.data[key].pop(); /* Simplification: real SPOP is random */ const result = value === undefined ? '(nil)' : `"${value}"`; if (shouldLog) logToConsole(result, 'redis'); updateDataStoreUI(); return result; }
+        function queueCommand(command, args, commandStr) { const error = validateCommand(command, args); if (error) { logToConsole(`(error) ERR ${error}`, 'redis'); state.flags.dirtyExec = true; updateFlagsUI(); } else { logToConsole('QUEUED', 'redis'); } const cmdObj = { command, args, commandStr, id: `cmd-${Date.now()}-${Math.random()}` }; state.queue.push(cmdObj); updateQueueUI(); }
+        async function executeQueue() { state.flags.denyBlocking = true; updateFlagsUI(); await new Promise(resolve => setTimeout(resolve, 500)); const executionQueue = [...state.queue]; state.queue = []; for (let i = 0; i < executionQueue.length; i++) { const { command, args, id } = executionQueue[i]; const queueItem = document.getElementById(id); if (queueItem) queueItem.classList.add('executing'); await new Promise(resolve => setTimeout(resolve, 700)); let result; switch (command) { case 'SET': result = handleSet(args[0], args[1], false); break; case 'GET': result = handleGet(args[0], false); break; case 'INCR': result = handleIncr(args[0], false); break; case 'DECR': result = handleDecr(args[0], false); break; case 'SADD': result = handleSadd(args[0], args.slice(1), false); break; case 'LPUSH': result = handleLpush(args[0], args.slice(1), false); break; case 'LPOP': result = handleLpop(args[0], false); break; case 'RPOP': result = handleRpop(args[0], false); break; case 'SPOP': result = handleSpop(args[0], false); break; case 'PING': result = 'PONG'; break; default: result = `(error) ERR unknown command '${command}'`; } logToConsole(`${i+1}) ${result}`, 'redis-array'); if (queueItem) { queueItem.classList.remove('executing'); queueItem.classList.add('leaving'); } await new Promise(resolve => setTimeout(resolve, 500)); updateQueueUI(); } state.flags.denyBlocking = false; state.inTransaction = false; state.flags.multi = false; unwatchAllKeys(); updateAllUI(); }
+        function updateAllUI() { updateTransactionStatus(state.inTransaction); updateFlagsUI(); updateQueueUI(); updateDataStoreUI(); updateWatchedKeysUI(); }
+        function updateFlagsUI() { flagMulti.classList.toggle('active', state.flags.multi); flagDirtyCas.classList.toggle('error', state.flags.dirtyCas); flagDirtyExec.classList.toggle('error', state.flags.dirtyExec); flagDenyBlocking.classList.toggle('temp-active', state.flags.denyBlocking); }
         function updateTransactionStatus(active) {
+            const isDisabled = !active || state.queue.length === 0;
+            exportBtn.disabled = isDisabled;
+            
+            const wrapper = document.getElementById('export-btn-wrapper');
+            if (isDisabled) {
+                wrapper.classList.add('has-tooltip');
+            } else {
+                wrapper.classList.remove('has-tooltip');
+            }
+
             if (active) {
                 transactionStatus.textContent = 'ACTIVE';
                 transactionStatus.classList.remove('bg-gray-600');
@@ -613,74 +379,125 @@
                 transactionStatus.classList.add('bg-gray-600');
             }
         }
-
-        function updateWatchedKeysUI() {
-            if (state.watchedKeys.length === 0) {
-                watchedKeysEl.innerHTML = `<div class="text-center text-gray-500 pt-2">Not watching any keys</div>`; return;
-            }
-            watchedKeysEl.innerHTML = state.watchedKeys.map(key => `
-                <div class="flex items-center font-mono text-sm">
-                    <svg class="w-4 h-4 text-purple-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
-                    <span class="text-purple-300">${key}</span>
-                </div>`).join('');
-        }
-
-        function updateQueueUI() {
-            if (state.queue.length === 0) {
-                commandQueue.innerHTML = `<div class="text-center text-gray-500 pt-4">Queue is empty</div>`; return;
-            }
-            if (commandQueue.querySelector('.text-gray-500')) commandQueue.innerHTML = '';
-            const existingIds = [...commandQueue.children].map(c => c.id);
-            const newCommands = state.queue.filter(cmd => !existingIds.includes(cmd.id));
-            newCommands.forEach(cmd => {
-                const div = document.createElement('div');
-                div.id = cmd.id;
-                div.className = 'command-item entering bg-gray-700 p-2 rounded-md font-mono text-sm';
-                div.textContent = cmd.commandStr;
-                commandQueue.appendChild(div);
-                requestAnimationFrame(() => div.classList.remove('entering'));
-            });
-            existingIds.forEach(id => {
-                if (!state.queue.find(cmd => cmd.id === id)) {
-                    const el = document.getElementById(id);
-                    if (el && !el.classList.contains('leaving')) el.remove();
+        function updateWatchedKeysUI() { if (state.watchedKeys.length === 0) { watchedKeysEl.innerHTML = `<div class="text-center text-gray-500 pt-2">Not watching any keys</div>`; return; } watchedKeysEl.innerHTML = state.watchedKeys.map(key => ` <div class="flex items-center font-mono text-sm"> <svg class="w-4 h-4 text-purple-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg> <span class="text-purple-300">${key}</span> </div>`).join(''); }
+        function updateQueueUI() { updateTransactionStatus(state.inTransaction); if (state.queue.length === 0) { commandQueue.innerHTML = `<div class="text-center text-gray-500 pt-4">Queue is empty</div>`; return; } if (commandQueue.querySelector('.text-gray-500')) commandQueue.innerHTML = ''; const existingIds = [...commandQueue.children].map(c => c.id); const newCommands = state.queue.filter(cmd => !existingIds.includes(cmd.id)); newCommands.forEach(cmd => { const div = document.createElement('div'); div.id = cmd.id; div.className = 'command-item entering bg-gray-700 p-2 rounded-md font-mono text-sm'; div.textContent = cmd.commandStr; commandQueue.appendChild(div); requestAnimationFrame(() => div.classList.remove('entering')); }); existingIds.forEach(id => { if (!state.queue.find(cmd => cmd.id === id)) { const el = document.getElementById(id); if (el && !el.classList.contains('leaving')) el.remove(); } }); }
+        function updateDataStoreUI() { const keys = Object.keys(state.data); if (keys.length === 0) { dataStore.innerHTML = `<div class="text-center text-gray-500 pt-4">No data yet</div>`; return; } dataStore.innerHTML = keys.map(key => { const value = state.data[key]; let displayValue; if (Array.isArray(value)) { const items = value.length > 5 ? [...value.slice(0, 5), '...'] : value; displayValue = `<span class="text-gray-400">(list/set)</span> [${items.map(v => `<span class="text-green-400">"${v}"</span>`).join(', ')}]`; } else { displayValue = `"${value}"`; } return `<div class="flex items-start font-mono text-sm mb-2"> <div class="font-bold text-red-400 mr-2 flex-shrink-0">${key}:</div> <div class="text-blue-300 break-all">${displayValue}</div> </div>` }).join(''); }
+        function logToConsole(message, source) { const line = document.createElement('div'); let content; switch (source) { case 'user': content = `<span class="text-red-500">&gt; ${message}</span>`; break; case 'redis': content = `<span class="text-green-400">${message}</span>`; break; case 'redis-array-start': content = `<span class="text-gray-400">${message}</span>`; break; case 'redis-array': content = `<span class="text-green-400 ml-2">${message}</span>`; break; case 'comment': content = `<span class="text-yellow-500">${message}</span>`; break; default: content = `<span>${message}</span>`; } line.innerHTML = content; line.className = 'console-line'; consoleOutput.appendChild(line); consoleOutput.scrollTop = consoleOutput.scrollHeight; }
+        
+        // --- SCRIPT GENERATION ---
+        function generateExportScripts() {
+            const languages = {
+                'redis-cli': generateCliScript,
+                'Python': generatePythonScript,
+                'Go': generateGoScript,
+                'Java': generateJavaJedisScript,
+            };
+            
+            modalTabs.innerHTML = '';
+            modalContentArea.innerHTML = '';
+            
+            Object.keys(languages).forEach((lang, index) => {
+                const tab = document.createElement('button');
+                tab.textContent = lang;
+                tab.className = 'px-4 py-2 -mb-px border-b-2 transition-colors duration-200';
+                tab.dataset.lang = lang;
+                
+                const content = document.createElement('div');
+                content.dataset.lang = lang;
+                content.innerHTML = languages[lang]();
+                
+                if (index === 0) {
+                    tab.classList.add('border-blue-500', 'text-blue-400');
+                    content.classList.remove('hidden');
+                } else {
+                    tab.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-200');
+                    content.classList.add('hidden');
                 }
+                
+                tab.addEventListener('click', (e) => {
+                    // Deactivate all tabs and hide all content panels
+                    modalTabs.querySelectorAll('button').forEach(t => {
+                        t.classList.remove('border-blue-500', 'text-blue-400');
+                        t.classList.add('border-transparent', 'text-gray-500');
+                    });
+                    // Use .children to only select direct descendants (the content wrappers)
+                    // This was the source of the bug. querySelectorAll('div') was too broad.
+                    for (const child of modalContentArea.children) {
+                        child.classList.add('hidden');
+                    }
+
+                    // Activate the clicked tab and show its content panel
+                    e.target.classList.remove('border-transparent', 'text-gray-500');
+                    e.target.classList.add('border-blue-500', 'text-blue-400');
+                    modalContentArea.querySelector(`div[data-lang="${lang}"]`).classList.remove('hidden');
+                });
+                
+                modalTabs.appendChild(tab);
+                modalContentArea.appendChild(content);
             });
         }
         
-        function updateDataStoreUI() {
-            const keys = Object.keys(state.data);
-            if (keys.length === 0) {
-                dataStore.innerHTML = `<div class="text-center text-gray-500 pt-4">No data yet</div>`; return;
-            }
-            dataStore.innerHTML = keys.map(key => {
-                const value = state.data[key]; let displayValue;
-                if (Array.isArray(value)) {
-                    const items = value.length > 5 ? [...value.slice(0, 5), '...'] : value;
-                    displayValue = `<span class="text-gray-400">(list/set)</span> [${items.map(v => `<span class="text-green-400">"${v}"</span>`).join(', ')}]`;
-                } else { displayValue = `"${value}"`; }
-                return `<div class="flex items-start font-mono text-sm mb-2">
-                            <div class="font-bold text-red-400 mr-2 flex-shrink-0">${key}:</div>
-                            <div class="text-blue-300 break-all">${displayValue}</div>
-                        </div>`
-            }).join('');
+        function copyCode(element) {
+            const code = element.parentElement.previousElementSibling.textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                element.textContent = 'Copied!';
+                setTimeout(() => { element.textContent = 'Copy'; }, 2000);
+            });
+        }
+        
+        function formatCommand(parts) {
+            return parts.map(p => {
+                // Check if it's a number, otherwise quote it
+                if (!isNaN(p) && !isNaN(parseFloat(p))) return p;
+                // If it contains spaces or is empty, quote it.
+                return `"${p.replace(/"/g, '\\"')}"`;
+            }).join(', ');
+        }
+        
+        function generateCliScript() {
+            let script = 'MULTI\n';
+            state.queue.forEach(cmd => {
+                script += `  ${cmd.commandStr}\n`;
+            });
+            script += 'EXEC';
+            return `<div class="relative"><pre><code>${script}</code></pre><button onclick="copyCode(this)" class="absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-1 px-3 rounded-lg text-xs">Copy</button></div>`;
+        }
+        
+        function generatePythonScript() {
+            let script = `import redis\n\nr = redis.Redis(decode_responses=True)\n\n`;
+            script += `pipe = r.pipeline()\n`;
+            state.queue.forEach(cmd => {
+                const parts = [cmd.command, ...cmd.args];
+                script += `pipe.${cmd.command.toLowerCase()}(${formatCommand(cmd.args)})\n`;
+            });
+            script += `results = pipe.execute()\nprint(results)`;
+            return `<div class="relative"><pre><code>${script}</code></pre><button onclick="copyCode(this)" class="absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-1 px-3 rounded-lg text-xs">Copy</button></div>`;
         }
 
-        function logToConsole(message, source) {
-            const line = document.createElement('div'); let content;
-            switch (source) {
-                case 'user': content = `<span class="text-red-500">&gt; ${message}</span>`; break;
-                case 'redis': content = `<span class="text-green-400">${message}</span>`; break;
-                case 'redis-array-start': content = `<span class="text-gray-400">${message}</span>`; break;
-                case 'redis-array': content = `<span class="text-green-400 ml-2">${message}</span>`; break;
-                case 'comment': content = `<span class="text-yellow-500">${message}</span>`; break;
-                default: content = `<span>${message}</span>`;
-            }
-            line.innerHTML = content;
-            line.className = 'console-line';
-            consoleOutput.appendChild(line);
-            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        function generateGoScript() {
+            let script = `package main\n\nimport (\n\t"context"\n\t"fmt"\n\t"github.com/go-redis/redis/v9"\n)\n\n`;
+            script += `var ctx = context.Background()\n\nfunc main() {\n\trdb := redis.NewClient(&redis.Options{\n\t\tAddr: "localhost:6379",\n\t})\n\n`;
+            script += `\tpipe := rdb.TxPipeline()\n`;
+            state.queue.forEach(cmd => {
+                 const capitalized = cmd.command.charAt(0).toUpperCase() + cmd.command.slice(1).toLowerCase();
+                script += `\tpipe.${capitalized}(ctx, ${formatCommand(cmd.args)})\n`;
+            });
+            script += `\t_, err := pipe.Exec(ctx)\n\tif err != nil {\n\t\tpanic(err)\n\t}\n\n\tfmt.Println("Transaction successful")\n}`;
+            return `<div class="relative"><pre><code>${script}</code></pre><button onclick="copyCode(this)" class="absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-1 px-3 rounded-lg text-xs">Copy</button></div>`;
         }
+        
+        function generateJavaJedisScript() {
+             let script = `import redis.clients.jedis.Jedis;\nimport redis.clients.jedis.Response;\nimport redis.clients.jedis.Transaction;\n\npublic class RedisTransaction {\n\tpublic static void main(String[] args) {\n\t\tJedis jedis = new Jedis("localhost");\n\n`;
+            script += `\t\tTransaction t = jedis.multi();\n`;
+            state.queue.forEach(cmd => {
+                script += `\t\tt.${cmd.command.toLowerCase()}(${formatCommand(cmd.args)});\n`;
+            });
+            script += `\t\tjava.util.List<Object> results = t.exec();\n\n\t\tSystem.out.println(results);\n\t\tjedis.close();\n\t}\n}`;
+             return `<div class="relative"><pre><code>${script}</code></pre><button onclick="copyCode(this)" class="absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-1 px-3 rounded-lg text-xs">Copy</button></div>`;
+        }
+
+        // Initialize the UI on page load to reflect the initial state
+        updateAllUI();
     </script>
 </body>
 </html>
