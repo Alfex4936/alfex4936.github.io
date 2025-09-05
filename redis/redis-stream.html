@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redis Stream Visualization</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827;
+            color: #e5e7eb;
+        }
+        .tab-btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            background: none;
+            color: #9ca3af; /* gray-400 */
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px; /* Overlap the container's border */
+        }
+        .tab-btn.active {
+            color: #60a5fa; /* blue-400 */
+            border-bottom-color: #60a5fa;
+        }
+        .tab-content {
+            padding-top: 1.5rem;
+        }
+        .stream-entry {
+            transition: all 0.5s ease;
+            border: 1px solid #374151;
+            position: relative;
+        }
+        .delete-entry-btn {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            padding: 2px;
+            border-radius: 9999px;
+            background-color: rgba(75, 85, 99, 0.5);
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out;
+        }
+        .stream-entry:hover .delete-entry-btn {
+            opacity: 1;
+        }
+        .delete-entry-btn:hover {
+            background-color: #ef4444; /* red-500 */
+        }
+        .listpack {
+            border: 2px dashed #4b5563;
+            background-color: #1f2937;
+        }
+        .radix-node {
+            border: 1px solid #4b5563;
+            background-color: #374151;
+        }
+        .consumer-group {
+            border: 2px solid #6b7280;
+            background-color: #1f2937;
+        }
+        .consumer {
+            border: 1px dashed #6b7280;
+        }
+        .pel-entry {
+            border-left: 4px solid #f59e0b; /* Amber 500 */
+        }
+        .highlight {
+            box-shadow: 0 0 15px 5px #f59e0b;
+            transform: scale(1.05);
+        }
+        .log-entry {
+            /* No specific styles needed here now, handled by text color in JS */
+        }
+        input, select, button {
+            background-color: #374151;
+            border-color: #4b5563;
+            color: #e5e7eb;
+        }
+        button:hover {
+            background-color: #4b5563;
+        }
+        button:disabled {
+            background-color: #2c3543;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 250px;
+            background-color: #1f2937;
+            color: #fff;
+            text-align: left;
+            border-radius: 6px;
+            padding: 10px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -125px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 0.8rem;
+            line-height: 1.4;
+        }
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-screen-2xl mx-auto">
+        <header class="text-center mb-8 relative">
+            <h1 class="text-4xl font-bold text-white">Redis Stream Interactive Visualization</h1>
+            <p class="text-lg text-gray-400 mt-2">Based on the logic from <a href="https://github.com/redis/redis/blob/7.2.10/src/t_stream.c" target="_blank" rel="noopener noreferrer" class="underline hover:text-blue-400"><code class="bg-gray-700 p-1 rounded text-sm">t_stream.c</code></a></p>
+            <button id="reset-all-btn" title="Reset Simulation" class="absolute top-0 right-0 p-2 rounded-full hover:bg-gray-700 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-gray-400"><path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+            </button>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+            <!-- Controls Column -->
+            <div class="lg:col-span-2 bg-gray-900 p-6 rounded-lg shadow-lg">
+                <h2 class="text-2xl font-semibold mb-4">Controls</h2>
+
+                <!-- Tab Navigation -->
+                <div class="border-b border-gray-700">
+                    <nav class="flex -mb-px" aria-label="Tabs">
+                        <button id="tab-btn-stream" class="tab-btn active">Stream</button>
+                        <button id="tab-btn-groups" class="tab-btn">Groups</button>
+                    </nav>
+                </div>
+
+                <!-- Tab Content: Stream -->
+                <div id="tab-content-stream" class="tab-content">
+                    <!-- Stream Config -->
+                    <div class="mb-6 p-4 border border-gray-700 rounded-lg">
+                        <h3 class="font-bold text-lg mb-2 text-purple-400">Stream Configuration</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label for="config-max-entries" class="block text-sm font-medium text-gray-400">stream-node-max-entries</label>
+                                <input type="number" id="config-max-entries" value="5" min="1" class="w-full p-2 rounded-md mt-1">
+                            </div>
+                            <div>
+                                <label for="config-max-bytes" class="block text-sm font-medium text-gray-400">stream-node-max-bytes (simulated)</label>
+                                <input type="number" id="config-max-bytes" value="100" min="0" class="w-full p-2 rounded-md mt-1">
+                                 <p class="text-xs text-gray-500 mt-1">Set to 0 for unlimited. Size is simulated based on field/value length.</p>
+                            </div>
+                        </div>
+                    </div>
+                     <!-- XADD Command -->
+                    <div class="mb-6 p-4 border border-gray-700 rounded-lg">
+                        <h3 class="font-bold text-lg mb-2 text-blue-400">XADD</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label for="xadd-field" class="block text-sm font-medium text-gray-400">Field</label>
+                                <input type="text" id="xadd-field" value="message" class="w-full p-2 rounded-md mt-1">
+                            </div>
+                            <div>
+                                <label for="xadd-value" class="block text-sm font-medium text-gray-400">Value</label>
+                                <input type="text" id="xadd-value" value="hello" class="w-full p-2 rounded-md mt-1">
+                            </div>
+                            <button id="xadd-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">Add to Stream</button>
+                        </div>
+                    </div>
+                     <!-- XTRIM Command -->
+                    <div class="p-4 border border-gray-700 rounded-lg">
+                        <h3 class="font-bold text-lg mb-2 text-indigo-400">XTRIM</h3>
+                        <div class="space-y-3">
+                            <!-- Strategy -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-400">Strategy</label>
+                                <div class="mt-1 flex space-x-4">
+                                    <label class="flex items-center">
+                                        <input type="radio" id="xtrim-strategy-maxlen" name="xtrim-strategy" value="MAXLEN" checked class="h-4 w-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500">
+                                        <span class="ml-2 text-sm">MAXLEN</span>
+                                    </label>
+                                    <label class="flex items-center">
+                                        <input type="radio" id="xtrim-strategy-minid" name="xtrim-strategy" value="MINID" class="h-4 w-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500">
+                                        <span class="ml-2 text-sm">MINID</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <!-- Value Input -->
+                            <div>
+                                <label for="xtrim-value" class="block text-sm font-medium text-gray-400">Value (Count or ID)</label>
+                                <input type="text" id="xtrim-value" value="3" class="w-full p-2 rounded-md mt-1">
+                            </div>
+                            <!-- Approx Checkbox -->
+                            <div class="flex items-center">
+                                <input type="checkbox" id="xtrim-approx" class="h-4 w-4 text-indigo-600 bg-gray-700 border-gray-600 focus:ring-indigo-500 rounded">
+                                <label for="xtrim-approx" class="ml-2 block text-sm text-gray-300">~ (Approximate)</label>
+                                <div class="tooltip ml-2">
+                                    <span class="cursor-help">[?]</span>
+                                    <p class="tooltiptext">If checked, trimming is less precise but faster. The simulation will only remove whole listpacks instead of individual entries.</p>
+                                </div>
+                            </div>
+                            <button id="xtrim-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md">Trim Stream</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Content: Groups -->
+                <div id="tab-content-groups" class="tab-content hidden">
+                    <!-- XGROUP Command -->
+                    <div class="mb-6 p-4 border border-gray-700 rounded-lg">
+                        <h3 class="font-bold text-lg mb-2 text-green-400">XGROUP</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label for="xgroup-name" class="block text-sm font-medium text-gray-400">Group Name</label>
+                                <input type="text" id="xgroup-name" value="mygroup" class="w-full p-2 rounded-md mt-1">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-400">Starting ID</label>
+                                <div class="mt-1 flex space-x-4">
+                                    <label class="flex items-center">
+                                        <input type="radio" id="xgroup-start-id-last" name="start-id" value="$" checked class="h-4 w-4 text-green-600 bg-gray-700 border-gray-600 focus:ring-green-500">
+                                        <span class="ml-2 text-sm">$</span>
+                                    </label>
+                                    <label class="flex items-center">
+                                        <input type="radio" id="xgroup-start-id-zero" name="start-id" value="0-0" class="h-4 w-4 text-green-600 bg-gray-700 border-gray-600 focus:ring-green-500">
+                                        <span class="ml-2 text-sm">0-0</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <button id="xgroup-create-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md">Create Group</button>
+                        </div>
+                    </div>
+                     <!-- XREADGROUP Command -->
+                    <div class="mb-6 p-4 border border-gray-700 rounded-lg">
+                        <h3 class="font-bold text-lg mb-2 text-yellow-400">XREADGROUP</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label for="xreadgroup-group" class="block text-sm font-medium text-gray-400">Group</label>
+                                <select id="xreadgroup-group" class="w-full p-2 rounded-md mt-1"></select>
+                            </div>
+                            <div>
+                                <label for="xreadgroup-consumer" class="block text-sm font-medium text-gray-400">Consumer</label>
+                                <input type="text" id="xreadgroup-consumer" value="consumer-1" class="w-full p-2 rounded-md mt-1">
+                            </div>
+                            <div class="flex items-center">
+                                <input type="checkbox" id="xreadgroup-noack" class="h-4 w-4 text-yellow-600 bg-gray-700 border-gray-600 focus:ring-yellow-500 rounded">
+                                <label for="xreadgroup-noack" class="ml-2 block text-sm text-gray-300">NOACK</label>
+                                 <div class="tooltip ml-2">
+                                    <span class="cursor-help">[?]</span>
+                                    <p class="tooltiptext">If checked, messages are delivered without being added to the Pending Entries List (PEL). This is faster but less reliable (at-most-once delivery). If a consumer fails, the message is lost.</p>
+                               </div>
+                            </div>
+                            <button id="xreadgroup-btn" class="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-md">Read</button>
+                        </div>
+                    </div>
+                    <!-- XACK Command -->
+                    <div class="p-4 border border-gray-700 rounded-lg">
+                        <h3 class="font-bold text-lg mb-2 text-red-400">XACK</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label for="xack-group" class="block text-sm font-medium text-gray-400">Group</label>
+                                <select id="xack-group" class="w-full p-2 rounded-md mt-1"></select>
+                            </div>
+                            <div>
+                                <label for="xack-consumer" class="block text-sm font-medium text-gray-400">Consumer</label>
+                                <select id="xack-consumer" class="w-full p-2 rounded-md mt-1"></select>
+                            </div>
+                            <div>
+                                <label for="xack-id" class="block text-sm font-medium text-gray-400">Message ID</label>
+                                <select id="xack-id" class="w-full p-2 rounded-md mt-1"></select>
+                            </div>
+                            <button id="xack-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md">Acknowledge</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Visualization Column -->
+            <div class="lg:col-span-3 space-y-8">
+                 <!-- Stream Visualization -->
+                <div>
+                    <h2 class="text-2xl font-semibold mb-4 flex items-center">
+                        Stream: <code class="ml-2 text-lg bg-gray-700 p-1 rounded">mystream</code>
+                        <span class="ml-4 text-sm text-gray-400" id="stream-stats">Length: 0, Last ID: 0-0</span>
+                    </h2>
+                    <div id="radix-tree-vis" class="p-4 bg-gray-800 rounded-lg space-y-4">
+                        <div class="flex justify-between items-center text-sm text-gray-400">
+                           <h3 class="font-bold text-lg text-gray-300">Radix Tree (rax)</h3>
+                           <div class="tooltip">
+                                <span class="cursor-help">[?]</span>
+                                <p class="tooltiptext">Redis Streams use a Radix Tree to index listpacks. Each node's key is the first Stream ID in its corresponding listpack. This allows for efficient seeking to a specific time range.</p>
+                           </div>
+                       </div>
+                    </div>
+                </div>
+
+                <!-- Consumer Groups Visualization -->
+                <div>
+                    <h2 class="text-2xl font-semibold mb-4">Consumer Groups</h2>
+                    <div id="consumer-groups-vis" class="p-4 bg-gray-800 rounded-lg space-y-4 min-h-[100px]">
+                        <p class="text-gray-500 text-center">No consumer groups yet. Use XGROUP CREATE.</p>
+                    </div>
+                </div>
+                
+                <!-- Log -->
+                <div>
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-2xl font-semibold">Simulation Log</h2>
+                        <button id="clear-log-btn" title="Clear Log" class="p-2 rounded-full hover:bg-gray-700 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-gray-400"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                        </button>
+                    </div>
+                    <div id="log" class="h-80 p-4 bg-gradient-to-b from-gray-900 to-gray-950 border border-gray-800 rounded-lg overflow-y-auto font-mono text-sm space-y-1">
+                        <p class="initial-log-msg text-gray-500">[...] Log will appear here...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- DATA STRUCTURES ---
+        // These classes mimic the C structs from t_stream.c and stream.h
+        
+        class StreamID {
+            constructor(ms, seq) {
+                this.ms = BigInt(ms);
+                this.seq = BigInt(seq);
+            }
+
+            toString() {
+                return `${this.ms}-${this.seq}`;
+            }
+
+            compare(other) {
+                if (this.ms > other.ms) return 1;
+                if (this.ms < other.ms) return -1;
+                if (this.seq > other.seq) return 1;
+                if (this.seq < other.seq) return -1;
+                return 0;
+            }
+        }
+
+        class StreamEntry {
+            constructor(id, fields) {
+                this.id = id;
+                this.fields = fields; // {field1: value1, ...}
+                this.flags = 0; // For SAMEFIELDS simulation
+                // Simulate the byte size of the entry. This is a rough approximation.
+                this.size = Object.entries(fields).reduce((acc, [k, v]) => acc + k.length + v.length, 0);
+            }
+        }
+
+        class Listpack {
+            constructor(masterId, masterFields) {
+                this.entries = [];
+                this.masterId = masterId;
+                this.masterFields = masterFields; // Array of field names
+                this.id = `lp-${masterId.toString()}`;
+                this.currentBytes = 0;
+            }
+        }
+
+        class RadixTree {
+            constructor() {
+                this.nodes = new Map(); // Key: streamID string, Value: Listpack
+            }
+
+            // Simplified: we just add listpacks in order
+            addListpack(listpack) {
+                this.nodes.set(listpack.masterId.toString(), listpack);
+            }
+            
+            getLastListpack() {
+                if (this.nodes.size === 0) return null;
+                return Array.from(this.nodes.values()).pop();
+            }
+        }
+        
+        class Consumer {
+            constructor(name) {
+                this.name = name;
+                this.pel = new Map(); // Key: streamID string, Value: NackEntry
+            }
+        }
+
+        class NackEntry {
+            constructor(consumer) {
+                this.consumer = consumer;
+                this.deliveryTime = Date.now();
+                this.deliveryCount = 1;
+            }
+        }
+
+        class ConsumerGroup {
+            constructor(name, startId) {
+                this.name = name;
+                this.lastId = startId;
+                this.pel = new Map(); // Global PEL for the group. Key: streamID string, Value: NackEntry
+                this.consumers = new Map();
+            }
+        }
+
+        class Stream {
+            constructor() {
+                this.rax = new RadixTree();
+                this.length = 0;
+                this.last_id = new StreamID(0, 0);
+                this.cgroups = new Map();
+                // Simulation-specific config, now read from inputs
+                this.node_max_entries = 5;
+                this.node_max_bytes = 100;
+            }
+        }
+
+        // --- GLOBAL STATE ---
+        let stream = new Stream();
+
+        // --- DOM ELEMENTS ---
+        const xaddBtn = document.getElementById('xadd-btn');
+        const xgroupCreateBtn = document.getElementById('xgroup-create-btn');
+        const xreadgroupBtn = document.getElementById('xreadgroup-btn');
+        const xackBtn = document.getElementById('xack-btn');
+        const xtrimBtn = document.getElementById('xtrim-btn');
+        const clearLogBtn = document.getElementById('clear-log-btn');
+        const resetAllBtn = document.getElementById('reset-all-btn');
+        const configMaxEntries = document.getElementById('config-max-entries');
+        const configMaxBytes = document.getElementById('config-max-bytes');
+        
+        // Tab elements
+        const tabBtnStream = document.getElementById('tab-btn-stream');
+        const tabBtnGroups = document.getElementById('tab-btn-groups');
+        const tabContentStream = document.getElementById('tab-content-stream');
+        const tabContentGroups = document.getElementById('tab-content-groups');
+
+        const radixTreeVis = document.getElementById('radix-tree-vis');
+        const consumerGroupsVis = document.getElementById('consumer-groups-vis');
+        const logContainer = document.getElementById('log');
+        const streamStatsEl = document.getElementById('stream-stats');
+
+        const xreadgroupGroupSelect = document.getElementById('xreadgroup-group');
+        const xackGroupSelect = document.getElementById('xack-group');
+        const xackConsumerSelect = document.getElementById('xack-consumer');
+        const xackIdSelect = document.getElementById('xack-id');
+
+
+        // --- LOGIC ---
+        function log(message) {
+            const now = new Date();
+            const timestamp = `[${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}]`;
+            
+            // Create new log entry element
+            const entry = document.createElement('div');
+            entry.className = 'log-entry'; // a class for potential future styling
+            entry.innerHTML = `<span class="text-gray-500">${timestamp}</span> <span class="text-gray-200">${message}</span>`;
+
+            // Insert at the top
+            logContainer.prepend(entry);
+
+            if (logContainer.children.length > 50) {
+                 logContainer.removeChild(logContainer.lastChild);
+            }
+            const initialMsg = logContainer.querySelector('.initial-log-msg');
+            if(initialMsg) {
+                initialMsg.remove();
+            }
+        }
+        
+        function highlightElement(elementId, duration = 2000) {
+            const el = document.getElementById(elementId);
+            if (el) {
+                el.classList.add('highlight');
+                setTimeout(() => el.classList.remove('highlight'), duration);
+            }
+        }
+        
+        function generateNextID(lastId) {
+            const ms = BigInt(Date.now());
+            if (ms > lastId.ms) {
+                return new StreamID(ms, 0);
+            } else {
+                return new StreamID(lastId.ms, lastId.seq + 1n);
+            }
+        }
+        
+        function arraysEqual(a, b) {
+            if (a === b) return true;
+            if (a == null || b == null) return false;
+            if (a.length !== b.length) return false;
+            for (var i = 0; i < a.length; ++i) {
+                if (a[i] !== b[i]) return false;
+            }
+            return true;
+        }
+
+        // --- UI RENDERING & DYNAMIC SELECTS ---
+
+        function updateXackGroupSelect() {
+            const currentVal = xackGroupSelect.value;
+            xackGroupSelect.innerHTML = '<option value="">Select Group</option>';
+            stream.cgroups.forEach(cg => {
+                if (cg.pel.size > 0) {
+                    const option = document.createElement('option');
+                    option.value = cg.name;
+                    option.textContent = cg.name;
+                    xackGroupSelect.appendChild(option);
+                }
+            });
+            // If the previously selected group still has an option in the list, keep it selected.
+            // Otherwise, reset to the placeholder.
+            if (xackGroupSelect.querySelector(`option[value="${currentVal}"]`)) {
+                xackGroupSelect.value = currentVal;
+            } else {
+                xackGroupSelect.value = "";
+            }
+            updateXackConsumerSelect();
+        }
+
+        function updateXackConsumerSelect() {
+            const groupName = xackGroupSelect.value;
+            const currentVal = xackConsumerSelect.value;
+            xackConsumerSelect.innerHTML = '<option value="">Select Consumer</option>';
+            const group = stream.cgroups.get(groupName);
+            if (group) {
+                group.consumers.forEach(consumer => {
+                    if (consumer.pel.size > 0) { // Only show consumers with pending messages
+                        const option = document.createElement('option');
+                        option.value = consumer.name;
+                        option.textContent = consumer.name;
+                        xackConsumerSelect.appendChild(option);
+                    }
+                });
+                if (xackConsumerSelect.querySelector(`option[value="${currentVal}"]`)) {
+                    xackConsumerSelect.value = currentVal;
+                } else {
+                    xackConsumerSelect.value = "";
+                }
+            }
+            updateXackIdSelect();
+        }
+
+        function updateXackIdSelect() {
+            const groupName = xackGroupSelect.value;
+            const consumerName = xackConsumerSelect.value;
+            xackIdSelect.innerHTML = '<option value="">Select Message ID</option>';
+            const group = stream.cgroups.get(groupName);
+            if (group) {
+                const consumer = group.consumers.get(consumerName);
+                if (consumer) {
+                    consumer.pel.forEach((nack, id) => {
+                        const option = document.createElement('option');
+                        option.value = id;
+                        option.textContent = id;
+                        xackIdSelect.appendChild(option);
+                    });
+                }
+            }
+            // Disable the button if no message ID is selected (i.e., the placeholder is selected).
+            xackBtn.disabled = xackIdSelect.value === "";
+        }
+
+        function render() {
+            // Render Radix Tree and Listpacks
+            radixTreeVis.innerHTML = `<div class="flex justify-between items-center text-sm text-gray-400">
+                           <h3 class="font-bold text-lg text-gray-300">Radix Tree (rax)</h3>
+                           <div class="tooltip">
+                                <span class="cursor-help">[?]</span>
+                                <p class="tooltiptext">Redis Streams use a Radix Tree to index listpacks. Each node's key is the first Stream ID in its corresponding listpack. This allows for efficient seeking to a specific time range.</p>
+                           </div>
+                       </div>`;
+            if (stream.rax.nodes.size === 0) {
+                radixTreeVis.innerHTML += '<p class="text-gray-500 text-center">Stream is empty. Use XADD to add entries.</p>';
+            } else {
+                stream.rax.nodes.forEach(listpack => {
+                    const lpElement = document.createElement('div');
+                    lpElement.className = 'listpack p-4 rounded-lg mt-2';
+                    lpElement.id = `vis-${listpack.id}`;
+                    
+                    const masterFieldsHtml = listpack.masterFields.map(f => `<span class="bg-blue-900 px-2 py-1 rounded-full text-xs">${f}</span>`).join(' ');
+                    const sizeLimit = stream.node_max_bytes > 0 ? ` / ${stream.node_max_bytes}b` : '';
+
+                    lpElement.innerHTML = `
+                        <div class="radix-node mb-2 p-2 rounded text-center">
+                            <strong>Radix Node Key:</strong> ${listpack.masterId.toString()}
+                        </div>
+                        <div class="flex justify-between items-center text-sm text-gray-300">
+                             <div>
+                                 <h4 class="font-semibold">Listpack (Master Fields: ${masterFieldsHtml})</h4>
+                                 <div class="text-xs text-gray-400">Entries: ${listpack.entries.length} / ${stream.node_max_entries} | Size: ${listpack.currentBytes}b${sizeLimit}</div>
+                             </div>
+                             <div class="tooltip">
+                                <span class="cursor-help">[?]</span>
+                                <p class="tooltiptext">Entries are stored in compressed listpacks. The first entry in a listpack is a "master entry" that stores field names. Subsequent entries with the same fields can omit them (SAMEFIELDS flag), saving space.</p>
+                           </div>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 mt-2">
+                            ${listpack.entries.map(entry => {
+                                const fieldsHtml = Object.entries(entry.fields).map(([k, v]) => `<div><strong class="text-gray-400">${k}:</strong> ${v}</div>`).join('');
+                                const sameFieldsFlag = entry.flags === 1 ? '<span class="text-purple-400 text-xs ml-2">[SAMEFIELDS]</span>' : '';
+                                return `
+                                    <div id="vis-entry-${entry.id.toString()}" class="stream-entry bg-gray-700 p-3 rounded-md">
+                                        <div class="font-mono text-sm text-yellow-300">${entry.id.toString()}${sameFieldsFlag}</div>
+                                        <div class="text-xs mt-1">${fieldsHtml}</div>
+                                        <button class="delete-entry-btn" data-id="${entry.id.toString()}" title="Delete Entry (XDEL)">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                        </button>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    `;
+                    radixTreeVis.appendChild(lpElement);
+                });
+            }
+
+            // Render Consumer Groups
+            consumerGroupsVis.innerHTML = '';
+            if (stream.cgroups.size === 0) {
+                consumerGroupsVis.innerHTML = '<p class="text-gray-500 text-center">No consumer groups yet. Use XGROUP CREATE.</p>';
+            } else {
+                stream.cgroups.forEach(cg => {
+                    const cgElement = document.createElement('div');
+                    cgElement.className = 'consumer-group p-4 rounded-lg';
+                    cgElement.id = `vis-cg-${cg.name}`;
+                    
+                    const consumersHtml = Array.from(cg.consumers.values()).map(consumer => {
+                         const pelHtml = Array.from(consumer.pel.entries()).map(([id, nack]) => `
+                            <div id="vis-pel-${cg.name}-${consumer.name}-${id}" class="pel-entry bg-gray-800 p-2 rounded mt-1">
+                                ID: ${id}, Count: ${nack.deliveryCount}
+                            </div>
+                         `).join('');
+
+                        return `
+                            <div id="vis-consumer-${cg.name}-${consumer.name}" class="consumer bg-gray-700 p-3 rounded-md">
+                                <h5 class="font-semibold">${consumer.name}</h5>
+                                <div class="text-xs mt-2">
+                                    <strong>Consumer PEL:</strong> ${consumer.pel.size}
+                                    <div class="mt-1 space-y-1">${pelHtml || '<p class="text-gray-500 text-xs">Empty</p>'}</div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    const globalPelHtml = Array.from(cg.pel.entries()).map(([id, nack]) => `
+                        <div id="vis-gpel-${cg.name}-${id}" class="pel-entry bg-gray-900 p-2 rounded mt-1 text-xs">
+                           <strong class="text-yellow-400">${id}</strong> &rarr; Owner: <span class="text-cyan-400">${nack.consumer.name}</span>, Count: ${nack.deliveryCount}
+                        </div>
+                    `).join('');
+
+                    cgElement.innerHTML = `
+                        <h3 class="font-bold text-lg">${cg.name}</h3>
+                        <p class="text-sm text-gray-400">Last Delivered ID: <span class="font-mono">${cg.lastId.toString()}</span></p>
+                        
+                        <div class="mt-3">
+                            <h4 class="font-semibold text-sm text-gray-300">Group's Global PEL (${cg.pel.size} total pending)</h4>
+                            <div class="mt-1 space-y-1">${globalPelHtml || '<p class="text-gray-500 text-xs">Group PEL is empty.</p>'}</div>
+                        </div>
+
+                        <h4 class="font-semibold text-sm text-gray-300 mt-4">Consumers</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">
+                            ${consumersHtml || '<p class="text-gray-500 col-span-2 text-xs">No consumers in this group yet.</p>'}
+                        </div>
+                    `;
+                    consumerGroupsVis.appendChild(cgElement);
+                });
+            }
+            
+            // Update stream stats
+            streamStatsEl.textContent = `Length: ${stream.length}, Last ID: ${stream.last_id.toString()}`;
+            
+            // Update group dropdowns
+            const currentReadGroupVal = xreadgroupGroupSelect.value;
+            xreadgroupGroupSelect.innerHTML = '';
+            if (stream.cgroups.size === 0) {
+                const option = document.createElement('option');
+                option.textContent = 'No groups created yet';
+                option.disabled = true;
+                xreadgroupGroupSelect.appendChild(option);
+            } else {
+                stream.cgroups.forEach(cg => {
+                    const option = document.createElement('option');
+                    option.value = cg.name;
+                    option.textContent = cg.name;
+                    xreadgroupGroupSelect.appendChild(option);
+                });
+                if (Array.from(stream.cgroups.keys()).includes(currentReadGroupVal)) {
+                    xreadgroupGroupSelect.value = currentReadGroupVal;
+                }
+            }
+            xreadgroupBtn.disabled = stream.cgroups.size === 0;
+
+            // ... (rest of render function is unchanged)
+            xreadgroupBtn.disabled = stream.cgroups.size === 0;
+
+            // This was missing. Refresh the XACK dropdowns every time the state changes.
+            updateXackGroupSelect();
+        }
+
+        // --- COMMAND HANDLERS ---
+        function handleXADD() {
+            const field = document.getElementById('xadd-field').value || 'field';
+            const value = document.getElementById('xadd-value').value || 'value';
+            
+            const newId = generateNextID(stream.last_id);
+            const fields = { [field]: value };
+            const newEntry = new StreamEntry(newId, fields);
+            
+            let lastLp = stream.rax.getLastListpack();
+            
+            const isFullByEntries = lastLp && lastLp.entries.length >= stream.node_max_entries;
+            const isFullByBytes = lastLp && stream.node_max_bytes > 0 && (lastLp.currentBytes + newEntry.size > stream.node_max_bytes);
+
+            if (!lastLp || isFullByEntries || isFullByBytes) {
+                let reason = !lastLp ? "stream is new" : (isFullByEntries ? `entry limit (${stream.node_max_entries}) reached` : `byte limit (${stream.node_max_bytes}) would be exceeded`);
+                log(`Creating new listpack because ${reason}. Master ID: ${newId.toString()}`);
+                const masterFields = Object.keys(fields);
+                lastLp = new Listpack(newId, masterFields);
+                stream.rax.addListpack(lastLp);
+                newEntry.flags = 1; // SAMEFIELDS
+            } else {
+                // Check for SAMEFIELDS flag
+                 const masterFields = lastLp.masterFields;
+                 const currentFields = Object.keys(fields);
+                 if (arraysEqual(masterFields, currentFields)) {
+                     newEntry.flags = 1; // STREAM_ITEM_FLAG_SAMEFIELDS
+                     log(`Entry has same fields as master entry. Setting SAMEFIELDS flag.`);
+                 } else {
+                     log(`Entry has different fields than master. Not setting SAMEFIELDS flag.`);
+                 }
+            }
+
+            lastLp.entries.push(newEntry);
+            lastLp.currentBytes += newEntry.size;
+            stream.length++;
+            stream.last_id = newId;
+            
+            log(`XADD mystream ${newId.toString()} ${field} ${value}`);
+            render();
+            
+            highlightElement(`vis-entry-${newId.toString()}`);
+            highlightElement(`vis-${lastLp.id}`, 2500);
+        }
+
+        function handleXGroupCreate() {
+            const groupName = document.getElementById('xgroup-name').value;
+            if (!groupName) {
+                alert('Group name is required.');
+                return;
+            }
+            if (stream.cgroups.has(groupName)) {
+                log(`Error: Consumer group '${groupName}' already exists.`);
+                alert(`Consumer group '${groupName}' already exists.`);
+                return;
+            }
+
+            const startIdOption = document.querySelector('input[name="start-id"]:checked').value;
+            let startId;
+
+            if (startIdOption === '$') {
+                startId = stream.last_id;
+            } else { // '0-0'
+                startId = new StreamID(0, 0);
+            }
+            
+            const newGroup = new ConsumerGroup(groupName, startId);
+            stream.cgroups.set(groupName, newGroup);
+
+            log(`XGROUP CREATE mystream ${groupName} ${startIdOption}`);
+            render();
+            highlightElement(`vis-cg-${groupName}`);
+        }
+
+        function handleXReadGroup() {
+            const groupName = xreadgroupGroupSelect.value;
+            const consumerName = document.getElementById('xreadgroup-consumer').value;
+
+            if (!groupName || !consumerName) {
+                alert('Group and Consumer names are required.');
+                return;
+            }
+            
+            const group = stream.cgroups.get(groupName);
+            if (!group) {
+                log(`Error: Group '${groupName}' not found.`);
+                return;
+            }
+            
+            if (!group.consumers.has(consumerName)) {
+                log(`Creating new consumer '${consumerName}' in group '${groupName}'.`);
+                group.consumers.set(consumerName, new Consumer(consumerName));
+            }
+            
+            const consumer = group.consumers.get(consumerName);
+            const noack = document.getElementById('xreadgroup-noack').checked;
+
+            let entriesToRead = [];
+            let lastSeenId = group.lastId;
+            let startFound = stream.length === 0 || lastSeenId.compare(new StreamID(0,0)) === 0;
+
+            for (const lp of stream.rax.nodes.values()) {
+                for (const entry of lp.entries) {
+                    // We read messages with IDs > lastSeenId.
+                    // The PEL check is an additional safeguard for the ACK model.
+                    if (entry.id.compare(lastSeenId) > 0) {
+                         if (noack || !group.pel.has(entry.id.toString())) {
+                            entriesToRead.push(entry);
+                         }
+                    }
+                }
+            }
+            
+            if (entriesToRead.length > 0) {
+                const entry = entriesToRead[0]; // Read one at a time for simplicity
+                
+                // Update group's last delivered ID regardless of ACK model
+                group.lastId = entry.id;
+
+                if (noack) {
+                    // NOACK: Just update lastId (done above) and log. No PEL interaction.
+                    log(`XREADGROUP (NOACK): Delivered ${entry.id.toString()} to ${consumerName}. Message will not be tracked.`);
+                    render();
+                    highlightElement(`vis-entry-${entry.id.toString()}`);
+                    highlightElement(`vis-consumer-${groupName}-${consumerName}`);
+                } else {
+                    // ACK (default): Create NACK and add to PELs.
+                    const nack = new NackEntry(consumer);
+                    group.pel.set(entry.id.toString(), nack);
+                    consumer.pel.set(entry.id.toString(), nack);
+                    
+                    log(`XREADGROUP delivered ${entry.id.toString()} to ${consumerName}. Added to PEL.`);
+                    render();
+                    
+                    highlightElement(`vis-entry-${entry.id.toString()}`);
+                    highlightElement(`vis-consumer-${groupName}-${consumerName}`);
+                    highlightElement(`vis-gpel-${groupName}-${entry.id.toString()}`, 3000);
+                }
+            } else {
+                log(`XREADGROUP: No new messages for group '${groupName}'.`);
+            }
+        }
+        
+        function handleXACK() {
+            const groupName = xackGroupSelect.value;
+            const consumerName = xackConsumerSelect.value;
+            const messageId = xackIdSelect.value;
+            
+            // Store the current index before making changes
+            const previousIndex = xackIdSelect.selectedIndex;
+
+            if (!groupName || !consumerName || !messageId) {
+                alert('Please select a group, consumer, and message ID to acknowledge.');
+                return;
+            }
+
+            const group = stream.cgroups.get(groupName);
+            const consumer = group ? group.consumers.get(consumerName) : null;
+
+            if (!group || !consumer) {
+                log(`Error: Could not find group or consumer for XACK.`);
+                return;
+            }
+            
+            if(group.pel.has(messageId) && consumer.pel.has(messageId)) {
+                group.pel.delete(messageId);
+                consumer.pel.delete(messageId);
+                log(`XACK: Consumer '${consumerName}' acknowledged message ${messageId}. Removed from PEL.`);
+            } else {
+                 log(`Error: Message ${messageId} not found in PEL for consumer '${consumerName}'.`);
+            }
+
+            render();
+
+            // After rendering, if there are still messages, select the next one.
+            if (xackIdSelect.options.length > 1) { // More than just the placeholder
+                // Clamp the index to be within the new bounds of the options list.
+                // This handles deleting the last item correctly.
+                const newIndex = Math.min(previousIndex, xackIdSelect.options.length - 1);
+                xackIdSelect.selectedIndex = newIndex;
+            }
+            
+            // Finally, re-evaluate if the button should be disabled based on the new selection.
+            xackBtn.disabled = xackIdSelect.value === "";
+        }
+
+        function handleXDEL(idString) {
+            let deleted = false;
+            let listpackToDelete = null;
+            let masterIdToDelete = null;
+
+            for (const [masterId, lp] of stream.rax.nodes.entries()) {
+                const entryIndex = lp.entries.findIndex(e => e.id.toString() === idString);
+                if (entryIndex !== -1) {
+                    const [removedEntry] = lp.entries.splice(entryIndex, 1);
+                    lp.currentBytes -= removedEntry.size;
+                    stream.length--;
+                    deleted = true;
+                    log(`XDEL: Deleted entry ${idString} from stream.`);
+                    cleanupPelForDeletedIds([removedEntry.id]);
+
+                    if (lp.entries.length === 0) {
+                        listpackToDelete = lp;
+                        masterIdToDelete = masterId;
+                    }
+                    break;
+                }
+            }
+            
+            if (listpackToDelete) {
+                stream.rax.nodes.delete(masterIdToDelete);
+                log(`Listpack ${listpackToDelete.id} is now empty and has been removed from the radix tree.`);
+            }
+
+            if (deleted) {
+                render();
+            } else {
+                log(`XDEL Error: Entry ${idString} not found.`);
+            }
+        }
+        
+        function handleXTRIM() {
+            const strategy = document.querySelector('input[name="xtrim-strategy"]:checked').value;
+            const valueStr = document.getElementById('xtrim-value').value;
+            const approx = document.getElementById('xtrim-approx').checked;
+
+            let deletedCount = 0;
+            let deletedIds = [];
+
+            if (strategy === 'MAXLEN') {
+                const maxlen = parseInt(valueStr, 10);
+                if (isNaN(maxlen) || maxlen < 0) {
+                    alert('Invalid MAXLEN count. Must be a non-negative number.');
+                    return;
+                }
+                log(`XTRIM mystream MAXLEN ${approx ? '~' : ''} ${maxlen}`);
+                deletedIds = performTrimMaxlen(maxlen, approx);
+            } else { // MINID
+                try {
+                    const parts = valueStr.split('-');
+                    if(parts.length !== 2) throw new Error();
+                    const minid = new StreamID(parts[0], parts[1]);
+                    log(`XTRIM mystream MINID ${approx ? '~' : ''} ${minid.toString()}`);
+                    deletedIds = performTrimMinid(minid, approx);
+                } catch (e) {
+                    alert('Invalid MINID format. Use "ms-seq", e.g., "1678886400000-0".');
+                    return;
+                }
+            }
+            
+            if (deletedIds.length > 0) {
+                cleanupPelForDeletedIds(deletedIds);
+            }
+
+            log(`XTRIM operation completed. Deleted ${deletedIds.length} entries.`);
+            render();
+        }
+
+        function performTrimMaxlen(maxlen, approx) {
+            let toDelete = stream.length - maxlen;
+            if (toDelete <= 0) return [];
+
+            let allDeletedIds = [];
+            const listpackEntries = Array.from(stream.rax.nodes.entries());
+
+            for (const [masterId, lp] of listpackEntries) {
+                if (toDelete <= 0) break;
+
+                const entriesInLp = lp.entries.length;
+                if (approx && toDelete < entriesInLp) {
+                    log(`Approximate trim: ${toDelete} entries to delete is less than entries in listpack (${entriesInLp}). Stopping.`);
+                    break; 
+                }
+
+                if (toDelete >= entriesInLp) {
+                    const deletedIds = lp.entries.map(e => e.id);
+                    allDeletedIds.push(...deletedIds);
+                    toDelete -= entriesInLp;
+                    stream.length -= entriesInLp;
+                    stream.rax.nodes.delete(masterId);
+                    log(`Deleted entire listpack with master ID ${masterId} (${entriesInLp} entries).`);
+                } else {
+                    const removed = lp.entries.splice(0, toDelete);
+                    const deletedIds = removed.map(e => e.id);
+                    allDeletedIds.push(...deletedIds);
+                    stream.length -= removed.length;
+                    
+                    lp.currentBytes = lp.entries.reduce((acc, entry) => acc + entry.size, 0);
+                    log(`Deleted ${removed.length} entries from listpack ${masterId}.`);
+                    toDelete = 0;
+                }
+            }
+            return allDeletedIds;
+        }
+
+        function performTrimMinid(minid, approx) {
+            let allDeletedIds = [];
+            const listpackEntries = Array.from(stream.rax.nodes.entries());
+
+            for (const [masterId, lp] of listpackEntries) {
+                const lastEntryInLp = lp.entries[lp.entries.length - 1];
+                if (!lastEntryInLp) continue;
+
+                if (lastEntryInLp.id.compare(minid) < 0) {
+                    const deletedIds = lp.entries.map(e => e.id);
+                    allDeletedIds.push(...deletedIds);
+                    stream.length -= lp.entries.length;
+                    stream.rax.nodes.delete(masterId);
+                    log(`Deleted entire listpack with master ID ${masterId} as all entries were before MINID.`);
+                    continue;
+                }
+
+                if (approx) {
+                    log(`Approximate trim: Listpack ${masterId} contains entries >= MINID. Stopping.`);
+                    break;
+                }
+
+                let entriesToDelete = 0;
+                for (const entry of lp.entries) {
+                    if (entry.id.compare(minid) < 0) {
+                        entriesToDelete++;
+                    } else {
+                        break; 
+                    }
+                }
+
+                if (entriesToDelete > 0) {
+                    const removed = lp.entries.splice(0, entriesToDelete);
+                    const deletedIds = removed.map(e => e.id);
+                    allDeletedIds.push(...deletedIds);
+                    stream.length -= removed.length;
+                    
+                    lp.currentBytes = lp.entries.reduce((acc, entry) => acc + entry.size, 0);
+                    log(`Deleted ${removed.length} entries from listpack ${masterId}.`);
+                }
+                
+                if (entriesToDelete < lp.entries.length + removed.length) {
+                     break;
+                }
+            }
+            return allDeletedIds;
+        }
+        
+        function cleanupPelForDeletedIds(deletedIds) {
+            if (deletedIds.length === 0) return;
+            const deletedIdSet = new Set(deletedIds.map(id => id.toString()));
+            let totalCleaned = 0;
+            stream.cgroups.forEach(group => {
+                let cleanedInGroup = 0;
+                deletedIdSet.forEach(idStr => {
+                    if (group.pel.has(idStr)) {
+                        const nack = group.pel.get(idStr);
+                        nack.consumer.pel.delete(idStr);
+                        group.pel.delete(idStr);
+                        cleanedInGroup++;
+                    }
+                });
+                if(cleanedInGroup > 0) {
+                    log(`Cleaned up ${cleanedInGroup} deleted entries from PEL of group '${group.name}'.`);
+                    totalCleaned += cleanedInGroup;
+                }
+            });
+            return totalCleaned > 0;
+        }
+
+        function handleClearLog() {
+            logContainer.innerHTML = '<p class="initial-log-msg text-gray-500">[...] Log cleared.</p>';
+        }
+
+        function handleResetAll() {
+            stream = new Stream(); // Re-instantiate the stream object
+            
+            // Reset config inputs to their default values
+            configMaxEntries.value = '5';
+            configMaxBytes.value = '100';
+            stream.node_max_entries = 5;
+            stream.node_max_bytes = 100;
+
+            // Reset command inputs
+            document.getElementById('xadd-field').value = 'message';
+            document.getElementById('xadd-value').value = 'hello';
+            document.getElementById('xgroup-name').value = 'mygroup';
+            document.getElementById('xreadgroup-consumer').value = 'consumer-1';
+            document.getElementById('xgroup-start-id-last').checked = true;
+            document.getElementById('xreadgroup-noack').checked = false;
+            document.getElementById('xtrim-strategy-maxlen').checked = true;
+            document.getElementById('xtrim-value').value = '3';
+            document.getElementById('xtrim-approx').checked = false;
+            
+            // Rerender the entire UI
+            render();
+
+            // Clear the log and add a reset message
+            logContainer.innerHTML = '<p class="initial-log-msg text-gray-500">[...] Log will appear here...</p>';
+            log("Simulation reset to initial state.");
+        }
+
+        // --- EVENT LISTENERS ---
+        xaddBtn.addEventListener('click', handleXADD);
+        xgroupCreateBtn.addEventListener('click', handleXGroupCreate);
+        xreadgroupBtn.addEventListener('click', handleXReadGroup);
+        xackBtn.addEventListener('click', handleXACK);
+        xtrimBtn.addEventListener('click', handleXTRIM);
+        clearLogBtn.addEventListener('click', handleClearLog);
+        resetAllBtn.addEventListener('click', handleResetAll);
+
+        // Tab switching logic
+        tabBtnStream.addEventListener('click', () => {
+            tabBtnStream.classList.add('active');
+            tabBtnGroups.classList.remove('active');
+            tabContentStream.classList.remove('hidden');
+            tabContentGroups.classList.add('hidden');
+        });
+
+        tabBtnGroups.addEventListener('click', () => {
+            tabBtnGroups.classList.add('active');
+            tabBtnStream.classList.remove('active');
+            tabContentGroups.classList.remove('hidden');
+            tabContentStream.classList.add('hidden');
+        });
+
+        configMaxEntries.addEventListener('change', (e) => {
+            stream.node_max_entries = parseInt(e.target.value, 10);
+            log(`Configuration changed: stream-node-max-entries set to ${stream.node_max_entries}`);
+            render();
+        });
+
+        configMaxBytes.addEventListener('change', (e) => {
+            stream.node_max_bytes = parseInt(e.target.value, 10);
+             log(`Configuration changed: stream-node-max-bytes set to ${stream.node_max_bytes}`);
+            render();
+        });
+
+        radixTreeVis.addEventListener('click', (e) => {
+            const deleteBtn = e.target.closest('.delete-entry-btn');
+            if (deleteBtn) {
+                const idString = deleteBtn.dataset.id;
+                handleXDEL(idString);
+            }
+        });
+
+        xackGroupSelect.addEventListener('change', updateXackConsumerSelect);
+        xackConsumerSelect.addEventListener('change', updateXackIdSelect);
+        xackIdSelect.addEventListener('change', () => {
+            // Explicitly enable/disable the button when the user makes a selection.
+            xackBtn.disabled = xackIdSelect.value === "";
+        });
+
+
+        // --- INITIAL RENDER ---
+        stream.node_max_entries = parseInt(configMaxEntries.value, 10);
+        stream.node_max_bytes = parseInt(configMaxBytes.value, 10);
+        render();
+        log("Visualization initialized. Add entries or create consumer groups to begin.");
+    });
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
