@@ -143,7 +143,7 @@
                 <div class="lg:col-span-3 grid grid-cols-1 lg:grid-cols-3 gap-x-6 gap-y-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-300 mb-1">Key Patterns</label>
-                        <p class="text-xs text-gray-500 mb-2">Hint: `~`, `%R~` (read), `%W~` (write)</p>
+                        <p class="text-xs text-gray-500 mb-2" title="`~app` = exact match. `~app:*` = prefix match.">Hint: `~` (r/w), `%R~` (read), `%W~` (write)</p>
                         <textarea id="builder-keys" rows="5" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm transition-colors" placeholder="~app:*&#10;%R~log:*"></textarea>
                         <p id="builder-keys-error" class="text-xs text-red-400 mt-1 h-4"></p>
                     </div>
@@ -606,7 +606,10 @@
                 logMessage(`(nil)`, 'data');
                 return;
             }
+            logUserDetails(user);
+        }
 
+        function logUserDetails(user) {
             logMessage('flags:', 'data-title');
             const flags = Object.entries(user.flags).filter(([,v])=>v).map(([k])=>k);
             logMessage(`  ${flags.join(' ')}`, 'data');
@@ -850,7 +853,10 @@
                             <span class="w-3 h-3 rounded-full ${statusColor} mr-3"></span>
                             <span class="font-bold text-lg text-white">${user.name}</span>
                         </div>
-                        <div>
+                        <div class="flex items-center">
+                             <button class="text-gray-400 hover:text-white mr-2 view-btn" data-user="${user.name}" title="View Details">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                             </button>
                              <button class="text-xs text-blue-400 hover:underline edit-btn" data-user="${user.name}">Edit</button>
                              ${user.name !== 'default' ? `<button class="text-xs text-red-400 hover:underline ml-2 deluser-btn" data-user="${user.name}">Delete</button>` : ''}
                         </div>
@@ -1074,21 +1080,24 @@
             const allButton = categorySelectorGrid.querySelector(`[data-category="@all"]`);
 
             categorySelectorGrid.querySelectorAll('.category-button').forEach(btn => {
-                if (btn === allButton) return;
+                if (btn === allButton) {
+                     btn.disabled = false;
+                     btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                     return;
+                }
                 
                 const category = btn.dataset.category;
-                const currentState = categoryStates[category];
 
-                // If +@all is on, any other + rule is redundant. Reset it.
-                if (allState === '+' && currentState === '+') {
-                    categoryStates[category] = 'default';
+                if (allState !== 'default') {
+                    if (allState === '+' && categoryStates[category] === '+') {
+                        categoryStates[category] = 'default';
+                        updateCategoryButtonVisual(btn, 'default');
+                    }
+                    if (allState === '-' && categoryStates[category] === '-') {
+                        categoryStates[category] = 'default';
+                        updateCategoryButtonVisual(btn, 'default');
+                    }
                 }
-                // If -@all is on, any other - rule is redundant. Reset it.
-                if (allState === '-' && currentState === '-') {
-                    categoryStates[category] = 'default';
-                }
-                
-                updateCategoryButtonVisual(btn, categoryStates[category]);
             });
         }
 
@@ -1125,8 +1134,7 @@
                     updateCategoryButtonVisual(button, nextState);
                     
                     if (category === '@all') {
-                        // If @all changed, clean up other buttons and update their UI
-                        updateCategoryGridInteractivity(); 
+                         updateCategoryGridInteractivity(); 
                     }
 
                     generateAclString();
@@ -1169,13 +1177,26 @@
         });
 
         userListDiv.addEventListener('click', (e) => {
-            if (e.target.matches('.edit-btn')) {
-                const username = e.target.dataset.user;
+            const button = e.target.closest('button');
+            if (!button) return;
+
+            if (button.matches('.edit-btn')) {
+                const username = button.dataset.user;
                 populateBuilderFromUser(username);
             }
-            if (e.target.matches('.deluser-btn')) {
-                const username = e.target.dataset.user;
+            if (button.matches('.deluser-btn')) {
+                const username = button.dataset.user;
                 processACLCommand(`acl deluser ${username}`);
+            }
+            if (button.matches('.view-btn')) {
+                const username = button.dataset.user;
+                logMessage(`> Viewing details for user '${username}'`, 'info');
+                const user = Users.get(username);
+                if (user) {
+                    logUserDetails(user);
+                } else {
+                    logMessage(`User '${username}' not found.`, 'error');
+                }
             }
         });
 
@@ -1201,7 +1222,10 @@
             createDefaultUser();
             logMessage('Redis ACL Simulator Initialized.', 'success');
             logMessage('Use the builder below to create users, or type ACL commands directly.', 'info');
-            processACLCommand("acl SETUSER worker on +@read +@list ~app:* ~log:* -@dangerous >samplepassword");
+            
+            const workerSetup = `acl SETUSER worker on -@all +@list +@string +@hash -@dangerous -@admin ~queues:* %R~config:global:* %W~logs:worker:* &worker-notifications >samplepassword`;
+            processACLCommand(workerSetup);
+
             updateUI();
             generateAclString();
         }
