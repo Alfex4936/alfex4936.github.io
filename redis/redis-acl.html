@@ -36,12 +36,11 @@
             transform: translateY(-2px);
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
         }
-        /* Styles for the autocomplete dropdown */
-        .autocomplete-item:hover {
-            background-color: #4b5563;
+        .category-button {
+            transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out, opacity 0.2s ease-in-out;
         }
-        .autocomplete-highlight {
-            background-color: #2563eb; /* A strong blue for keyboard selection */
+        .category-button:active {
+            transform: scale(0.95);
         }
     </style>
 </head>
@@ -118,7 +117,8 @@
                     Reset
                 </button>
             </div>
-            <div id="command-builder" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div id="command-builder" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
+                <!-- Column 1: User Details -->
                 <div class="space-y-4">
                     <div>
                         <label for="builder-username" class="block text-sm font-medium text-gray-300 mb-1">Username</label>
@@ -127,7 +127,6 @@
                     
                     <div>
                         <label for="builder-passwords" class="block text-sm font-medium text-gray-300 mb-1">Passwords (one per line)</label>
-                        <p class="text-xs text-gray-500 mb-2">Hint: Adds passwords using the `>password` syntax. Leave blank for none.</p>
                         <textarea id="builder-passwords" rows="2" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm transition-colors" placeholder="your-secure-password"></textarea>
                     </div>
 
@@ -140,29 +139,39 @@
                     </div>
                 </div>
                 
-                <div class="relative">
-                    <label for="builder-commands" class="block text-sm font-medium text-gray-300 mb-1">Command Rules</label>
-                    <p class="text-xs text-gray-500 mb-2">Hint: Use `+` to add, `-` to remove. Use `@` for categories. E.g., `+get`, `-@dangerous`</p>
-                    <textarea id="builder-commands" rows="5" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm transition-colors" placeholder="+@read&#10;-@dangerous&#10;+get"></textarea>
-                    <p id="builder-commands-error" class="text-xs text-red-400 mt-1 h-4"></p>
-                    <div id="category-autocomplete" class="hidden absolute z-10 w-full bg-gray-900 border border-gray-600 rounded-md shadow-lg max-h-48 overflow-y-auto"></div>
-                    <div id="category-hint" class="hidden absolute z-10 w-full bg-blue-900/80 backdrop-blur-sm border border-blue-700 rounded-md p-2 mt-1 text-xs text-blue-200"></div>
-                </div>
-                
-                <div>
-                    <label for="builder-keys" class="block text-sm font-medium text-gray-300 mb-1">Key Patterns</label>
-                    <p class="text-xs text-gray-500 mb-2">Hint: Use `~` for all permissions, `%R~` for read-only, `%W~` for write-only. E.g., `~user:*`</p>
-                    <textarea id="builder-keys" rows="5" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm transition-colors" placeholder="~app:*&#10;%R~log:*"></textarea>
-                    <p id="builder-keys-error" class="text-xs text-red-400 mt-1 h-4"></p>
+                <!-- Column 2: Categories -->
+                <div class="lg:col-span-3 grid grid-cols-1 lg:grid-cols-3 gap-x-6 gap-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-1">Key Patterns</label>
+                        <p class="text-xs text-gray-500 mb-2">Hint: `~`, `%R~` (read), `%W~` (write)</p>
+                        <textarea id="builder-keys" rows="5" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm transition-colors" placeholder="~app:*&#10;%R~log:*"></textarea>
+                        <p id="builder-keys-error" class="text-xs text-red-400 mt-1 h-4"></p>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-1">Channel Patterns</label>
+                        <p class="text-xs text-gray-500 mb-2">Hint: Use `&amp;` prefix. E.g., `&amp;notifications:*`</p>
+                        <textarea id="builder-channels" rows="5" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm transition-colors" placeholder="&news:*"></textarea>
+                        <p id="builder-channels-error" class="text-xs text-red-400 mt-1 h-4"></p>
+                    </div>
+
+                    <div>
+                        <label for="builder-specific-commands" class="block text-sm font-medium text-gray-300 mb-1">Specific Command Overrides</label>
+                        <p class="text-xs text-gray-500 mb-2">Hint: For non-category rules. E.g., `+get`</p>
+                        <textarea id="builder-specific-commands" rows="5" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm transition-colors" placeholder="+auth&#10;-config|set"></textarea>
+                        <p id="builder-specific-commands-error" class="text-xs text-red-400 mt-1 h-4"></p>
+                    </div>
                 </div>
 
-                <div>
-                    <label for="builder-channels" class="block text-sm font-medium text-gray-300 mb-1">Channel Patterns</label>
-                    <p class="text-xs text-gray-500 mb-2">Hint: Only use `&amp;` to prefix channel patterns. E.g., `&amp;notifications:*`</p>
-                    <textarea id="builder-channels" rows="5" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm transition-colors" placeholder="&news:*"></textarea>
-                    <p id="builder-channels-error" class="text-xs text-red-400 mt-1 h-4"></p>
+                <!-- Category Selector Grid -->
+                <div class="md:col-span-2 lg:col-span-4">
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Category Rules</label>
+                    <div id="category-selector-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                        <!-- Category buttons will be injected here -->
+                    </div>
                 </div>
                 
+                <!-- Generated Command Output -->
                 <div class="md:col-span-2 lg:col-span-4 border-t border-gray-700 pt-4 space-y-3">
                      <label for="builder-output" class="block text-sm font-medium text-gray-300 mb-1">Generated Command</label>
                      <div class="flex space-x-2">
@@ -763,7 +772,7 @@
         }
         // --- END: ACL SIMULATOR CORE LOGIC ---
 
-        // --- START: UI MANAGEMENT ---
+        // --- START: UI MANAGEMENT & STATE---
         const commandInput = document.getElementById('acl-command-input');
         const runBtn = document.getElementById('run-command-btn');
         const dryRunUserSelect = document.getElementById('dryrun-user-select');
@@ -778,20 +787,21 @@
         const builderFlagOn = document.getElementById('builder-flag-on');
         const builderFlagNopass = document.getElementById('builder-flag-nopass');
         const builderPasswords = document.getElementById('builder-passwords');
-        const builderCommands = document.getElementById('builder-commands');
         const builderKeys = document.getElementById('builder-keys');
         const builderChannels = document.getElementById('builder-channels');
+        const builderSpecificCommands = document.getElementById('builder-specific-commands');
         const builderOutput = document.getElementById('builder-output');
         const builderCopyBtn = document.getElementById('builder-copy-btn');
         const builderUseBtn = document.getElementById('builder-use-btn');
         const builderResetBtn = document.getElementById('builder-reset-btn');
         const commandBuilderContainer = document.getElementById('command-builder');
-        const categoryAutocomplete = document.getElementById('category-autocomplete');
-        const categoryHint = document.getElementById('category-hint');
-        const builderCommandsError = document.getElementById('builder-commands-error');
+        const categorySelectorGrid = document.getElementById('category-selector-grid');
+        
         const builderKeysError = document.getElementById('builder-keys-error');
         const builderChannelsError = document.getElementById('builder-channels-error');
-        let highlightedAutocompleteIndex = -1;
+        const builderSpecificCommandsError = document.getElementById('builder-specific-commands-error');
+        
+        let categoryStates = {};
 
         function logMessage(message, type = 'info') {
             const p = document.createElement('p');
@@ -869,51 +879,46 @@
             updateUserList();
             updateDryRunSelect();
         }
-
+        // --- END: UI MANAGEMENT & STATE---
+        
         // --- START: COMMAND BUILDER LOGIC & VALIDATION ---
         function validateBuilderInputs() {
             let isValid = true;
-
-            // Reset states
-            [builderCommands, builderKeys, builderChannels].forEach(el => {
+            
+            [builderKeys, builderChannels, builderSpecificCommands].forEach(el => {
                 el.classList.remove('border-red-500', 'focus:ring-red-500');
                 el.classList.add('border-gray-700', 'focus:ring-red-500');
             });
-            [builderCommandsError, builderKeysError, builderChannelsError].forEach(el => {
-                el.textContent = '';
-            });
+            [builderKeysError, builderChannelsError, builderSpecificCommandsError].forEach(el => el.textContent = '');
 
-            // Validate Command Rules
-            const commandRules = builderCommands.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
-            for (const rule of commandRules) {
-                if (!rule.startsWith('+') && !rule.startsWith('-')) {
-                    builderCommands.classList.add('border-red-500', 'focus:ring-red-500');
-                    builderCommands.classList.remove('border-gray-700');
-                    builderCommandsError.textContent = `Rule "${rule}" must start with + or -.`;
-                    isValid = false;
-                    break;
-                }
-            }
-
-            // Validate Key Patterns
             const keyPatterns = builderKeys.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
             for (const pattern of keyPatterns) {
                 if (!pattern.startsWith('~') && !pattern.startsWith('%R~') && !pattern.startsWith('%W~')) {
                     builderKeys.classList.add('border-red-500', 'focus:ring-red-500');
                     builderKeys.classList.remove('border-gray-700');
-                    builderKeysError.textContent = `Pattern "${pattern}" must start with ~, %R~, or %W~.`;
+                    builderKeysError.textContent = `Pattern "${pattern}" is invalid.`;
                     isValid = false;
                     break;
                 }
             }
 
-            // Validate Channel Patterns
             const channelPatterns = builderChannels.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
             for (const pattern of channelPatterns) {
                 if (!pattern.startsWith('&')) {
                     builderChannels.classList.add('border-red-500', 'focus:ring-red-500');
                     builderChannels.classList.remove('border-gray-700');
                     builderChannelsError.textContent = `Pattern "${pattern}" must start with &.`;
+                    isValid = false;
+                    break;
+                }
+            }
+
+            const specificCommands = builderSpecificCommands.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
+            for (const rule of specificCommands) {
+                if (!rule.startsWith('+') && !rule.startsWith('-')) {
+                    builderSpecificCommands.classList.add('border-red-500', 'focus:ring-red-500');
+                    builderSpecificCommands.classList.remove('border-gray-700');
+                    builderSpecificCommandsError.textContent = `Rule "${rule}" must start with + or -.`;
                     isValid = false;
                     break;
                 }
@@ -943,26 +948,33 @@
                 return;
             }
 
-            let parts = ['ACL', 'SETUSER', username];
-
-            if (builderFlagOn.checked) parts.push('on');
-            if (builderFlagNopass.checked) parts.push('nopass');
+            let flagParts = [];
+            if (builderFlagOn.checked) flagParts.push('on');
+            if (builderFlagNopass.checked) flagParts.push('nopass');
 
             const passwords = builderPasswords.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
-            passwords.forEach(pw => {
-                parts.push(`>${pw}`);
-            });
+            const passwordParts = passwords.map(pw => `>${pw}`);
 
-            const commandRules = builderCommands.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
-            parts.push(...commandRules);
+            const categoryRules = Object.entries(categoryStates)
+                .map(([category, state]) => (state === '+' || state === '-') ? `${state}${category}` : null)
+                .filter(Boolean);
             
+            const specificCommands = builderSpecificCommands.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
             const keyPatterns = builderKeys.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
-            parts.push(...keyPatterns);
-
             const channelPatterns = builderChannels.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
-            parts.push(...channelPatterns);
+
+            const allRules = [
+                ...flagParts,
+                ...passwordParts,
+                ...categoryRules,
+                ...specificCommands,
+                ...keyPatterns,
+                ...channelPatterns
+            ];
+
+            const uniqueRules = [...new Set(allRules)];
             
-            builderOutput.value = parts.join(' ');
+            builderOutput.value = `ACL SETUSER ${username} ${uniqueRules.join(' ')}`;
         }
         
         function resetBuilder() {
@@ -970,24 +982,43 @@
             builderPasswords.value = '';
             builderFlagOn.checked = true;
             builderFlagNopass.checked = false;
-            builderCommands.value = '';
+            builderSpecificCommands.value = '';
             builderKeys.value = '';
             builderChannels.value = '';
-            generateAclString(); // This will also reset validation states
+            
+            availableCategories.forEach(cat => categoryStates[cat] = 'default');
+            updateAllCategoryButtonsVisuals();
+            updateCategoryGridInteractivity();
+            
+            generateAclString(); 
         }
 
         function populateBuilderFromUser(username) {
             const user = Users.get(username);
             if (!user) return;
             
+            resetBuilder(); 
+
             builderUsername.value = user.name;
-            builderPasswords.value = ''; // We don't store plaintext passwords to show back
             builderFlagOn.checked = user.flags.on;
             builderFlagNopass.checked = user.flags.nopass;
-            builderCommands.value = user.commandRules.join('\n');
+            
+            const specificCommands = [];
+            user.commandRules.forEach(rule => {
+                const target = rule.substring(1);
+                if (target.startsWith('@')) {
+                    categoryStates[target] = rule.charAt(0);
+                } else {
+                    specificCommands.push(rule);
+                }
+            });
+            builderSpecificCommands.value = specificCommands.join('\n');
+            
             builderKeys.value = user.keyPatterns.join('\n');
             builderChannels.value = Array.from(user.channelPatterns).join('\n');
             
+            updateAllCategoryButtonsVisuals();
+            updateCategoryGridInteractivity();
             generateAclString();
             logMessage(`Builder populated with settings for user '${username}'.`, 'info');
         }
@@ -1008,106 +1039,84 @@
             }
             document.body.removeChild(textArea);
         }
-        // --- END: COMMAND BUILDER LOGIC & VALIDATION ---
-
-        // --- START: AUTOCOMPLETE & HINT LOGIC ---
-        function updateAutocompleteHighlight() {
-            const items = categoryAutocomplete.querySelectorAll('.autocomplete-item');
-            if (!items || items.length === 0) return;
-
-            items.forEach((item, index) => {
-                if (index === highlightedAutocompleteIndex) {
-                    item.classList.add('autocomplete-highlight');
-                    item.scrollIntoView({ block: 'nearest' });
-                } else {
-                    item.classList.remove('autocomplete-highlight');
-                }
-            });
-        }
-
-        function handleCategoryAutocomplete(event) {
-            const text = builderCommands.value;
-            const cursorPos = builderCommands.selectionStart;
+        
+        function updateCategoryButtonVisual(button, state) {
+            const icon = button.querySelector('svg');
+            button.classList.remove('bg-gray-700', 'hover:bg-gray-600', 'bg-green-800', 'hover:bg-green-700', 'bg-red-800', 'hover:bg-red-700');
             
-            const textToCursor = text.substring(0, cursorPos);
-            const lastAtIndex = textToCursor.lastIndexOf('@');
-            const lastSpaceIndex = textToCursor.lastIndexOf(' ');
-            const lastNewlineIndex = textToCursor.lastIndexOf('\n');
-            const lastWordStartIndex = Math.max(lastSpaceIndex, lastNewlineIndex);
-
-            if (lastAtIndex > lastWordStartIndex) {
-                const searchTerm = textToCursor.substring(lastAtIndex);
-                const filtered = availableCategories.filter(cat => cat.startsWith(searchTerm));
-                
-                if (filtered.length > 0) {
-                    populateAutocomplete(filtered);
-                    categoryAutocomplete.classList.remove('hidden');
-                } else {
-                    categoryAutocomplete.classList.add('hidden');
-                    highlightedAutocompleteIndex = -1;
-                }
-            } else {
-                categoryAutocomplete.classList.add('hidden');
-                highlightedAutocompleteIndex = -1;
+            switch(state) {
+                case '+':
+                    button.classList.add('bg-green-800', 'hover:bg-green-700');
+                    icon.innerHTML = `<path d="M20 6 9 17l-5-5"></path>`; // Checkmark
+                    break;
+                case '-':
+                    button.classList.add('bg-red-800', 'hover:bg-red-700');
+                    icon.innerHTML = `<line x1="5" y1="12" x2="19" y2="12"></line>`; // Minus
+                    break;
+                default: // 'default'
+                    button.classList.add('bg-gray-700', 'hover:bg-gray-600');
+                    icon.innerHTML = `<circle cx="12" cy="12" r="1"></circle>`; // Dot
+                    break;
             }
-        }
-
-        function populateAutocomplete(categories) {
-            categoryAutocomplete.innerHTML = '';
-            highlightedAutocompleteIndex = -1;
-            categories.forEach(cat => {
-                const item = document.createElement('div');
-                item.textContent = cat;
-                item.className = 'p-2 cursor-pointer autocomplete-item font-fira text-sm';
-                item.dataset.value = cat;
-                item.addEventListener('click', onAutocompleteItemClick);
-                categoryAutocomplete.appendChild(item);
-            });
-        }
-
-        function onAutocompleteItemClick(event) {
-            const selectedCategory = event.target.dataset.value;
-            const text = builderCommands.value;
-            const cursorPos = builderCommands.selectionStart;
-
-            const textToCursor = text.substring(0, cursorPos);
-            const lastAtIndex = textToCursor.lastIndexOf('@');
-            
-            const textBefore = text.substring(0, lastAtIndex);
-            const textAfter = text.substring(cursorPos);
-
-            builderCommands.value = textBefore + selectedCategory + ' ' + textAfter;
-            
-            const newCursorPos = (textBefore + selectedCategory + ' ').length;
-            builderCommands.focus();
-            builderCommands.setSelectionRange(newCursorPos, newCursorPos);
-
-            categoryAutocomplete.classList.add('hidden');
-            highlightedAutocompleteIndex = -1;
-            builderCommands.dispatchEvent(new Event('input'));
         }
         
-        function getWordAtCursor(text, position) {
-            const pre = text.slice(0, position);
-            const post = text.slice(position);
-            const preMatch = pre.match(/[\S]+$/);
-            const postMatch = post.match(/^[\S]+/);
-            return (preMatch ? preMatch[0] : '') + (postMatch ? postMatch[0] : '');
+        function updateAllCategoryButtonsVisuals() {
+            const buttons = categorySelectorGrid.querySelectorAll('.category-button');
+            buttons.forEach(btn => {
+                const cat = btn.dataset.category;
+                const state = categoryStates[cat];
+                updateCategoryButtonVisual(btn, state);
+            });
+        }
+        
+        function updateCategoryGridInteractivity() {
+            const isAllActive = categoryStates['@all'] !== 'default';
+            const allButton = categorySelectorGrid.querySelector(`[data-category="@all"]`);
+
+            categorySelectorGrid.querySelectorAll('.category-button').forEach(btn => {
+                if (btn !== allButton) {
+                    btn.disabled = isAllActive;
+                    if (isAllActive) {
+                        btn.classList.add('opacity-50', 'cursor-not-allowed');
+                    } else {
+                        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    }
+                }
+            });
         }
 
-        function checkCursorForCategory() {
-            const text = builderCommands.value;
-            const cursorPos = builderCommands.selectionStart;
-            const word = getWordAtCursor(text, cursorPos);
-
-            if (word.startsWith('@') && categoryDescriptions[word]) {
-                categoryHint.textContent = categoryDescriptions[word];
-                categoryHint.classList.remove('hidden');
-            } else {
-                categoryHint.classList.add('hidden');
-            }
+        function createCategorySelectorGrid() {
+            availableCategories.forEach(cat => {
+                categoryStates[cat] = 'default';
+                const button = document.createElement('button');
+                button.className = 'category-button flex items-center justify-center p-2 rounded-md text-sm font-fira bg-gray-700 hover:bg-gray-600';
+                button.dataset.category = cat;
+                button.title = categoryDescriptions[cat];
+                button.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><circle cx="12" cy="12" r="1"></circle></svg>
+                    <span>${cat}</span>
+                `;
+                button.addEventListener('click', () => {
+                    const category = button.dataset.category;
+                    const currentState = categoryStates[category];
+                    const nextState = currentState === 'default' ? '+' : (currentState === '+' ? '-' : 'default');
+                    categoryStates[category] = nextState;
+                    updateCategoryButtonVisual(button, nextState);
+                    
+                    if (category === '@all' && nextState !== 'default') {
+                        // If @all is activated, reset other categories to default
+                        availableCategories.forEach(c => {
+                            if (c !== '@all') categoryStates[c] = 'default';
+                        });
+                        updateAllCategoryButtonsVisuals();
+                    }
+                    updateCategoryGridInteractivity();
+                    generateAclString();
+                });
+                categorySelectorGrid.appendChild(button);
+            });
         }
-        // --- END: AUTOCOMPLETE & HINT LOGIC ---
+        // --- END: COMMAND BUILDER LOGIC & VALIDATION ---
 
         // --- START: EVENT LISTENERS ---
         runBtn.addEventListener('click', () => {
@@ -1166,52 +1175,11 @@
                 commandInput.focus();
             }
         });
-        
-        builderCommands.addEventListener('input', handleCategoryAutocomplete);
-        builderCommands.addEventListener('keydown', (e) => {
-            if (categoryAutocomplete.classList.contains('hidden')) return;
-            const items = categoryAutocomplete.querySelectorAll('.autocomplete-item');
-            if (items.length === 0 && e.key !== 'Escape') return;
-
-            switch (e.key) {
-                case 'ArrowDown':
-                    e.preventDefault();
-                    highlightedAutocompleteIndex = (highlightedAutocompleteIndex + 1) % items.length;
-                    updateAutocompleteHighlight();
-                    break;
-                case 'ArrowUp':
-                    e.preventDefault();
-                    highlightedAutocompleteIndex = (highlightedAutocompleteIndex - 1 + items.length) % items.length;
-                    updateAutocompleteHighlight();
-                    break;
-                case 'Enter':
-                    if (highlightedAutocompleteIndex > -1) {
-                        e.preventDefault();
-                        items[highlightedAutocompleteIndex].click();
-                    }
-                    break;
-                case 'Escape':
-                    categoryAutocomplete.classList.add('hidden');
-                    highlightedAutocompleteIndex = -1;
-                    break;
-            }
-        });
-
-        document.addEventListener('click', (e) => {
-            if (!builderCommands.contains(e.target) && !categoryAutocomplete.contains(e.target)) {
-                 categoryAutocomplete.classList.add('hidden');
-                 highlightedAutocompleteIndex = -1;
-            }
-        });
-
-        builderCommands.addEventListener('keyup', checkCursorForCategory);
-        builderCommands.addEventListener('click', checkCursorForCategory);
-        builderCommands.addEventListener('focus', checkCursorForCategory);
-        builderCommands.addEventListener('blur', () => categoryHint.classList.add('hidden'));
         // --- END: EVENT LISTENERS ---
 
         // --- START: INITIALIZATION ---
         function initialize() {
+            createCategorySelectorGrid();
             createDefaultUser();
             logMessage('Redis ACL Simulator Initialized.', 'success');
             logMessage('Use the builder below to create users, or type ACL commands directly.', 'info');
