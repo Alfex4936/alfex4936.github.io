@@ -1070,18 +1070,25 @@
         }
         
         function updateCategoryGridInteractivity() {
-            const isAllActive = categoryStates['@all'] !== 'default';
+            const allState = categoryStates['@all'];
             const allButton = categorySelectorGrid.querySelector(`[data-category="@all"]`);
 
             categorySelectorGrid.querySelectorAll('.category-button').forEach(btn => {
-                if (btn !== allButton) {
-                    btn.disabled = isAllActive;
-                    if (isAllActive) {
-                        btn.classList.add('opacity-50', 'cursor-not-allowed');
-                    } else {
-                        btn.classList.remove('opacity-50', 'cursor-not-allowed');
-                    }
+                if (btn === allButton) return;
+                
+                const category = btn.dataset.category;
+                const currentState = categoryStates[category];
+
+                // If +@all is on, any other + rule is redundant. Reset it.
+                if (allState === '+' && currentState === '+') {
+                    categoryStates[category] = 'default';
                 }
+                // If -@all is on, any other - rule is redundant. Reset it.
+                if (allState === '-' && currentState === '-') {
+                    categoryStates[category] = 'default';
+                }
+                
+                updateCategoryButtonVisual(btn, categoryStates[category]);
             });
         }
 
@@ -1099,18 +1106,29 @@
                 button.addEventListener('click', () => {
                     const category = button.dataset.category;
                     const currentState = categoryStates[category];
-                    const nextState = currentState === 'default' ? '+' : (currentState === '+' ? '-' : 'default');
+                    const allState = categoryStates['@all'];
+                    let nextState;
+
+                    if (category === '@all') {
+                        nextState = currentState === 'default' ? '+' : (currentState === '+' ? '-' : 'default');
+                    } else {
+                        if (allState === '+') { // +@all is active, can only toggle between default and -
+                            nextState = currentState === 'default' ? '-' : 'default';
+                        } else if (allState === '-') { // -@all is active, can only toggle between default and +
+                            nextState = currentState === 'default' ? '+' : 'default';
+                        } else { // @all is default, can toggle all 3 states
+                            nextState = currentState === 'default' ? '+' : (currentState === '+' ? '-' : 'default');
+                        }
+                    }
+                    
                     categoryStates[category] = nextState;
                     updateCategoryButtonVisual(button, nextState);
                     
-                    if (category === '@all' && nextState !== 'default') {
-                        // If @all is activated, reset other categories to default
-                        availableCategories.forEach(c => {
-                            if (c !== '@all') categoryStates[c] = 'default';
-                        });
-                        updateAllCategoryButtonsVisuals();
+                    if (category === '@all') {
+                        // If @all changed, clean up other buttons and update their UI
+                        updateCategoryGridInteractivity(); 
                     }
-                    updateCategoryGridInteractivity();
+
                     generateAclString();
                 });
                 categorySelectorGrid.appendChild(button);
