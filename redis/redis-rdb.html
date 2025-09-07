@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redis RDB Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827;
+            color: #E5E7EB;
+        }
+        .fira-code {
+            font-family: 'Fira Code', monospace;
+        }
+        .tooltip {
+            position: relative;
+            display: inline-block;
+            cursor: pointer;
+        }
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 280px;
+            background-color: #1F2937;
+            color: #fff;
+            text-align: left;
+            border-radius: 6px;
+            padding: 10px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -140px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 0.8rem;
+            border: 1px solid #374151;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+        .tooltip .tooltiptext::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #1F2937 transparent transparent transparent;
+        }
+        .tooltip .tooltiptext.tooltip-small {
+            width: auto;
+            white-space: nowrap;
+            padding: 4px 8px;
+            margin-left: 0;
+            transform: translateX(-50%);
+        }
+        .byte-block {
+            transition: all 0.3s ease-in-out;
+        }
+        .byte-block:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+        }
+        .key-card-enter {
+            animation: key-enter 0.5s ease-out;
+        }
+        @keyframes key-enter {
+            0% {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .rdb-block-enter {
+            animation: rdb-enter 0.3s ease-out;
+        }
+        @keyframes rdb-enter {
+            0% {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+        .input-group {
+            display: none;
+        }
+        .input-group.active {
+            display: block;
+        }
+        details > summary {
+            list-style: none;
+        }
+        details > summary::-webkit-details-marker {
+            display: none;
+        }
+        details > summary .summary-chevron {
+            transition: transform 0.2s;
+        }
+        details[open] > summary .summary-chevron {
+            transform: rotate(90deg);
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 sm:p-6 lg:p-8">
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <h1 class="text-3xl sm:text-4xl font-bold text-white tracking-tight">Redis RDB Internals Visualizer</h1>
+            <p class="mt-2 text-lg text-gray-400">See how Redis saves your data to a snapshot file, byte by byte.</p>
+        </header>
+
+        <!-- Controls -->
+        <div class="flex justify-center items-center space-x-2 sm:space-x-4 mb-8 bg-gray-900/50 p-4 rounded-xl border border-gray-700 shadow-lg sticky top-4 z-10 backdrop-blur-sm">
+            <button id="add-key-btn" class="flex items-center justify-center w-12 h-12 bg-blue-600 hover:bg-blue-700 text-white rounded-full transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 tooltip">
+                <i class="fas fa-plus"></i>
+                <span class="tooltiptext"><b>Add Key-Value Pair:</b><br>Click to open a dialog and add a new entry to the in-memory view.</span>
+            </button>
+            <button id="randomize-btn" class="flex items-center justify-center w-12 h-12 bg-purple-600 hover:bg-purple-700 text-white rounded-full transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 tooltip">
+                <i class="fas fa-magic-wand-sparkles"></i>
+                <span class="tooltiptext"><b>Generate Random Data:</b><br>Populate the view with 100 random keys of various types.</span>
+            </button>
+            <button id="bgsave-btn" class="flex items-center justify-center w-12 h-12 bg-green-600 hover:bg-green-700 text-white rounded-full transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 tooltip">
+                <i class="fas fa-save"></i>
+                <span class="tooltiptext"><b>Generate RDB File (BGSAVE):</b><br>Simulates the `BGSAVE` command. It takes the current in-memory data and generates the corresponding RDB file structure on the right.</span>
+            </button>
+            <button id="download-btn" class="flex items-center justify-center w-12 h-12 bg-orange-500 hover:bg-orange-600 text-white rounded-full transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-opacity-50 tooltip">
+                <i class="fas fa-download"></i>
+                <span class="tooltiptext"><b>Download .rdb File:</b><br>Generate and download a binary .rdb file based on the current in-memory data.</span>
+            </button>
+            <button id="clear-btn" class="flex items-center justify-center w-12 h-12 bg-red-600 hover:bg-red-700 text-white rounded-full transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 tooltip">
+                <i class="fas fa-trash"></i>
+                <span class="tooltiptext"><b>Clear All:</b><br>Resets the simulation, clearing both the in-memory data and the RDB visualization.</span>
+            </button>
+        </div>
+
+        <!-- Main Content -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Left Panel: In-Memory View -->
+            <div class="bg-gray-900 p-6 rounded-xl border border-gray-700 shadow-lg">
+                <h2 class="text-2xl font-semibold mb-4 text-center text-white"><i class="fas fa-memory mr-2 text-blue-400"></i>Redis In-Memory Data</h2>
+                <div id="in-memory-view" class="space-y-4 min-h-[300px]">
+                    <div id="no-keys-message" class="text-center text-gray-500 py-16">
+                        <i class="fas fa-key text-4xl mb-4"></i>
+                        <p>No keys in memory.</p>
+                        <p class="text-sm">Click the <i class="fas fa-plus"></i> button to add data.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: RDB File View -->
+            <div class="bg-gray-900 p-6 rounded-xl border border-gray-700 shadow-lg">
+                <h2 class="text-2xl font-semibold mb-4 text-center text-white"><i class="fas fa-file-alt mr-2 text-green-400"></i>RDB File Structure</h2>
+                <div id="rdb-view" class="bg-gray-800 p-4 rounded-lg min-h-[300px] flex flex-col items-center justify-center space-y-2">
+                    <div id="no-rdb-message" class="text-center text-gray-500">
+                         <i class="fas fa-file-export text-4xl mb-4"></i>
+                        <p>RDB view is empty.</p>
+                        <p class="text-sm">Click <i class="fas fa-save"></i> to generate the file structure.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="text-center mt-12 mb-4">
+        <p class="text-xs text-gray-500 max-w-3xl mx-auto">
+            <strong>Note:</strong> This is an educational tool. While the generated RDB is loadable with a valid CRC64 checksum,
+            it does not implement advanced production features like LZF compression, optimized data encodings (e.g., listpack), or metadata (expiry/LRU/LFU).
+        </p>
+    </footer>
+
+    <!-- Add Key Modal -->
+    <div id="add-key-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden backdrop-blur-sm">
+        <div class="bg-gray-800 rounded-lg shadow-xl p-8 w-full max-w-md border border-gray-700">
+            <h3 class="text-2xl font-bold mb-4 text-white">Add New Key</h3>
+            <form id="add-key-form">
+                <div class="mb-4">
+                    <label for="key-input" class="block text-sm font-medium text-gray-300 mb-1">Key</label>
+                    <input type="text" id="key-input" class="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" required>
+                </div>
+                 <div class="mb-4">
+                    <label for="type-select" class="block text-sm font-medium text-gray-300 mb-1">Type</label>
+                    <select id="type-select" class="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                        <option value="string">String</option>
+                        <option value="list">List</option>
+                        <option value="set">Set</option>
+                        <option value="hash">Hash</option>
+                        <option value="zset">Sorted Set (ZSet)</option>
+                    </select>
+                </div>
+
+                <!-- Value Inputs -->
+                <div id="string-input-group" class="input-group active">
+                    <label for="string-value-input" class="block text-sm font-medium text-gray-300 mb-1">Value</label>
+                    <input type="text" id="string-value-input" class="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                </div>
+                <div id="list-input-group" class="input-group">
+                    <label for="list-value-input" class="block text-sm font-medium text-gray-300 mb-1">Elements (one per line)</label>
+                    <textarea id="list-value-input" rows="4" class="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"></textarea>
+                </div>
+                 <div id="set-input-group" class="input-group">
+                    <label for="set-value-input" class="block text-sm font-medium text-gray-300 mb-1">Members (one per line, duplicates ignored)</label>
+                    <textarea id="set-value-input" rows="4" class="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"></textarea>
+                </div>
+                <div id="hash-input-group" class="input-group">
+                    <label for="hash-value-input" class="block text-sm font-medium text-gray-300 mb-1">Field-Value Pairs (e.g., "field1 value1" per line)</label>
+                    <textarea id="hash-value-input" rows="4" class="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"></textarea>
+                </div>
+                 <div id="zset-input-group" class="input-group">
+                    <label for="zset-value-input" class="block text-sm font-medium text-gray-300 mb-1">Score-Member Pairs (e.g., "1.5 member1" per line)</label>
+                    <textarea id="zset-value-input" rows="4" class="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"></textarea>
+                </div>
+
+                <div class="flex justify-end space-x-4 mt-6">
+                    <button type="button" id="modal-cancel-btn" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-md transition">Cancel</button>
+                    <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition">Add Key</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // State
+            let redisData = [];
+            let keyCounter = 0;
+
+            // DOM Elements
+            const inMemoryView = document.getElementById('in-memory-view');
+            const rdbView = document.getElementById('rdb-view');
+            const addKeyBtn = document.getElementById('add-key-btn');
+            const bgsaveBtn = document.getElementById('bgsave-btn');
+            const randomizeBtn = document.getElementById('randomize-btn');
+            const downloadBtn = document.getElementById('download-btn');
+            const clearBtn = document.getElementById('clear-btn');
+            const modal = document.getElementById('add-key-modal');
+            const modalCancelBtn = document.getElementById('modal-cancel-btn');
+            const addKeyForm = document.getElementById('add-key-form');
+            const keyInput = document.getElementById('key-input');
+            const typeSelect = document.getElementById('type-select');
+            const noKeysMessage = document.getElementById('no-keys-message');
+            const noRdbMessage = document.getElementById('no-rdb-message');
+            const inputGroups = document.querySelectorAll('.input-group');
+
+            // --- RDB Constants (from rdb.h) ---
+            const RDB_VERSION = 11;
+            const RDB_6BITLEN = 0;
+            const RDB_14BITLEN = 1;
+            const RDB_32BITLEN = 0x80;
+            const RDB_ENCVAL = 3;
+            const RDB_ENC_INT8 = 0;
+            const RDB_ENC_INT16 = 1;
+            const RDB_TYPE_STRING = 0;
+            const RDB_TYPE_LIST = 1;
+            const RDB_TYPE_SET = 2;
+            const RDB_TYPE_ZSET_2 = 5;
+            const RDB_TYPE_HASH = 4;
+            const RDB_OPCODE_SELECTDB = 254;
+            const RDB_OPCODE_EOF = 255;
+            const RDB_OPCODE_RESIZEDB = 251;
+            const RDB_OPCODE_AUX = 250;
+            
+            const TYPE_MAP = {
+                'string': { icon: 'fa-font', color: 'blue-400', rdbType: RDB_TYPE_STRING, name: 'String' },
+                'list': { icon: 'fa-list-ol', color: 'green-400', rdbType: RDB_TYPE_LIST, name: 'List' },
+                'set': { icon: 'fa-layer-group', color: 'yellow-400', rdbType: RDB_TYPE_SET, name: 'Set' },
+                'hash': { icon: 'fa-hashtag', color: 'indigo-400', rdbType: RDB_TYPE_HASH, name: 'Hash' },
+                'zset': { icon: 'fa-sort-amount-up', color: 'purple-400', rdbType: RDB_TYPE_ZSET_2, name: 'ZSet' },
+            };
+
+            // --- Event Listeners ---
+            addKeyBtn.addEventListener('click', () => {
+                addKeyForm.reset();
+                updateModalInputs();
+                modal.classList.remove('hidden')
+            });
+            modalCancelBtn.addEventListener('click', () => modal.classList.add('hidden'));
+            typeSelect.addEventListener('change', updateModalInputs);
+            
+            addKeyForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                addKey(keyInput.value, typeSelect.value);
+                modal.classList.add('hidden');
+                addKeyForm.reset();
+            });
+            bgsaveBtn.addEventListener('click', generateRDBView);
+            randomizeBtn.addEventListener('click', generateRandomData);
+            downloadBtn.addEventListener('click', handleDownload);
+            clearBtn.addEventListener('click', clearAll);
+
+            // --- Core Logic ---
+            function updateModalInputs() {
+                const selectedType = typeSelect.value;
+                inputGroups.forEach(group => {
+                    if (group.id === `${selectedType}-input-group`) {
+                        group.classList.add('active');
+                    } else {
+                        group.classList.remove('active');
+                    }
+                });
+            }
+
+            function addKey(key, type) {
+                if (!key) {
+                    alert("Key cannot be empty.");
+                    return;
+                }
+                let value;
+                try {
+                    switch(type) {
+                        case 'string':
+                            value = document.getElementById('string-value-input').value;
+                            break;
+                        case 'list':
+                            value = document.getElementById('list-value-input').value.split('\n').filter(Boolean);
+                            break;
+                        case 'set':
+                            const members = document.getElementById('set-value-input').value.split('\n').filter(Boolean);
+                            value = [...new Set(members)]; // Enforce uniqueness
+                            break;
+                        case 'hash':
+                            value = new Map();
+                            document.getElementById('hash-value-input').value.split('\n').filter(Boolean).forEach(line => {
+                                const parts = line.match(/^(\S+)\s+(.*)$/);
+                                if(parts) value.set(parts[1], parts[2]);
+                            });
+                            break;
+                        case 'zset':
+                            value = [];
+                             document.getElementById('zset-value-input').value.split('\n').filter(Boolean).forEach(line => {
+                                const parts = line.match(/^(\S+)\s+(.*)$/);
+                                if(parts) {
+                                    const score = parseFloat(parts[1]);
+                                    if(!isNaN(score)) value.push({ score, member: parts[2] });
+                                }
+                            });
+                            value.sort((a,b) => a.score - b.score); // Keep it sorted
+                            break;
+                    }
+                } catch(e) {
+                    console.error("Error parsing input: ", e);
+                    alert("Invalid input format for the selected type.");
+                    return;
+                }
+                
+                const existingKeyIndex = redisData.findIndex(item => item.key === key);
+                if (existingKeyIndex !== -1) {
+                    redisData[existingKeyIndex].value = value;
+                    redisData[existingKeyIndex].type = type;
+                } else {
+                    keyCounter++;
+                    redisData.push({ id: keyCounter, key, value, type });
+                }
+                renderInMemoryView();
+            }
+
+            function generateRandomData() {
+                clearAll();
+                const types = Object.keys(TYPE_MAP);
+                
+                for (let i = 0; i < 100; i++) {
+                    const key = `key:${i}`;
+                    const type = types[Math.floor(Math.random() * types.length)];
+                    let value;
+
+                    switch(type) {
+                        case 'string':
+                            value = `value-${Math.random().toString(36).substring(2, 10)}`;
+                            break;
+                        case 'list':
+                            value = Array.from({length: Math.ceil(Math.random() * 5) + 2}, (_, j) => `item-${j}-${Math.random().toString(36).substring(2, 8)}`);
+                            break;
+                        case 'set':
+                            const set = new Set();
+                            for(let j=0; j < Math.ceil(Math.random() * 5) + 2; j++) {
+                                set.add(`member-${j}-${Math.random().toString(36).substring(2, 8)}`);
+                            }
+                            value = [...set];
+                            break;
+                        case 'hash':
+                            value = new Map();
+                             for(let j=0; j < Math.ceil(Math.random() * 4) + 2; j++) {
+                                value.set(`field${j}`, `value-${Math.random().toString(36).substring(2, 12)}`);
+                            }
+                            break;
+                        case 'zset':
+                             value = [];
+                            const memberSet = new Set();
+                            for(let j=0; j < Math.ceil(Math.random() * 5) + 2; j++) {
+                                const member = `member-${j}-${Math.random().toString(36).substring(2, 8)}`;
+                                if(!memberSet.has(member)){
+                                    memberSet.add(member);
+                                    value.push({
+                                        score: parseFloat((Math.random() * 1000).toFixed(2)),
+                                        member: member
+                                    });
+                                }
+                            }
+                            value.sort((a,b) => a.score - b.score);
+                            break;
+                    }
+
+                    keyCounter++;
+                    redisData.push({ id: keyCounter, key, value, type });
+                }
+                renderInMemoryView();
+                // Optionally, auto-generate RDB view after randomizing
+                generateRDBView();
+            }
+
+            function removeKey(id) {
+                redisData = redisData.filter(item => item.id !== id);
+                renderInMemoryView();
+            }
+
+            function clearAll() {
+                redisData = [];
+                keyCounter = 0;
+                renderInMemoryView();
+                rdbView.innerHTML = '';
+                rdbView.appendChild(noRdbMessage);
+                noRdbMessage.style.display = 'block';
+            }
+            
+            function handleDownload() {
+                if(redisData.length === 0) {
+                    alert("Add some data first before downloading.");
+                    return;
+                }
+                const rdbBytes = generateRDBBinary();
+                const blob = new Blob([rdbBytes], {type: 'application/octet-stream'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                const hours = String(now.getHours()).padStart(2, '0');
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                const seconds = String(now.getSeconds()).padStart(2, '0');
+                const timestamp = `${year}${month}${day}-${hours}${minutes}${seconds}`;
+                
+                a.href = url;
+                a.download = `dump-${timestamp}.rdb`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+
+            // --- Rendering Functions ---
+            function renderInMemoryView() {
+                inMemoryView.innerHTML = '';
+                if (redisData.length === 0) {
+                    inMemoryView.appendChild(noKeysMessage);
+                    noKeysMessage.style.display = 'block';
+                } else {
+                    noKeysMessage.style.display = 'none';
+                    redisData.forEach(item => {
+                        const typeInfo = TYPE_MAP[item.type];
+                        const card = document.createElement('div');
+                        card.className = 'bg-gray-800 border border-gray-700 p-4 rounded-lg shadow-md key-card-enter';
+                        
+                        let valueHtml = '';
+                        switch(item.type) {
+                             case 'string':
+                                valueHtml = `<div class="text-gray-400 text-sm fira-code break-all">${item.value}</div>`;
+                                break;
+                            case 'list':
+                                valueHtml = item.value.map(v => `<div class="pl-4 text-gray-400 fira-code text-sm">- ${v}</div>`).join('');
+                                break;
+                             case 'set':
+                                valueHtml = [...item.value].map(v => `<div class="pl-4 text-gray-400 fira-code text-sm">- ${v}</div>`).join('');
+                                break;
+                            case 'hash':
+                                valueHtml = [...item.value.entries()].map(([k,v]) => `<div class="pl-4 text-gray-400 fira-code text-sm"><span class="text-gray-500">${k}:</span> ${v}</div>`).join('');
+                                break;
+                            case 'zset':
+                                valueHtml = item.value.map(({score, member}) => `<div class="pl-4 text-gray-400 fira-code text-sm"><span class="text-gray-500">${score}:</span> ${member}</div>`).join('');
+                                break;
+                        }
+
+                        card.innerHTML = `
+                            <div class="flex justify-between items-start">
+                                <div class="flex items-start">
+                                    <span class="tooltip text-${typeInfo.color} mr-3 mt-1">
+                                        <i class="fas ${typeInfo.icon}"></i>
+                                        <span class="tooltiptext tooltip-small">${typeInfo.name}</span>
+                                    </span>
+                                    <div>
+                                        <div class="font-semibold text-white fira-code">${item.key}</div>
+                                        <div class="mt-2">${valueHtml}</div>
+                                    </div>
+                                </div>
+                                <button class="remove-key-btn text-gray-500 hover:text-red-500 transition" data-id="${item.id}">
+                                    <i class="fas fa-times-circle"></i>
+                                </button>
+                            </div>
+                        `;
+                        inMemoryView.appendChild(card);
+                    });
+
+                    document.querySelectorAll('.remove-key-btn').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const id = parseInt(e.currentTarget.getAttribute('data-id'));
+                            removeKey(id);
+                        });
+                    });
+                }
+            }
+            
+            function generateRDBView() {
+                rdbView.innerHTML = '';
+                noRdbMessage.style.display = 'none';
+
+                const rdbContentBytes = generateRDBBinary(false); // Generate content without checksum
+                const checksum = crc64(rdbContentBytes);
+                
+                const headerFragment = document.createDocumentFragment();
+
+                // 1. Header & DB Select
+                const rdbVerStr = `REDIS${String(RDB_VERSION).padStart(4, '0')}`;
+                headerFragment.appendChild(createRDBBlock('Magic String', rdbVerStr.split('').map(c => c.charCodeAt(0)), `Identifies the file as Redis RDB version ${RDB_VERSION}.`, 'bg-purple-600'));
+                headerFragment.appendChild(createRDBBlock('AUX Field Opcode', [RDB_OPCODE_AUX], `Opcode <b>0xFA</b> signals an auxiliary metadata field.`, 'bg-yellow-600'));
+                headerFragment.appendChild(createEncodedStringBlock('AUX Key', 'redis-ver'));
+                headerFragment.appendChild(createEncodedStringBlock('AUX Value', '7.2.0'));
+                headerFragment.appendChild(createRDBBlock('DB Selector Opcode', [RDB_OPCODE_SELECTDB], `Opcode <b>0xFE</b> selects a database.`, 'bg-yellow-600'));
+                headerFragment.appendChild(createLengthBlock('DB Number', 0));
+                
+                if(redisData.length > 0) {
+                    headerFragment.appendChild(createRDBBlock('RESIZEDB Opcode', [RDB_OPCODE_RESIZEDB], `Opcode <b>0xFB</b> hints at the upcoming DB size.`, 'bg-yellow-600'));
+                    headerFragment.appendChild(createLengthBlock('DB Size Hint', redisData.length));
+                    headerFragment.appendChild(createLengthBlock('Expires Size Hint', 0));
+                }
+                rdbView.appendChild(headerFragment);
+
+                // 2. Key-Value Pairs
+                redisData.forEach(item => {
+                    const typeInfo = TYPE_MAP[item.type];
+                    
+                    const details = document.createElement('details');
+                    details.className = 'w-full bg-gray-700/50 rounded-lg rdb-block-enter';
+                    
+                    const summary = document.createElement('summary');
+                    summary.className = 'p-3 cursor-pointer flex justify-between items-center';
+                    summary.innerHTML = `
+                        <div class="flex items-center">
+                           <i class="fas ${typeInfo.icon} text-${typeInfo.color} mr-3"></i>
+                           <span class="font-semibold fira-code">Key: "${item.key}"</span>
+                           <span class="text-xs text-gray-400 ml-2">(${typeInfo.name})</span>
+                        </div>
+                        <i class="fas fa-chevron-right summary-chevron text-gray-400"></i>
+                    `;
+                    
+                    const content = document.createElement('div');
+                    content.className = 'p-4 border-t border-gray-600';
+                    
+                    // Value Type
+                    content.appendChild(createRDBBlock('Value Type', [typeInfo.rdbType], `<b>0x${typeInfo.rdbType.toString(16)}</b> signals a <b>${typeInfo.name}</b> value.`, 'bg-indigo-600'));
+                    
+                    // Key (always a string)
+                    content.appendChild(createEncodedStringBlock('Key', item.key));
+
+                    // Value (depends on type)
+                    switch(item.type) {
+                        case 'string':
+                             content.appendChild(createEncodedStringBlock('Value', item.value));
+                             break;
+                        case 'list':
+                        case 'set':
+                            content.appendChild(createLengthBlock(`${typeInfo.name} Length`, item.value.length));
+                            item.value.forEach(v => content.appendChild(createEncodedStringBlock(`${typeInfo.name} Element`, v)));
+                            break;
+                        case 'hash':
+                             content.appendChild(createLengthBlock('Hash Field Count', item.value.size));
+                             item.value.forEach((val, field) => {
+                                content.appendChild(createEncodedStringBlock('Hash Field', field));
+                                content.appendChild(createEncodedStringBlock('Hash Value', val));
+                             });
+                             break;
+                        case 'zset':
+                            content.appendChild(createLengthBlock('ZSet Member Count', item.value.length));
+                            item.value.forEach(({score, member}) => {
+                                content.appendChild(createEncodedStringBlock('ZSet Member', member));
+                                const scoreBytes = numberToFloat64Bytes(score);
+                                content.appendChild(createRDBBlock('ZSet Score', scoreBytes, `8-byte IEEE 754 double-precision float for score <b>${score}</b>. Stored in little-endian format.`, 'bg-pink-600'));
+                            });
+                            break;
+                    }
+                    details.appendChild(summary);
+                    details.appendChild(content);
+                    rdbView.appendChild(details);
+                });
+                
+                // 3. EOF & Checksum
+                const footerFragment = document.createDocumentFragment();
+                footerFragment.appendChild(createRDBBlock('EOF Opcode', [RDB_OPCODE_EOF], `Opcode <b>0xFF</b> marks the end of the file.`, 'bg-red-600'));
+                
+                const checksumBytes = [];
+                const view = new DataView(new ArrayBuffer(8));
+                view.setBigUint64(0, checksum, true); // true for little-endian
+                for(let i=0; i<8; i++) checksumBytes.push(view.getUint8(i));
+
+                footerFragment.appendChild(createRDBBlock('CRC64 Checksum', checksumBytes, `An 8-byte checksum for data integrity. Calculated value: <b>0x${checksum.toString(16).toUpperCase()}</b>`, 'bg-teal-600'));
+                rdbView.appendChild(footerFragment);
+            }
+
+            function createRDBBlock(title, bytes, tooltipText, colorClass = 'bg-gray-500') {
+                const container = document.createElement('div');
+                container.className = 'w-full mb-2';
+                const titleEl = document.createElement('div');
+                titleEl.className = 'text-sm text-gray-400 mb-1';
+                titleEl.textContent = title;
+                const blockWrapper = document.createElement('div');
+                blockWrapper.className = 'flex flex-wrap gap-1';
+                bytes.forEach(byte => {
+                    const byteEl = document.createElement('div');
+                    byteEl.className = `byte-block tooltip w-10 h-10 flex items-center justify-center rounded fira-code font-semibold ${colorClass}`;
+                    byteEl.textContent = byte.toString(16).toUpperCase().padStart(2, '0');
+                    const tooltipSpan = document.createElement('span');
+                    tooltipSpan.className = 'tooltiptext fira-code';
+                    tooltipSpan.innerHTML = `<b>${title.split(':')[0]}</b><br>${tooltipText}`;
+                    byteEl.appendChild(tooltipSpan);
+                    blockWrapper.appendChild(byteEl);
+                });
+                container.appendChild(titleEl);
+                container.appendChild(blockWrapper);
+                return container;
+            }
+            
+            function createLengthBlock(title, len) {
+                const { bytes, description } = rdbSaveLen(len);
+                const byteValues = bytes.map(b => b.value);
+                return createRDBBlock(title, byteValues, description, 'bg-blue-600');
+            }
+
+            function createEncodedStringBlock(title, str) {
+                const { bytes, description } = rdbEncodeString(str);
+                const container = document.createElement('div');
+                container.className = 'w-full mb-2';
+                const titleEl = document.createElement('div');
+                titleEl.className = 'text-sm text-gray-400 mb-1';
+                titleEl.textContent = `${title}: "${str}"`;
+                const blockWrapper = document.createElement('div');
+                blockWrapper.className = 'flex flex-wrap gap-1';
+                const lenColor = 'bg-blue-600';
+                const valColor = 'bg-green-600';
+                bytes.forEach(byteObj => {
+                    const byteEl = document.createElement('div');
+                    byteEl.className = `byte-block tooltip w-10 h-10 flex items-center justify-center rounded fira-code font-semibold ${byteObj.isLength ? lenColor : valColor}`;
+                    byteEl.textContent = byteObj.value.toString(16).toUpperCase().padStart(2, '0');
+                    const tooltipSpan = document.createElement('span');
+                    tooltipSpan.className = 'tooltiptext fira-code';
+                    tooltipSpan.innerHTML = `<b>${title}</b><br>${description}`;
+                    byteEl.appendChild(tooltipSpan);
+                    blockWrapper.appendChild(byteEl);
+                });
+                container.appendChild(titleEl);
+                container.appendChild(blockWrapper);
+                return container;
+            }
+
+            // --- RDB Logic Emulation ---
+            function rdbSaveLen(len) {
+                if (len < (1 << 6)) {
+                    return {
+                        bytes: [{value: (len & 0xFF) | (RDB_6BITLEN << 6), isLength: true}],
+                        description: `<b>6-bit Length Encoding</b><br>Fits in one byte. The first 2 bits are <b>00</b>. The remaining 6 bits store the length (${len}).`
+                    };
+                } else if (len < (1 << 14)) {
+                    return {
+                        bytes: [
+                            {value: ((len >> 8) & 0xFF) | (RDB_14BITLEN << 6), isLength: true},
+                            {value: len & 0xFF, isLength: true}
+                        ],
+                        description: `<b>14-bit Length Encoding</b><br>Uses two bytes. First byte's MSBs are <b>01</b>.`
+                    };
+                } else { 
+                    const len32 = [
+                        (len >> 24) & 0xFF, (len >> 16) & 0xFF, (len >> 8) & 0xFF, len & 0xFF,
+                    ];
+                    return {
+                        bytes: [{value: RDB_32BITLEN, isLength: true}, ...len32.map(b => ({value: b, isLength: true}))],
+                        description: `<b>32-bit Length Encoding</b><br>First byte <b>0x80</b> signals a 4-byte length follows.`
+                    };
+                }
+            }
+            
+            function numberToFloat64Bytes(num) {
+                const buffer = new ArrayBuffer(8);
+                const view = new DataView(buffer);
+                view.setFloat64(0, num, true); // true for little-endian
+                return Array.from(new Uint8Array(buffer));
+            }
+
+            function rdbEncodeString(str) {
+                const num = parseInt(str, 10);
+                if (String(num) === str) {
+                    if (num >= -128 && num <= 127) {
+                        return {
+                            bytes: [{value:(RDB_ENCVAL << 6) | RDB_ENC_INT8, isLength: true}, {value: num & 0xFF, isLength: false}],
+                            description: `<b>Integer Encoding (INT8)</b><br>Value '${str}' fits in a signed 8-bit int. Uses an encoding flag + 1 byte.`
+                        };
+                    }
+                    if (num >= -32768 && num <= 32767) {
+                         const valBytes = [num & 0xFF, (num >> 8) & 0xFF];
+                         return {
+                            bytes: [{value: (RDB_ENCVAL << 6) | RDB_ENC_INT16, isLength: true}, ...valBytes.map(b => ({value: b, isLength: false}))],
+                            description: `<b>Integer Encoding (INT16)</b><br>Value '${str}' fits in a signed 16-bit int. Uses an encoding flag + 2 bytes.`
+                        };
+                    }
+                }
+                const lenInfo = rdbSaveLen(str.length);
+                const strBytes = str.split('').map(c => ({ value: c.charCodeAt(0), isLength: false }));
+                return {
+                    bytes: [...lenInfo.bytes, ...strBytes],
+                    description: `<b>Raw String Encoding</b><br>${lenInfo.description} Followed by the raw bytes.`
+                }
+            }
+            
+            // --- Binary Generation & CRC64 ---
+            const crc64Table = new Array(256);
+            // Full CRC64 table generation
+            (function() {
+                const poly = 0xC96C5795D7870F42n;
+                for (let i = 0; i < 256; i++) {
+                    let crc = BigInt(i);
+                    for (let j = 0; j < 8; j++) {
+                        if (crc & 1n) {
+                            crc = (crc >> 1n) ^ poly;
+                        } else {
+                            crc = crc >> 1n;
+                        }
+                    }
+                    crc64Table[i] = crc;
+                }
+            })();
+
+            function crc64(buffer) {
+                let crc = 0xFFFFFFFFFFFFFFFFn;
+                for (let i = 0; i < buffer.length; i++) {
+                    const byte = buffer[i];
+                    const index = (crc ^ BigInt(byte)) & 0xFFn;
+                    crc = (crc >> 8n) ^ crc64Table[index];
+                }
+                return crc ^ 0xFFFFFFFFFFFFFFFFn;
+            }
+            
+            function rdbSaveLenBytes(len) {
+                return rdbSaveLen(len).bytes.map(b => b.value);
+            }
+            function rdbEncodeStringBytes(str) {
+                 return rdbEncodeString(str).bytes.map(b => b.value);
+            }
+
+            function generateRDBBinary(includeChecksum = true) {
+                let bytes = [];
+                const rdbVerStr = `REDIS${String(RDB_VERSION).padStart(4, '0')}`;
+                bytes.push(...rdbVerStr.split('').map(c => c.charCodeAt(0)));
+                bytes.push(RDB_OPCODE_AUX, ...rdbEncodeStringBytes('redis-ver'), ...rdbEncodeStringBytes('7.2.0'));
+                bytes.push(RDB_OPCODE_SELECTDB, ...rdbSaveLenBytes(0));
+                
+                if (redisData.length > 0) {
+                    bytes.push(RDB_OPCODE_RESIZEDB, ...rdbSaveLenBytes(redisData.length), ...rdbSaveLenBytes(0));
+                }
+
+                redisData.forEach(item => {
+                    const typeInfo = TYPE_MAP[item.type];
+                    bytes.push(typeInfo.rdbType);
+                    bytes.push(...rdbEncodeStringBytes(item.key));
+                    switch(item.type) {
+                        case 'string':
+                            bytes.push(...rdbEncodeStringBytes(item.value));
+                            break;
+                        case 'list':
+                        case 'set':
+                            bytes.push(...rdbSaveLenBytes(item.value.length));
+                            item.value.forEach(v => bytes.push(...rdbEncodeStringBytes(v)));
+                            break;
+                        case 'hash':
+                             bytes.push(...rdbSaveLenBytes(item.value.size));
+                             item.value.forEach((val, field) => {
+                                bytes.push(...rdbEncodeStringBytes(field));
+                                bytes.push(...rdbEncodeStringBytes(val));
+                             });
+                             break;
+                        case 'zset':
+                            bytes.push(...rdbSaveLenBytes(item.value.length));
+                            item.value.forEach(({score, member}) => {
+                                bytes.push(...rdbEncodeStringBytes(member));
+                                bytes.push(...numberToFloat64Bytes(score));
+                            });
+                            break;
+                    }
+                });
+
+                bytes.push(RDB_OPCODE_EOF);
+                
+                if (includeChecksum) {
+                    const contentToChecksum = new Uint8Array(bytes);
+                    const checksum = crc64(contentToChecksum);
+                    const checksumBytes = [];
+                    const view = new DataView(new ArrayBuffer(8));
+                    view.setBigUint64(0, checksum, true); // true for little-endian
+                    for (let i = 0; i < 8; i++) {
+                        checksumBytes.push(view.getUint8(i));
+                    }
+                    bytes.push(...checksumBytes);
+                }
+
+                return new Uint8Array(bytes);
+            }
+            
+            // Initial setup
+            updateModalInputs();
+            renderInMemoryView();
+        });
+    </script>
+</body>
+</html>
+
