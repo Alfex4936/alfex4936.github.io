@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redis Eviction & Memory Pressure Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        .key-card {
+            transition: all 0.3s ease-in-out;
+            transform-origin: center;
+        }
+        .key-card.adding {
+            animation: pop-in 0.3s ease-out forwards;
+        }
+        .key-card.evicting {
+            animation: pop-out 0.5s ease-in forwards;
+        }
+        .key-card.updated {
+            animation: pulse 0.5s ease-out;
+        }
+        .key-card.expired {
+            animation: pop-out 0.5s ease-in forwards;
+        }
+        @keyframes pop-in {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes pop-out {
+            0% { transform: scale(1); opacity: 1; background-color: #4a0404; }
+            100% { transform: scale(0); opacity: 0; background-color: #4a0404; }
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.4); }
+            50% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(52, 211, 153, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+        }
+        .log-message {
+            font-family: 'Roboto Mono', monospace;
+            transition: all 0.3s;
+        }
+        .log-message.new-log {
+             animation: slide-in 0.3s ease-out;
+        }
+        @keyframes slide-in {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .pool-slot {
+            transition: all 0.3s ease;
+            animation: fill-slot 0.5s ease-out forwards;
+        }
+        .pool-slot.victim {
+            animation: select-victim 0.5s ease-out forwards 0.5s;
+        }
+        @keyframes fill-slot {
+            from { opacity: 0; transform: scale(0.7); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes select-victim {
+            0% { background-color: #4b5563; } /* gray-600 */
+            50% { background-color: #ef4444; transform: scale(1.1); } /* red-500 */
+            100% { background-color: #ef4444; transform: scale(1.1); }
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200">
+    <div class="container mx-auto p-4 lg:p-8">
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <h1 class="text-3xl lg:text-4xl font-bold text-cyan-400">Redis Eviction & Memory Pressure Visualizer</h1>
+            <p class="text-gray-400 mt-2 max-w-3xl mx-auto">
+                An interactive simulation to help developers understand Redis's memory management and key eviction policies when memory pressure occurs.
+            </p>
+            <div id="system-clock" class="mt-2 text-sm text-gray-500 font-mono"></div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Left Panel: Controls and Info -->
+            <div class="lg-col-span-1 bg-gray-800 rounded-lg p-6 shadow-2xl h-fit">
+                <h2 class="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">Controls & Configuration</h2>
+                
+                <!-- Eviction Policy Selector -->
+                <div class="mb-6">
+                    <label for="eviction-policy" class="block text-sm font-medium text-gray-400 mb-2">Eviction Policy</label>
+                    <select id="eviction-policy" class="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                        <option value="noeviction">noeviction</option>
+                        <option value="allkeys-lru">allkeys-lru</option>
+                        <option value="volatile-lru">volatile-lru</option>
+                        <option value="allkeys-lfu">allkeys-lfu</option>
+                        <option value="volatile-lfu">volatile-lfu</option>
+                        <option value="allkeys-random">allkeys-random</option>
+                        <option value="volatile-random">volatile-random</option>
+                        <option value="volatile-ttl">volatile-ttl</option>
+                    </select>
+                </div>
+
+                <!-- Memory Limit Slider -->
+                <div class="mb-6">
+                    <label for="max-memory" class="block text-sm font-medium text-gray-400 mb-2">Max Memory (Keys)</label>
+                    <div class="flex items-center">
+                        <input id="max-memory" type="range" min="5" max="50" value="20" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                        <span id="max-memory-value" class="ml-4 font-mono text-cyan-400 text-lg">20</span>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="mb-6 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-2 gap-3">
+                    <button id="add-key" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition duration-200 flex items-center justify-center"><i class="fas fa-plus mr-2"></i>Add</button>
+                    <button id="update-key" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-200 flex items-center justify-center"><i class="fas fa-random mr-2"></i>Update</button>
+                    <button id="add-ttl-key" class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-md transition duration-200 flex items-center justify-center"><i class="fas fa-stopwatch mr-2"></i>Add TTL</button>
+                    <button id="clear-keys" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition duration-200 flex items-center justify-center"><i class="fas fa-trash mr-2"></i>Clear</button>
+                </div>
+
+                <!-- Auto-Add Toggle -->
+                <div class="flex items-center justify-between">
+                    <span class="text-sm font-medium text-gray-400">Auto-Add Keys</span>
+                    <label for="auto-add-toggle" class="inline-flex relative items-center cursor-pointer">
+                        <input type="checkbox" value="" id="auto-add-toggle" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-cyan-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
+                    </label>
+                </div>
+                
+                 <!-- Info Panel -->
+                <div id="info-panel" class="mt-6 pt-4 border-t border-gray-700">
+                    <h3 class="text-lg font-semibold mb-3">Live Stats</h3>
+                    <div class="space-y-3">
+                        <div>
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-sm font-medium text-gray-400">Memory Usage</span>
+                                <span id="memory-usage-text" class="text-sm font-mono text-cyan-400">0 / 20</span>
+                            </div>
+                            <div class="w-full bg-gray-700 rounded-full h-2.5">
+                                <div id="memory-progress-bar" class="bg-cyan-500 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm font-medium text-gray-400">Evicted Keys</span>
+                            <span id="evicted-keys-count" class="text-lg font-mono text-red-500">0</span>
+                        </div>
+                         <div class="flex justify-between items-center">
+                            <span class="text-sm font-medium text-gray-400">Policy Description</span>
+                        </div>
+                        <p id="policy-description" class="text-xs text-gray-500 italic mt-1"></p>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Right Panel: Visualization & Logs -->
+            <div class="lg:col-span-2 space-y-6">
+                <!-- Keys Visualization -->
+                <div class="bg-gray-800 rounded-lg p-6 shadow-2xl">
+                    <h2 class="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">Redis Memory (Keyspace)</h2>
+                    <div id="keys-container" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 min-h-[200px]">
+                        <!-- Key cards will be dynamically inserted here -->
+                    </div>
+                </div>
+                
+                <!-- Eviction Pool Visualization -->
+                <div id="eviction-pool-container" class="bg-gray-800 rounded-lg p-6 shadow-2xl hidden">
+                    <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
+                         <h2 class="text-xl font-semibold">Eviction Candidate Pool</h2>
+                         <i id="pool-info-icon" class="fas fa-info-circle text-gray-500 cursor-pointer"></i>
+                    </div>
+                    <div id="eviction-pool-explanation" class="hidden text-sm p-4 mb-4 bg-gray-900/50 rounded-lg border border-cyan-500/30">
+                        <h3 class="font-bold text-cyan-400">Why a Pool? (Approximated LRU/LFU)</h3>
+                        <p class="text-xs mt-2 text-gray-400">Scanning all keys to find the *perfect* one to evict is slow. Instead, Redis performs a high-speed approximation: it takes a small, random sample of keys and places the best candidates into this 16-slot pool. It then evicts the single best key *from the pool after a final check*. This is much faster and a key reason Redis remains responsive under memory pressure.</p>
+                    </div>
+                    <div id="eviction-pool" class="grid grid-cols-4 md:grid-cols-8 gap-2">
+                        <!-- Pool slots will be dynamically inserted here -->
+                    </div>
+                </div>
+
+
+                <!-- Log Output -->
+                <div class="bg-gray-800 rounded-lg p-6 shadow-2xl">
+                    <h2 class="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">Activity Log</h2>
+                    <div id="log-container" class="h-64 overflow-y-auto pr-2 space-y-1">
+                        <!-- Log messages will be dynamically inserted here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // DOM Elements
+            const evictionPolicySelect = document.getElementById('eviction-policy');
+            const maxMemorySlider = document.getElementById('max-memory');
+            const maxMemoryValue = document.getElementById('max-memory-value');
+            const addKeyBtn = document.getElementById('add-key');
+            const updateKeyBtn = document.getElementById('update-key');
+            const addTtlKeyBtn = document.getElementById('add-ttl-key');
+            const clearKeysBtn = document.getElementById('clear-keys');
+            const autoAddToggle = document.getElementById('auto-add-toggle');
+            const keysContainer = document.getElementById('keys-container');
+            const logContainer = document.getElementById('log-container');
+            const memoryUsageText = document.getElementById('memory-usage-text');
+            const memoryProgressBar = document.getElementById('memory-progress-bar');
+            const evictedKeysCount = document.getElementById('evicted-keys-count');
+            const policyDescription = document.getElementById('policy-description');
+            const systemClock = document.getElementById('system-clock');
+            const evictionPoolContainer = document.getElementById('eviction-pool-container');
+            const evictionPoolDiv = document.getElementById('eviction-pool');
+            const poolInfoIcon = document.getElementById('pool-info-icon');
+            const evictionPoolExplanation = document.getElementById('eviction-pool-explanation');
+
+            // State
+            let state = {
+                keys: [],
+                maxMemory: 20,
+                evictionPolicy: 'noeviction',
+                evictedCount: 0,
+                autoAddInterval: null,
+                keyCounter: 0,
+                currentTime: 0,
+                isProcessing: false, // The new processing lock
+                evictionPool: [],
+            };
+            
+            const policyDescriptions = {
+                'noeviction': 'Returns an error on write operations when the memory limit is reached. Default policy.',
+                'allkeys-lru': 'Evicts the least recently used (LRU) keys out of all keys.',
+                'volatile-lru': 'Evicts the least recently used (LRU) keys from those with an expire set.',
+                'allkeys-lfu': 'Evicts the least frequently used (LFU) keys out of all keys.',
+                'volatile-lfu': 'Evicts the least frequently used (LFU) keys from those with an expire set.',
+                'allkeys-random': 'Evicts random keys out of all keys.',
+                'volatile-random': 'Evicts random keys from those with an expire set.',
+                'volatile-ttl': 'Evicts keys with the shortest time-to-live (TTL) from those with an expire set.'
+            };
+
+            // --- Core Logic ---
+
+            function logActivity(message, type = 'info') {
+                const logMeta = {
+                    info:   { color: 'text-gray-400',   icon: 'fa-info-circle',  level: 'INFO' },
+                    add:    { color: 'text-green-400',  icon: 'fa-plus-circle',  level: 'ADD' },
+                    evict:  { color: 'text-red-400',    icon: 'fa-trash-alt',    level: 'EVICT' },
+                    update: { color: 'text-blue-400',   icon: 'fa-exchange-alt', level: 'ACCESS' },
+                    warn:   { color: 'text-yellow-400', icon: 'fa-exclamation-triangle', level: 'WARN' },
+                    system: { color: 'text-cyan-400',   icon: 'fa-cog',          level: 'SYSTEM' },
+                    expire: { color: 'text-orange-400', icon: 'fa-clock',        level: 'EXPIRE' }
+                };
+
+                const meta = logMeta[type] || logMeta['info'];
+                const logEntry = document.createElement('div');
+                logEntry.className = `log-message new-log text-sm flex items-start p-2 rounded-md bg-gray-900 hover:bg-gray-700/50`;
+
+                logEntry.innerHTML = `
+                    <span class="w-20 text-gray-500">[T+${state.currentTime.toString().padStart(4, '0')}]</span>
+                    <span class="w-28 font-bold ${meta.color}">
+                        <i class="fas ${meta.icon} w-5 text-center"></i> ${meta.level}
+                    </span>
+                    <span class="flex-1">${message}</span>
+                `;
+
+                logContainer.prepend(logEntry);
+
+                // Keep log size manageable
+                if (logContainer.children.length > 100) {
+                    logContainer.removeChild(logContainer.lastChild);
+                }
+                
+                // Remove animation class after it runs
+                setTimeout(() => logEntry.classList.remove('new-log'), 300);
+            }
+            
+            function runActiveExpireCycle() {
+                const keysWithTTL = state.keys.filter(k => k.ttl !== null);
+                if (keysWithTTL.length === 0) return;
+
+                logActivity("Running active expiration cycle...", 'system');
+                
+                const sampleSize = Math.min(keysWithTTL.length, 20);
+                const sampledKeys = keysWithTTL.sort(() => 0.5 - Math.random()).slice(0, sampleSize);
+
+                let expiredCount = 0;
+                let keysToRemove = [];
+
+                sampledKeys.forEach(key => {
+                    if (key.ttl === 0) {
+                        expiredCount++;
+                        keysToRemove.push(key.name);
+                    }
+                });
+
+                if (expiredCount > 0) {
+                    logActivity(`Sampled ${sampleSize} keys, found ${expiredCount} expired. Removing...`, 'expire');
+                    keysToRemove.forEach(keyName => {
+                        render('expired', keyName);
+                    });
+                    
+                    setTimeout(() => {
+                        state.keys = state.keys.filter(k => !keysToRemove.includes(k.name));
+                        render();
+                    }, 450);
+                } else {
+                     logActivity(`Sampled ${sampleSize} keys, 0 expired.`, 'system');
+                }
+            }
+
+
+            function updateClock() {
+                 setInterval(() => {
+                    state.currentTime++;
+                    
+                    let passivelyExpired = false;
+                    state.keys.forEach(key => {
+                        if (key.ttl !== null && key.ttl > 0) {
+                            key.ttl--;
+                            if (key.ttl === 0) {
+                                logActivity(`Key "${key.name}" expired (TTL reached).`, 'expire');
+                                state.keys = state.keys.filter(k => k.name !== key.name);
+                                passivelyExpired = true;
+                            }
+                        }
+                    });
+
+                    if (state.currentTime % 10 === 0) {
+                        runActiveExpireCycle();
+                    }
+
+                    if (autoAddToggle.checked || passivelyExpired) {
+                         render();
+                    }
+                }, 1000);
+            }
+
+            function updateSystemClock() {
+                const now = new Date();
+                const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                const dateString = now.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+                systemClock.textContent = `${dateString} ${timeString}`;
+            }
+
+
+            function createKey(hasTTL = false) {
+                state.keyCounter++;
+                const newKey = {
+                    name: `key:${state.keyCounter}`,
+                    value: Math.random().toString(36).substring(2, 7),
+                    lastUsed: state.currentTime,
+                    frequency: 1,
+                    ttl: hasTTL ? Math.floor(Math.random() * 40) + 20 : null,
+                };
+                return newKey;
+            }
+
+            function addKey(keyToAdd) {
+                if (state.keys.length >= state.maxMemory) {
+                    logActivity(`Memory limit reached (${state.maxMemory} keys). Eviction process starting...`, 'warn');
+                    
+                    if (state.evictionPolicy === 'noeviction') {
+                        logActivity(`Eviction failed: Policy is 'noeviction'. Key rejected.`, 'evict');
+                        state.isProcessing = false;
+                        return;
+                    }
+
+                    if (!evictKey(keyToAdd)) {
+                        logActivity(`Eviction failed: No suitable keys to evict for '${state.evictionPolicy}'.`, 'evict');
+                        state.isProcessing = false;
+                    }
+                } else {
+                    state.keys.push(keyToAdd);
+                    logActivity(`Added Key "${keyToAdd.name}" ${keyToAdd.ttl ? `(TTL: ${keyToAdd.ttl}s)` : ''}`, 'add');
+                    render('adding', keyToAdd.name);
+                    setTimeout(() => { state.isProcessing = false; }, 300);
+                }
+            }
+
+            function updateRandomKey() {
+                if (state.keys.length === 0) {
+                    logActivity("No keys to update.", 'warn');
+                    state.isProcessing = false;
+                    return;
+                }
+                const keyToUpdate = state.keys[Math.floor(Math.random() * state.keys.length)];
+                keyToUpdate.lastUsed = state.currentTime;
+                keyToUpdate.frequency++;
+                keyToUpdate.value = Math.random().toString(36).substring(2, 7);
+                logActivity(`Updated/Accessed Key "${keyToUpdate.name}". Pool data for this key is now stale.`, 'update');
+                render('updated', keyToUpdate.name);
+                setTimeout(() => { state.isProcessing = false; }, 500);
+            }
+            
+            function clearAllKeys() {
+                state.keys = [];
+                state.evictedCount = 0;
+                state.keyCounter = 0;
+                state.evictionPool = [];
+                logContainer.innerHTML = '';
+                logActivity("Cleared all keys and reset stats.", 'system');
+                render();
+                state.isProcessing = false;
+            }
+
+            function startChaosMode() {
+                logActivity('CHAOS MODE ACTIVATED!', 'warn');
+                
+                // 1. Clear everything
+                state.keys = [];
+                state.evictedCount = 0;
+                state.keyCounter = 0;
+                state.evictionPool = [];
+                logContainer.innerHTML = '';
+                logActivity("State reset for chaos mode.", 'system');
+
+                // 2. Set random max memory
+                const newMaxMemory = Math.floor(Math.random() * (40 - 15 + 1)) + 15; // Random between 15 and 40
+                state.maxMemory = newMaxMemory;
+                maxMemorySlider.value = newMaxMemory;
+                maxMemoryValue.textContent = newMaxMemory;
+                logActivity(`New max memory set to: ${newMaxMemory}`, 'system');
+
+                // 3. Generate keys with random properties
+                for (let i = 0; i < newMaxMemory; i++) {
+                    state.keyCounter++;
+                    const hasTTL = Math.random() > 0.5;
+                    const newKey = {
+                        name: `key:${state.keyCounter}`,
+                        value: Math.random().toString(36).substring(2, 7),
+                        lastUsed: state.currentTime > 0 ? state.currentTime - Math.floor(Math.random() * state.currentTime) : 0, 
+                        frequency: Math.floor(Math.random() * 50) + 1, 
+                        ttl: hasTTL ? Math.floor(Math.random() * 60) + 20 : null,
+                    };
+                    state.keys.push(newKey);
+                }
+                logActivity(`Generated ${newMaxMemory} keys with random properties.`, 'add');
+
+                // 4. Render and unlock
+                render();
+                state.isProcessing = false;
+            }
+
+            // --- Eviction Policies ---
+            function getEvictionScore(key, policy) {
+                if (policy.includes('lru')) {
+                    return state.currentTime - key.lastUsed; 
+                }
+                if (policy.includes('lfu')) {
+                    // Higher score = better candidate for eviction
+                    return 255 - key.frequency;
+                }
+                return 0;
+            }
+
+            function evictKey(keyToAdd) {
+                const usesPool = state.evictionPolicy.includes('lru') || state.evictionPolicy.includes('lfu');
+                
+                if (!usesPool) {
+                    let keyToEvict;
+                    const candidates = getEvictionCandidates();
+                    if (candidates.length === 0) return false;
+                    
+                    if(state.evictionPolicy.includes('random')) keyToEvict = findRandom(candidates);
+                    else if(state.evictionPolicy.includes('ttl')) keyToEvict = findTTL(candidates);
+
+                    if (keyToEvict) {
+                        performEviction(keyToEvict, keyToAdd);
+                        return true;
+                    }
+                    return false;
+                }
+
+                // --- Eviction Pool Logic ---
+                populateEvictionPool();
+                logActivity(`Updated eviction pool with new candidates.`, 'system');
+                renderEvictionPool();
+                
+                if (state.evictionPool.length === 0) return false;
+
+                let bestLiveCandidate = null;
+                let bestLiveScore = -1;
+
+                logActivity('--- Final Check ---', 'system');
+                for (let i = state.evictionPool.length - 1; i >= 0; i--) {
+                    const candidateFromPool = state.evictionPool[i];
+                    const liveKey = state.keys.find(k => k.name === candidateFromPool.name);
+
+                    if (!liveKey) {
+                         logActivity(`Pool candidate "${candidateFromPool.name}" is a ghost. Ignoring.`, 'system');
+                         state.evictionPool.splice(i, 1);
+                         continue;
+                    }
+
+                    const liveScore = getEvictionScore(liveKey, state.evictionPolicy);
+                    logActivity(`Checking "${liveKey.name}": Pool score=${candidateFromPool.snapshotScore}, Live score=${liveScore}.`, 'system');
+
+                    if (liveScore > bestLiveScore) {
+                        bestLiveScore = liveScore;
+                        bestLiveCandidate = liveKey;
+                    }
+                }
+
+                if (bestLiveCandidate) {
+                    const keyToEvict = bestLiveCandidate;
+                    logActivity(`"${keyToEvict.name}" confirmed as best live candidate. Evicting.`, 'evict');
+                    
+                    const victimSlot = document.getElementById(`pool-slot-${keyToEvict.name}`);
+                    if (victimSlot) victimSlot.classList.add('victim');
+
+                    setTimeout(() => {
+                        performEviction(keyToEvict, keyToAdd);
+                    }, 1500);
+                    return true;
+                }
+                
+                return false;
+            }
+            
+            function populateEvictionPool() {
+                const candidates = getEvictionCandidates();
+                if (candidates.length === 0) return;
+
+                const sampleSize = Math.min(candidates.length, 5);
+                logActivity(`Sampling ${sampleSize} random keys to update pool...`, 'system');
+                
+                const sampledKeys = candidates.sort(() => 0.5 - Math.random()).slice(0, sampleSize);
+
+                for (const key of sampledKeys) {
+                    if (state.evictionPool.find(p => p.name === key.name)) continue;
+                    
+                    const score = getEvictionScore(key, state.evictionPolicy);
+                    const poolEntry = { name: key.name, snapshotScore: score };
+
+                    if (state.evictionPool.length < 16) {
+                        state.evictionPool.push(poolEntry);
+                    } else {
+                        const worstScoreInPool = state.evictionPool[0].snapshotScore;
+                        if (score > worstScoreInPool) {
+                            state.evictionPool[0] = poolEntry;
+                        }
+                    }
+                    state.evictionPool.sort((a, b) => a.snapshotScore - b.snapshotScore);
+                }
+            }
+
+            function performEviction(keyToEvict, keyToAdd) {
+                 logActivity(`Evicting Key "${keyToEvict.name}" to make space for "${keyToAdd.name}".`, 'evict');
+                 render('evicting', keyToEvict.name);
+
+                 setTimeout(() => {
+                    state.keys = state.keys.filter(k => k.name !== keyToEvict.name);
+                    state.evictionPool = state.evictionPool.filter(p => p.name !== keyToEvict.name);
+                    state.evictedCount++;
+                    state.keys.push(keyToAdd);
+                    logActivity(`Added Key "${keyToAdd.name}" ${keyToAdd.ttl ? `(TTL: ${keyToAdd.ttl}s)` : ''}`, 'add');
+                    render('adding', keyToAdd.name);
+                    state.isProcessing = false;
+                 }, 450);
+            }
+
+
+            function getEvictionCandidates() {
+                if (state.evictionPolicy.startsWith('allkeys')) {
+                    return [...state.keys];
+                }
+                if (state.evictionPolicy.startsWith('volatile')) {
+                    return state.keys.filter(k => k.ttl !== null);
+                }
+                return [];
+            }
+
+            const findRandom = (candidates) => { if (!candidates || candidates.length === 0) return null; return candidates[Math.floor(Math.random() * candidates.length)]; }
+            const findTTL = (candidates) => { if (!candidates || candidates.length === 0) return null; return candidates.reduce((ttlKey, key) => (key.ttl < ttlKey.ttl ? key : ttlKey), candidates[0]); }
+
+
+            // --- Rendering ---
+            function render(animationType = null, animatedKeyName = null) {
+                const policy = state.evictionPolicy;
+                const usesPool = policy.includes('lru') || policy.includes('lfu');
+
+                if (usesPool) {
+                    evictionPoolContainer.classList.remove('hidden');
+                } else {
+                    evictionPoolContainer.classList.add('hidden');
+                    state.evictionPool = [];
+                }
+
+                keysContainer.innerHTML = '';
+                state.keys.forEach(key => {
+                    const card = document.createElement('div');
+                    let animationClass = 'key-card';
+                    if (animationType && key.name === animatedKeyName) {
+                        animationClass += ` ${animationType}`;
+                    }
+
+                    card.className = `${animationClass} bg-gray-700 rounded-md p-2 text-center shadow-lg flex flex-col justify-between`;
+                    
+                    let ttlBadge = key.ttl !== null ? `<span class="absolute top-1 right-1 text-xs bg-yellow-600 text-white rounded-full px-1.5 py-0.5">${key.ttl}s</span>` : '';
+                    
+                    let internalValueHTML = '';
+                    if (policy.includes('lru')) {
+                        const idleTime = state.currentTime - key.lastUsed;
+                        const titleText = `Redis Internals:\n- Stored in: struct robj\n- Field: unsigned int lru:24\n- Usage: Stores a 24-bit timestamp. Idle time is calculated from this value.`;
+                        internalValueHTML = `<div class="font-mono text-xs text-orange-400" title="${titleText}">Idle: ${idleTime}s</div>`;
+                    } else if (policy.includes('lfu')) {
+						const titleText = `Redis Internals:\n- Stored in: struct robj\n- Field: unsigned int lru:24\n- Usage: The 24 bits are split:\n  • 16 bits: Last Decrement Time (ldt)\n  • 8 bits: Logarithmic Frequency Counter (logc)`;
+                        internalValueHTML = `<div class="font-mono text-xs text-purple-400" title="${titleText}">Freq: ${key.frequency}</div>`;
+                    }
+
+                    card.innerHTML = `
+                        <div class="relative">
+                            <i class="fas fa-key text-cyan-400 text-xl"></i>
+                            ${ttlBadge}
+                        </div>
+                        <div class="font-mono text-xs mt-1 truncate">${key.name}</div>
+                        ${internalValueHTML}
+                        <div class="font-mono text-[0.65rem] text-gray-400 truncate">${key.value}</div>
+                    `;
+                    keysContainer.appendChild(card);
+                });
+
+                const usage = state.keys.length;
+                memoryUsageText.textContent = `${usage} / ${state.maxMemory}`;
+                const usagePercentage = (usage / state.maxMemory) * 100;
+                const progressBarWidth = Math.min(100, usagePercentage);
+                memoryProgressBar.style.width = `${progressBarWidth}%`;
+                memoryProgressBar.classList.toggle('bg-red-500', usagePercentage > 90);
+                memoryProgressBar.classList.toggle('bg-yellow-500', usagePercentage > 70 && usagePercentage <= 90);
+                memoryProgressBar.classList.toggle('bg-cyan-500', usagePercentage <= 70);
+
+                evictedKeysCount.textContent = state.evictedCount;
+                policyDescription.textContent = policyDescriptions[state.evictionPolicy];
+                renderEvictionPool();
+            }
+            
+            function renderEvictionPool() {
+                 evictionPoolDiv.innerHTML = '';
+                 for(let i=0; i < 16; i++) {
+                     const slot = document.createElement('div');
+                     const key = state.evictionPool[state.evictionPool.length - 1 - i];
+                     if (key) {
+                         let valueLabel;
+                         let valueColor;
+                         let titleText;
+
+                         if (state.evictionPolicy.includes('lru')) {
+                            valueLabel = 'Idle';
+                            valueColor = 'text-orange-400';
+                            titleText = 'Stale Idle Time (in seconds)';
+                         } else { // LFU
+                            valueLabel = 'Score';
+                            valueColor = 'text-purple-400';
+                            titleText = 'Stale Eviction Score (255 - Freq)';
+                         }
+                         slot.className = 'pool-slot bg-gray-600 rounded p-1 text-center text-xs';
+                         slot.id = `pool-slot-${key.name}`;
+                         slot.innerHTML = `<div class="font-mono truncate" title="${key.name}">${key.name}</div><div class="font-bold ${valueColor}" title="${titleText}">${valueLabel}: ${key.snapshotScore}</div>`;
+                     } else {
+                         slot.className = 'pool-slot bg-gray-700/50 rounded p-1 h-12';
+                     }
+                      evictionPoolDiv.appendChild(slot);
+                 }
+            }
+
+            // --- Event Listeners ---
+            addKeyBtn.addEventListener('click', () => {
+                if (state.isProcessing) return;
+                state.isProcessing = true;
+                addKey(createKey(false));
+            });
+            addTtlKeyBtn.addEventListener('click', () => {
+                if (state.isProcessing) return;
+                state.isProcessing = true;
+                addKey(createKey(true));
+            });
+
+            let pressTimer;
+            updateKeyBtn.addEventListener('mousedown', () => {
+                pressTimer = setTimeout(() => {
+                    if (state.isProcessing) return;
+                    state.isProcessing = true;
+                    startChaosMode();
+                    pressTimer = null; 
+                }, 1000);
+            });
+            updateKeyBtn.addEventListener('mouseup', () => {
+                if (pressTimer) {
+                    clearTimeout(pressTimer);
+                    if (state.isProcessing) return;
+                    state.isProcessing = true;
+                    updateRandomKey();
+                }
+            });
+            updateKeyBtn.addEventListener('mouseleave', () => {
+                clearTimeout(pressTimer);
+            });
+
+            clearKeysBtn.addEventListener('click', () => {
+                if (state.isProcessing) return;
+                state.isProcessing = true;
+                clearAllKeys();
+            });
+
+            maxMemorySlider.addEventListener('input', (e) => {
+                state.maxMemory = parseInt(e.target.value);
+                maxMemoryValue.textContent = state.maxMemory;
+                render();
+            });
+
+            evictionPolicySelect.addEventListener('change', (e) => {
+                state.evictionPolicy = e.target.value;
+                 logActivity(`Eviction policy changed to '${state.evictionPolicy}'.`, 'system');
+                render();
+            });
+
+            autoAddToggle.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    state.autoAddInterval = setInterval(() => {
+                        const hasTTL = state.evictionPolicy.includes('volatile');
+                        if (!state.isProcessing) {
+                             state.isProcessing = true;
+                             addKey(createKey(hasTTL));
+                        }
+                    }, 2000); // Changed from 1000ms to 2000ms
+                     logActivity(`Auto-add enabled.`, 'system');
+                } else {
+                    clearInterval(state.autoAddInterval);
+                    state.autoAddInterval = null;
+                    logActivity(`Auto-add disabled.`, 'system');
+                }
+            });
+            
+            poolInfoIcon.addEventListener('click', () => {
+                evictionPoolExplanation.classList.toggle('hidden');
+            });
+
+            // Initial Setup
+            function initialize() {
+                updateClock();
+                updateSystemClock();
+                setInterval(updateSystemClock, 1000);
+                logActivity("Visualizer initialized. Add keys or enable auto-add to begin.", 'system');
+                render();
+            }
+
+            initialize();
+        });
+    </script>
+</body>
+</html>
+
