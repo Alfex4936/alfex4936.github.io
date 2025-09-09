@@ -48,6 +48,14 @@
             background-color: #4b5563;
             color: white;
         }
+        .pattern-key-hint {
+            cursor: help;
+            text-decoration: underline dotted;
+            text-underline-offset: 3px;
+        }
+        .pattern-key-hint:hover {
+            background-color: rgba(59, 130, 246, 0.1);
+        }
         .hint-container:hover .hint-popover {
             opacity: 1;
             visibility: visible;
@@ -128,7 +136,7 @@
     <main class="relative z-10 flex flex-col h-[calc(100vh-2rem)] lg:h-[calc(100vh-3rem)]">
         <header class="flex-shrink-0 mb-4 text-center">
             <h1 class="text-2xl lg:text-3xl font-bold text-red-500 flex items-center justify-center gap-3">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8"><path d="M21.5 12c0-5.25-4.25-9.5-9.5-9.5S2.5 6.75 2.5 12s4.25 9.5 9.5 9.5c.23 0 .46-.01.68-.03"></path><path d="M12 15c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3"></path><path d="M12 4v2"></path><path d="M12 18v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M4 12H2"></path><path d="M20 12h2"></path><path d="m4.93 19.07 1.41-1.41"></path><path d="m17.66 6.34 1.41-1.41"></path></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8"><path d="M21.5 12c0-5.25-4.25-9.5-9.5-9.5S2.5 6.75 2.5 12s4.25 9.5 9.5 9.5c.23 0 .46-.01.68-.03"></path><path d="M12 15c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3"></path><path d="M12 4v2"></path><path d="M12 18v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M4 12H2"></path><path d="M20 12h2"></path><path d="m4.93 19.07 1.41-1.41"></path><path d="m17.66 6.34 1.41-1.41"></path></svg>
                 Redis Pub/Sub Visualizer
             </h1>
             <p class="text-sm text-gray-400 mt-1">An interactive simulation of Redis's Publish/Subscribe mechanism.</p>
@@ -141,9 +149,8 @@
             <section class="flex flex-col gap-4 min-h-0">
                 <div class="flex-shrink-0 flex items-center justify-between">
                     <h2 class="text-xl font-semibold">Clients</h2>
-                    <button id="add-client-btn" class="flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md bg-red-600 hover:bg-red-700 transition-colors">
+                    <button id="add-client-btn" class="flex items-center justify-center w-10 h-10 rounded-full bg-red-600 hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500" title="Add New Client (long press for chaos)">
                         <i class="fas fa-plus w-4 h-4"></i>
-                        New Client
                     </button>
                 </div>
                 <div id="clients-container" class="flex-grow overflow-y-auto pr-2 space-y-4">
@@ -253,8 +260,6 @@
                 }
             };
 
-            <!-- --- CORE SIMULATION LOGIC --- -->
-
             const globToRegex = (glob) => {
                 let regex = '^';
                 for (let i = 0; i < glob.length; i++) {
@@ -292,6 +297,45 @@
                 return new RegExp(regex + '$');
             };
 
+            const generateExampleForPattern = (pattern) => {
+                let example = '';
+                const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+                const words = ['user', 'event', 'prod', 'status', 'login', '1a2b3c', 'update', 'build'];
+                const randomChar = () => chars[Math.floor(Math.random() * chars.length)];
+                const randomWord = () => words[Math.floor(Math.random() * words.length)];
+
+                for (let i = 0; i < pattern.length; i++) {
+                    const char = pattern[i];
+                    switch (char) {
+                        case '*':
+                            example += randomWord();
+                            break;
+                        case '?':
+                            example += randomChar();
+                            break;
+                        case '[':
+                            const end = pattern.indexOf(']', i);
+                            if (end === -1) {
+                                example += '[';
+                                break;
+                            }
+                            const setContent = pattern.substring(i + 1, end);
+                            if (setContent.startsWith('^')) {
+                                const negatedChars = new Set(setContent.substring(1));
+                                let availableChars = [...chars].filter(c => !negatedChars.has(c));
+                                example += availableChars[Math.floor(Math.random() * availableChars.length)];
+                            } else {
+                                example += setContent[Math.floor(Math.random() * setContent.length)];
+                            }
+                            i = end;
+                            break;
+                        default:
+                            example += char;
+                    }
+                }
+                return example;
+            };
+
             const log = (message, type = 'info') => {
                 const entry = document.createElement('div');
                 let colorClass = 'text-gray-400';
@@ -316,6 +360,10 @@
             };
             
             const animateMessage = (fromElem, toElem, onComplete) => {
+                if (!fromElem || !toElem) {
+                    if (onComplete) onComplete();
+                    return;
+                }
                 const startRect = fromElem.getBoundingClientRect();
                 const endRect = toElem.getBoundingClientRect();
 
@@ -387,7 +435,7 @@
 
                         animateMessage(fromElem, toElem, () => {
                             client.inbox.unshift({ type: 'message', channel, message });
-                            renderClient(subId);
+                            if (document.querySelector(`[data-client-id="${subId}"]`)) renderClient(subId);
                         });
                         notifiedClients.add(subId);
                         receivers++;
@@ -408,7 +456,7 @@
 
                                 animateMessage(fromElem, toElem, () => {
                                     client.inbox.unshift({ type: 'pmessage', pattern, channel, message });
-                                    renderClient(subId);
+                                    if (document.querySelector(`[data-client-id="${subId}"]`)) renderClient(subId);
                                 });
                                 notifiedClients.add(subId);
                                 receivers++;
@@ -419,7 +467,7 @@
 
                 setTimeout(() => {
                     publisher.flags.PUSHING = false;
-                    renderClient(clientId);
+                    if (document.querySelector(`[data-client-id="${clientId}"]`)) renderClient(clientId);
                     log(`(integer) ${receivers}`, 'resp');
                 }, 1000); // Duration of animation
             };
@@ -442,8 +490,6 @@
                     case 'PSUBSCRIBE': clientSubs = client.patterns; serverPubSub = state.server.pubsub_patterns; break;
                     case 'SSUBSCRIBE': clientSubs = client.shardSubscriptions; serverPubSub = state.server.pubsubshard_channels; break;
                 }
-
-                log(`${type} ${channel}`, 'cmd');
 
                 if (clientSubs.has(channel)) {
                     log('Client already subscribed', 'event');
@@ -503,7 +549,7 @@
 
             // --- UI RENDERING ---
 
-            const createClient = () => {
+            const createClient = (silent = false) => {
                 clientIdCounter++;
                 const clientId = clientIdCounter;
                 const newClient = {
@@ -516,8 +562,9 @@
                 };
                 state.clients.set(clientId, newClient);
                 renderClient(clientId, true);
-                log(`New client connected: client-${clientId}`, 'event');
+                if (!silent) log(`New client connected: client-${clientId}`, 'event');
                 setTimeout(drawConnections, 50);
+                return clientId;
             };
 
             const renderClient = (clientId, isNew = false) => {
@@ -633,10 +680,16 @@
             };
             
             const renderServer = () => {
-                const renderDict = (map, color) => Array.from(map.entries()).map(([key, clients]) => `
-                    <div>
-                        <span class="text-${color}-400">'${key}'</span>: [${Array.from(clients).map(id => `client-${id}`).join(', ')}]
-                    </div>`).join('') || '<div class="text-gray-500">{empty}</div>';
+                const renderDict = (map, color) => Array.from(map.entries()).map(([key, clients]) => {
+                    const isPattern = color === 'blue';
+                    const keyHtml = isPattern 
+                        ? `<span class="pattern-key-hint" data-pattern="${key}" title="Click to see matching examples">'${key}'</span>`
+                        : `'${key}'`;
+                    
+                    return `<div>
+                        <span class="text-${color}-400">${keyHtml}</span>: [${Array.from(clients).map(id => `client-${id}`).join(', ')}]
+                    </div>`;
+                }).join('') || '<div class="text-gray-500">{empty}</div>';
 
                 channelsList.innerHTML = renderDict(state.server.pubsub_channels, 'green');
                 patternsList.innerHTML = renderDict(state.server.pubsub_patterns, 'blue');
@@ -696,8 +749,32 @@
             };
 
             // --- EVENT LISTENERS ---
-            addClientBtn.addEventListener('click', createClient);
-            clientsContainer.addEventListener('scroll', drawConnections);
+            
+            let longPressTimer;
+            let isLongPress = false;
+
+            addClientBtn.addEventListener('mousedown', () => {
+                isLongPress = false;
+                addClientBtn.style.transform = 'scale(0.95)';
+                longPressTimer = setTimeout(() => {
+                    isLongPress = true;
+                    addClientBtn.style.transform = 'scale(1.1)';
+                    triggerChaosMode();
+                }, 1000);
+            });
+
+            addClientBtn.addEventListener('mouseup', () => {
+                clearTimeout(longPressTimer);
+                addClientBtn.style.transform = 'scale(1)';
+                if (!isLongPress) {
+                    createClient();
+                }
+            });
+
+            addClientBtn.addEventListener('mouseleave', () => {
+                clearTimeout(longPressTimer);
+                 addClientBtn.style.transform = 'scale(1)';
+            });
 
             clearLogBtn.addEventListener('click', () => {
                 consoleOutput.innerHTML = '';
@@ -714,6 +791,7 @@
                 if (!button) return;
 
                 const card = button.closest('.client-card');
+                if (!card) return;
                 const clientId = parseInt(card.dataset.clientId);
 
                 if (button.classList.contains('publish-btn')) {
@@ -760,6 +838,82 @@
                     log(`Client-${clientId} disconnected`, 'event');
                 }
             });
+
+            document.getElementById('server-patterns').addEventListener('click', e => {
+                const hintEl = e.target.closest('.pattern-key-hint');
+                if (hintEl) {
+                    const pattern = hintEl.dataset.pattern;
+                    log(`DEV HINT for pattern '${pattern}'`, 'event');
+                    log(`└─ Example 1: '${generateExampleForPattern(pattern)}'`, 'event');
+                    log(`└─ Example 2: '${generateExampleForPattern(pattern)}'`, 'event');
+                }
+            });
+
+            const triggerChaosMode = () => {
+                log('EASTER EGG: Chaos mode activated!', 'event');
+                
+                const randomBetween = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+                const channels = ['logs:prod', 'metrics:cpu', 'events:user:login', 'cache:invalidate:product:1234', 'notifications:global', 'api:v1:users', 'api:v2:users', 'alerts:region:us-west', 'session:user1234:login:mobile'];
+                const patterns = [
+                    'logs:*', 
+                    'events:user:*', 
+                    'cache:invalidate:product:????', // Uses ?
+                    'metrics:?pu', // Uses ?
+                    'api:v[12]:*', // Uses [...] and *
+                    'alerts:region:[^eu]*', // Uses [^...] and *
+                    'session:*:*:[^d]*' // Mixed with * and [^...]
+                ];
+                const shardChannels = ['shard:user-activity', 'shard:payments'];
+                const allSubTypes = [
+                    { type: 'SUBSCRIBE', options: channels },
+                    { type: 'PSUBSCRIBE', options: patterns },
+                    { type: 'SSUBSCRIBE', options: shardChannels }
+                ];
+                const messages = ['{ "status": "ok" }', 'CPU at 90%', 'User 123 logged in', 'Product 456 invalidated'];
+
+                const clientsToCreate = randomBetween(5, 8);
+                const newClientIds = [];
+
+                for (let i = 0; i < clientsToCreate; i++) {
+                    const clientId = createClient(true);
+                    newClientIds.push(clientId);
+                }
+
+                // Subscribe them randomly
+                newClientIds.forEach(clientId => {
+                    const subsToCreate = randomBetween(1, 4);
+                    const usedSubs = new Set();
+                    for (let i = 0; i < subsToCreate; i++) {
+                        const subTypeData = allSubTypes[randomBetween(0, allSubTypes.length - 1)];
+                        const channel = subTypeData.options[randomBetween(0, subTypeData.options.length - 1)];
+                        if (!usedSubs.has(channel)) {
+                            handleSubscription(clientId, channel, subTypeData.type);
+                            usedSubs.add(channel);
+                        }
+                    }
+                });
+
+                // Publish some messages
+                let publishCount = 0;
+                const publishInterval = setInterval(() => {
+                    if (publishCount >= 10 || state.clients.size === 0) {
+                        clearInterval(publishInterval);
+                        return;
+                    }
+                    
+                    const allClients = Array.from(state.clients.keys());
+                    const publisherId = allClients[randomBetween(0, allClients.length - 1)];
+                    const isShard = Math.random() > 0.7;
+                    const channel = isShard 
+                        ? shardChannels[randomBetween(0, shardChannels.length - 1)]
+                        : channels[randomBetween(0, channels.length - 1)];
+                    const message = messages[randomBetween(0, messages.length - 1)];
+
+                    handlePublish(publisherId, channel, message, isShard);
+                    publishCount++;
+                }, 300);
+            };
             
             new ResizeObserver(drawConnections).observe(document.body);
 
@@ -772,3 +926,4 @@
     </script>
 </body>
 </html>
+
