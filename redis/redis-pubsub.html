@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redis Pub/Sub Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --dark-bg: #111827;
+            --panel-bg: #1f2937;
+            --border-color: #374151;
+            --text-main: #e5e7eb;
+            --text-muted: #9ca3af;
+            --accent-color: #ef4444; /* Red, now reserved for errors */
+            --green-light: #22c55e;
+            --blue-light: #3b82f6;
+            --purple-light: #a855f7;
+            --success-flash-color: #fde047; /* Bright yellow for success */
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--dark-bg);
+            color: var(--text-main);
+            overscroll-behavior: none;
+        }
+        .fira-code {
+            font-family: 'Fira Code', monospace;
+        }
+        .client-card, .server-panel {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            transition: all 0.2s ease-in-out;
+            position: relative;
+            z-index: 10;
+        }
+        .client-card:hover {
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
+            border-color: rgba(239, 68, 68, 0.5);
+        }
+        .btn-icon {
+            background-color: #374151;
+            color: #d1d5db;
+        }
+        .btn-icon:hover {
+            background-color: #4b5563;
+            color: white;
+        }
+        .hint-container:hover .hint-popover {
+            opacity: 1;
+            visibility: visible;
+            z-index: 60;
+        }
+        /* Stacking fix for tooltips */
+        #server-channels { z-index: 30; }
+        #server-patterns { z-index: 20; }
+        
+        .flag {
+            transition: all 0.3s ease;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #4b5563; /* Off state */
+        }
+        .flag.active {
+            box-shadow: 0 0 8px 2px currentColor;
+        }
+        .flag-pubsub.active { background-color: var(--green-light); color: var(--green-light); }
+        .flag-pushing.active { background-color: var(--blue-light); color: var(--blue-light); }
+        
+        #console-output {
+            background-color: #0d1117; /* Darker terminal style */
+        }
+        #console-output > div {
+            padding-top: 0.3rem;
+            padding-bottom: 0.3rem;
+            border-bottom: 1px solid rgba(55, 65, 81, 0.6);
+        }
+        #console-output > div:last-child {
+            border-bottom: none;
+        }
+
+        .input-error {
+            box-shadow: 0 0 8px 1px var(--accent-color);
+            border-color: var(--accent-color) !important;
+        }
+
+        /* Message Animation */
+        .message-dot {
+            position: fixed;
+            z-index: 50;
+            width: 12px;
+            height: 12px;
+            background-color: var(--accent-color);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--accent-color);
+            opacity: 0;
+            transition: transform 1s ease-in-out, opacity 0.2s ease-in-out;
+            pointer-events: none;
+        }
+
+        /* SVG lines */
+        #connection-svg line {
+            stroke-width: 2;
+            transition: all 0.3s ease;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--dark-bg);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 lg:p-6 select-none">
+    
+    <main class="relative z-10 flex flex-col h-[calc(100vh-2rem)] lg:h-[calc(100vh-3rem)]">
+        <header class="flex-shrink-0 mb-4 text-center">
+            <h1 class="text-2xl lg:text-3xl font-bold text-red-500 flex items-center justify-center gap-3">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8"><path d="M21.5 12c0-5.25-4.25-9.5-9.5-9.5S2.5 6.75 2.5 12s4.25 9.5 9.5 9.5c.23 0 .46-.01.68-.03"></path><path d="M12 15c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3"></path><path d="M12 4v2"></path><path d="M12 18v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M4 12H2"></path><path d="M20 12h2"></path><path d="m4.93 19.07 1.41-1.41"></path><path d="m17.66 6.34 1.41-1.41"></path></svg>
+                Redis Pub/Sub Visualizer
+            </h1>
+            <p class="text-sm text-gray-400 mt-1">An interactive simulation of Redis's Publish/Subscribe mechanism.</p>
+        </header>
+
+        <div class="flex-grow grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-0 relative">
+            <!-- SVG layer for connections -->
+            <svg id="connection-svg" class="absolute top-0 left-0 w-full h-full pointer-events-none z-0"></svg>
+            <!-- Clients Column -->
+            <section class="flex flex-col gap-4 min-h-0">
+                <div class="flex-shrink-0 flex items-center justify-between">
+                    <h2 class="text-xl font-semibold">Clients</h2>
+                    <button id="add-client-btn" class="flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md bg-red-600 hover:bg-red-700 transition-colors">
+                        <i class="fas fa-plus w-4 h-4"></i>
+                        New Client
+                    </button>
+                </div>
+                <div id="clients-container" class="flex-grow overflow-y-auto pr-2 space-y-4">
+                    <!-- Client cards will be injected here -->
+                </div>
+            </section>
+
+            <!-- Server Column -->
+            <section class="flex flex-col gap-4 min-h-0">
+                <h2 class="flex-shrink-0 text-xl font-semibold text-center relative z-5">Redis Server Internals</h2>
+                <div class="flex-grow flex flex-col gap-4 overflow-y-auto pr-2">
+                    <div id="server-channels" class="server-panel rounded-lg p-3">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="font-semibold fira-code text-green-400">server.pubsub_channels</h3>
+                                <div class="text-sm text-gray-400 italic">Data Type: `dict` (channel -> list of clients)</div>
+                            </div>
+                            <div class="relative hint-container flex-shrink-0 ml-2">
+                                <i class="fas fa-info-circle text-gray-500 hover:text-gray-300 transition-colors cursor-help"></i>
+                                <div class="hint-popover absolute top-full right-0 mt-2 w-64 bg-gray-900 text-gray-300 text-xs rounded-lg shadow-lg p-3 border border-gray-700 pointer-events-none opacity-0 invisible transition-opacity duration-200">
+                                    <strong class="font-semibold text-gray-100">Purpose:</strong> Maps an exact channel name to a list of subscribed clients. This is the core engine for standard Pub/Sub. Used by `SUBSCRIBE` and `PUBLISH`.
+                                </div>
+                            </div>
+                        </div>
+                        <div id="channels-list" class="mt-2 space-y-1 fira-code text-sm"></div>
+                    </div>
+                    <div id="server-patterns" class="server-panel rounded-lg p-3">
+                        <div class="flex justify-between items-start">
+                             <div>
+                                <h3 class="font-semibold fira-code text-blue-400">server.pubsub_patterns</h3>
+                                <div class="text-sm text-gray-400 italic">Data Type: `dict` (pattern -> list of clients)</div>
+                            </div>
+                             <div class="relative hint-container flex-shrink-0 ml-2">
+                                <i class="fas fa-info-circle text-gray-500 hover:text-gray-300 transition-colors cursor-help"></i>
+                                <div class="hint-popover absolute top-full right-0 mt-2 w-72 bg-gray-900 text-gray-300 text-xs rounded-lg shadow-lg p-3 border border-gray-700 pointer-events-none opacity-0 invisible transition-opacity duration-200">
+                                    <strong class="font-semibold text-gray-100 block mb-1">Purpose & Use Case:</strong>
+                                    <span>Maps glob-style patterns to clients. Use this for flexible, category-based subscriptions (e.g., all events for a specific user ID). Be aware that on every `PUBLISH`, Redis iterates through *all* patterns, which has a higher performance cost than direct channel matching.</span>
+                                    <div class="mt-2 pt-2 border-t border-gray-700">
+                                        <strong class="font-semibold text-gray-100 block mb-1">Supported Glob Patterns:</strong>
+                                        <div class="fira-code space-y-1">
+                                            <div><span class="text-blue-300 w-16 inline-block">*</span> &rarr; any chars</div>
+                                            <div><span class="text-blue-300 w-16 inline-block">?</span> &rarr; one char</div>
+                                            <div><span class="text-blue-300 w-16 inline-block">[...]</span> &rarr; any char in set</div>
+                                        </div>
+                                        <div class="mt-2 text-gray-400 fira-code text-[0.7rem] bg-gray-800/50 p-2 rounded">
+                                            <div>e.g., <span class="text-blue-300">log:[we]</span> matches <span class="text-green-300">'log:w'</span> & <span class="text-green-300">'log:e'</span>.</div>
+                                            <div class="mt-1">e.g., <span class="text-blue-300">log:[^i]</span> matches <span class="text-green-300">'log:w'</span> but not <span class="text-red-400">'log:i'</span>.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="patterns-list" class="mt-2 space-y-1 fira-code text-sm"></div>
+                    </div>
+                     <div id="server-shard-channels" class="server-panel rounded-lg p-3">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="font-semibold fira-code text-purple-400">server.pubsubshard_channels</h3>
+                                <div class="text-sm text-gray-400 italic">Data Type: `dict` (shardchannel -> list of clients)</div>
+                            </div>
+                             <div class="relative hint-container flex-shrink-0 ml-2">
+                                <i class="fas fa-info-circle text-gray-500 hover:text-gray-300 transition-colors cursor-help"></i>
+                                <div class="hint-popover absolute top-full right-0 mt-2 w-64 bg-gray-900 text-gray-300 text-xs rounded-lg shadow-lg p-3 border border-gray-700 pointer-events-none opacity-0 invisible transition-opacity duration-200">
+                                    <strong class="font-semibold text-gray-100">Purpose:</strong> (Redis 7.0+) For Pub/Sub in a Redis Cluster. Messages are only propagated within a single shard, reducing network traffic. Used by `SSUBSCRIBE` and `SPUBLISH`.
+                                </div>
+                            </div>
+                        </div>
+                        <div id="shard-channels-list" class="mt-2 space-y-1 fira-code text-sm"></div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Logs Column -->
+            <section class="flex flex-col gap-4 min-h-0">
+                <div class="flex-shrink-0 flex items-center justify-center relative">
+                    <h2 class="text-xl font-semibold text-center">Command Log</h2>
+                    <button id="clear-log-btn" class="absolute right-0 p-2 text-gray-500 hover:text-red-500 rounded-full transition-colors" title="Clear Log">
+                        <i class="fas fa-trash-alt w-4 h-4"></i>
+                    </button>
+                </div>
+                <div id="console-output" class="flex-grow server-panel rounded-lg p-3 overflow-y-auto fira-code text-sm flex flex-col-reverse">
+                    <!-- Log entries will be prepended here -->
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const clientsContainer = document.getElementById('clients-container');
+            const addClientBtn = document.getElementById('add-client-btn');
+            const channelsList = document.getElementById('channels-list');
+            const patternsList = document.getElementById('patterns-list');
+            const shardChannelsList = document.getElementById('shard-channels-list');
+            const consoleOutput = document.getElementById('console-output');
+            const svgContainer = document.getElementById('connection-svg');
+            const clearLogBtn = document.getElementById('clear-log-btn');
+
+            let clientIdCounter = 0;
+            const state = {
+                clients: new Map(),
+                server: {
+                    pubsub_channels: new Map(),
+                    pubsub_patterns: new Map(),
+                    pubsubshard_channels: new Map(),
+                }
+            };
+
+            <!-- --- CORE SIMULATION LOGIC --- -->
+
+            const globToRegex = (glob) => {
+                let regex = '^';
+                for (let i = 0; i < glob.length; i++) {
+                    const c = glob[i];
+                    switch (c) {
+                        case '*':
+                            regex += '.*';
+                            break;
+                        case '?':
+                            regex += '.';
+                            break;
+                        case '[': {
+                            // Find the closing bracket for the character set
+                            let end = glob.indexOf(']', i);
+                            if (end === -1) { // Malformed pattern, treat '[' as literal
+                                regex += '\\[';
+                                break;
+                            }
+                            // Extract the character set content
+                            let charSet = glob.substring(i, end + 1);
+                            // It's already a valid regex character set, so just append it.
+                            // We don't need to escape characters inside a valid set.
+                            regex += charSet;
+                            i = end; // Move index past the processed set
+                            break;
+                        }
+                        // Escape other special regex characters
+                        case '.': case '+': case '(': case ')': case '{': case '}': case '|': case '\\': case '$': case '^':
+                             regex += '\\' + c;
+                             break;
+                        default:
+                            regex += c;
+                    }
+                }
+                return new RegExp(regex + '$');
+            };
+
+            const log = (message, type = 'info') => {
+                const entry = document.createElement('div');
+                let colorClass = 'text-gray-400';
+                let prefix = '>&nbsp;';
+                if (type === 'cmd') {
+                    colorClass = 'text-cyan-400';
+                } else if (type === 'resp') {
+                    colorClass = 'text-yellow-400';
+                    prefix = '>&nbsp;<span class="text-gray-500">└─</span>&nbsp;';
+                } else if (type === 'event') {
+                    colorClass = 'text-purple-400';
+                    prefix = '/*&nbsp;';
+                }
+                entry.innerHTML = `<span class="text-gray-600">${new Date().toLocaleTimeString()}</span> ${prefix}<span class="${colorClass}">${message}</span>${type === 'event' ? ' */' : ''}`;
+                consoleOutput.prepend(entry);
+            };
+
+            const updateAllViews = () => {
+                state.clients.forEach(client => renderClient(client.id));
+                renderServer();
+                setTimeout(drawConnections, 50); // Delay to allow DOM to update
+            };
+            
+            const animateMessage = (fromElem, toElem, onComplete) => {
+                const startRect = fromElem.getBoundingClientRect();
+                const endRect = toElem.getBoundingClientRect();
+
+                const dot = document.createElement('div');
+                dot.className = 'message-dot';
+                document.body.appendChild(dot);
+                
+                const startX = startRect.left + startRect.width / 2;
+                const startY = startRect.top + startRect.height / 2;
+                const endX = endRect.left + endRect.width / 2;
+                const endY = endRect.top + endRect.height / 2;
+                
+                dot.style.transform = `translate(${startX}px, ${startY}px)`;
+                dot.style.opacity = '1';
+
+                requestAnimationFrame(() => {
+                    dot.style.transform = `translate(${endX}px, ${endY}px)`;
+                });
+
+                dot.addEventListener('transitionend', () => {
+                    dot.remove();
+                    if (onComplete) onComplete();
+                }, { once: true });
+            };
+
+            const flashConnectionLine = (clientId, targetId, originalColor) => {
+                const line = document.getElementById(`line-client-${clientId}-to-${targetId}`);
+                if (!line) return;
+
+                line.setAttribute('stroke', 'var(--success-flash-color)');
+                line.style.strokeWidth = '4px';
+                line.style.strokeDasharray = 'none';
+
+                setTimeout(() => {
+                    line.setAttribute('stroke', originalColor);
+                    line.style.strokeWidth = '2';
+                    line.style.strokeDasharray = '5, 5';
+                }, 600); // Duration of the flash
+            };
+
+
+            const handlePublish = (clientId, channel, message, isShard = false) => {
+                const publisher = state.clients.get(clientId);
+                if (!publisher) return;
+                
+                const command = isShard ? 'SPUBLISH' : 'PUBLISH';
+                log(`${command} ${channel} "${message}"`, 'cmd');
+
+                publisher.flags.PUSHING = true;
+                renderClient(clientId);
+
+                let receivers = 0;
+                const notifiedClients = new Set();
+                const fromElem = document.querySelector(`[data-client-id="${clientId}"] .publish-btn[data-shard="${isShard}"]`);
+
+                const pubSubType = isShard ? state.server.pubsubshard_channels : state.server.pubsub_channels;
+
+                // 1. Direct channel subscribers
+                if (pubSubType.has(channel)) {
+                    const subscribers = pubSubType.get(channel);
+                    subscribers.forEach(subId => {
+                        if (notifiedClients.has(subId)) return;
+                        const client = state.clients.get(subId);
+                        const toElem = document.querySelector(`[data-client-id="${subId}"]`);
+
+                        const targetId = isShard ? 'shard-channels' : 'channels';
+                        const originalColor = isShard ? 'var(--purple-light)' : 'var(--green-light)';
+                        flashConnectionLine(subId, targetId, originalColor);
+
+                        animateMessage(fromElem, toElem, () => {
+                            client.inbox.unshift({ type: 'message', channel, message });
+                            renderClient(subId);
+                        });
+                        notifiedClients.add(subId);
+                        receivers++;
+                    });
+                }
+
+                // 2. Pattern subscribers (only for non-sharded)
+                if (!isShard) {
+                    state.server.pubsub_patterns.forEach((subscribers, pattern) => {
+                        const patternRegex = globToRegex(pattern);
+                        if (patternRegex.test(channel)) {
+                            subscribers.forEach(subId => {
+                                if (notifiedClients.has(subId)) return;
+                                const client = state.clients.get(subId);
+                                const toElem = document.querySelector(`[data-client-id="${subId}"]`);
+
+                                flashConnectionLine(subId, 'patterns', 'var(--blue-light)');
+
+                                animateMessage(fromElem, toElem, () => {
+                                    client.inbox.unshift({ type: 'pmessage', pattern, channel, message });
+                                    renderClient(subId);
+                                });
+                                notifiedClients.add(subId);
+                                receivers++;
+                            });
+                        }
+                    });
+                }
+
+                setTimeout(() => {
+                    publisher.flags.PUSHING = false;
+                    renderClient(clientId);
+                    log(`(integer) ${receivers}`, 'resp');
+                }, 1000); // Duration of animation
+            };
+            
+            const handleSubscription = (clientId, channel, type) => {
+                const client = state.clients.get(clientId);
+                if (!client || !channel) return;
+
+                log(`${type} ${channel}`, 'cmd');
+
+                const totalSubscriptions = client.subscriptions.size + client.patterns.size + client.shardSubscriptions.size;
+                if (totalSubscriptions >= 10) {
+                    log('SIMULATION LIMIT: Max 10 subscriptions reached. In production Redis, the `client-query-buffer-limit` for pubsub clients is the key configuration to prevent a single subscriber from consuming too much server memory.', 'event');
+                    return;
+                }
+                
+                let clientSubs, serverPubSub;
+                switch (type) {
+                    case 'SUBSCRIBE': clientSubs = client.subscriptions; serverPubSub = state.server.pubsub_channels; break;
+                    case 'PSUBSCRIBE': clientSubs = client.patterns; serverPubSub = state.server.pubsub_patterns; break;
+                    case 'SSUBSCRIBE': clientSubs = client.shardSubscriptions; serverPubSub = state.server.pubsubshard_channels; break;
+                }
+
+                log(`${type} ${channel}`, 'cmd');
+
+                if (clientSubs.has(channel)) {
+                    log('Client already subscribed', 'event');
+                    return;
+                }
+
+                client.flags.PUBSUB = true;
+                clientSubs.add(channel);
+
+                if (!serverPubSub.has(channel)) {
+                    serverPubSub.set(channel, new Set());
+                }
+                serverPubSub.get(channel).add(clientId);
+
+                // Educational performance warning for PSUBSCRIBE
+                if (type === 'PSUBSCRIBE' && serverPubSub.size === 5) {
+                    log('PERFORMANCE HINT: You have 5+ active patterns. In a real Redis server, every PUBLISH must check against every pattern (O(N) complexity). Use patterns judiciously in high-throughput systems.', 'event');
+                }
+
+                log(`1) "${type.toLowerCase()}" 2) "${channel}" 3) (integer) ${client.subscriptions.size + client.patterns.size + client.shardSubscriptions.size}`, 'resp');
+                updateAllViews();
+            };
+
+            const handleUnsubscription = (clientId, channel, type, silent = false) => {
+                const client = state.clients.get(clientId);
+                 if (!client || !channel) return;
+
+                let clientSubs, serverPubSub;
+                 switch (type) {
+                    case 'UNSUBSCRIBE': clientSubs = client.subscriptions; serverPubSub = state.server.pubsub_channels; break;
+                    case 'PUNSUBSCRIBE': clientSubs = client.patterns; serverPubSub = state.server.pubsub_patterns; break;
+                    case 'SUNSUBSCRIBE': clientSubs = client.shardSubscriptions; serverPubSub = state.server.pubsubshard_channels; break;
+                }
+                
+                if (!silent) log(`${type} ${channel}`, 'cmd');
+                if (!clientSubs.has(channel)) {
+                     if (!silent) log('Not subscribed to this channel/pattern', 'event');
+                     return;
+                }
+
+                clientSubs.delete(channel);
+                const subscribers = serverPubSub.get(channel);
+                if (subscribers) {
+                    subscribers.delete(clientId);
+                    if (subscribers.size === 0) {
+                        serverPubSub.delete(channel);
+                    }
+                }
+
+                if (client.subscriptions.size === 0 && client.patterns.size === 0 && client.shardSubscriptions.size === 0) {
+                    client.flags.PUBSUB = false;
+                }
+                
+                if (!silent) log(`1) "${type.toLowerCase()}" 2) "${channel}" 3) (integer) ${client.subscriptions.size + client.patterns.size + client.shardSubscriptions.size}`, 'resp');
+                updateAllViews();
+            };
+
+            // --- UI RENDERING ---
+
+            const createClient = () => {
+                clientIdCounter++;
+                const clientId = clientIdCounter;
+                const newClient = {
+                    id: clientId,
+                    flags: { PUBSUB: false, PUSHING: false },
+                    subscriptions: new Set(),
+                    patterns: new Set(),
+                    shardSubscriptions: new Set(),
+                    inbox: [],
+                };
+                state.clients.set(clientId, newClient);
+                renderClient(clientId, true);
+                log(`New client connected: client-${clientId}`, 'event');
+                setTimeout(drawConnections, 50);
+            };
+
+            const renderClient = (clientId, isNew = false) => {
+                const client = state.clients.get(clientId);
+                if (!client) return;
+                
+                let clientEl = document.querySelector(`[data-client-id="${clientId}"]`);
+                if (!clientEl) {
+                    clientEl = document.createElement('div');
+                    clientEl.className = 'client-card rounded-lg p-3 space-y-3';
+                    clientEl.dataset.clientId = clientId;
+                    clientsContainer.prepend(clientEl);
+                }
+                
+                const subscriptionsHTML = (subs, type, color) => Array.from(subs).map(s => `
+                    <div class="flex items-center justify-between bg-gray-800 px-2 py-1 rounded-md">
+                        <span class="text-${color}-400">${s}</span>
+                        <button class="btn-icon p-1 rounded-full unsubscribe-btn" data-channel="${s}" data-type="${type}" title="Unsubscribe">
+                            <i class="fas fa-times w-3 h-3 pointer-events-none"></i>
+                        </button>
+                    </div>`).join('');
+
+                const inboxHTML = client.inbox.slice(0, 5).map(msg => {
+                    let content;
+                    switch (msg.type) {
+                        case 'message': content = `<span class="text-green-400">[${msg.channel}]</span>: ${msg.message}`; break;
+                        case 'pmessage': content = `<span class="text-blue-400">{${msg.pattern}}</span> -> <span class="text-green-400">[${msg.channel}]</span>: ${msg.message}`; break;
+                    }
+                    return `<div class="bg-gray-900/50 p-1.5 rounded text-xs truncate">${content}</div>`;
+                }).join('');
+
+                clientEl.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <h4 class="font-bold text-lg">Client-${clientId}</h4>
+                        <div class="flex items-center gap-3 text-xs">
+                            <div class="flex items-center gap-1.5" title="CLIENT_PUBSUB: Client is in Pub/Sub mode. (1<<18)">
+                                <div class="flag flag-pubsub ${client.flags.PUBSUB ? 'active' : ''}"></div>
+                                <span>PUBSUB</span>
+                            </div>
+                             <div class="flex items-center gap-1.5" title="CLIENT_PUSHING: This client is pushing notifications. (1ULL<<46)">
+                                <div class="flag flag-pushing ${client.flags.PUSHING ? 'active' : ''}"></div>
+                                <span>PUSHING</span>
+                            </div>
+                            <button class="remove-client-btn p-1 text-gray-500 hover:text-red-500 rounded-full transition-colors" title="Disconnect Client">
+                               <i class="fas fa-times-circle w-4 h-4 pointer-events-none"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                        <div class="space-y-1">
+                            <label class="font-semibold">Publish</label>
+                            <input type="text" placeholder="channel" class="w-full bg-gray-700 p-1.5 rounded border border-transparent focus:border-red-500 focus:outline-none focus:ring-0 channel-input">
+                            <input type="text" placeholder="message" class="w-full bg-gray-700 p-1.5 rounded border border-transparent focus:border-red-500 focus:outline-none focus:ring-0 message-input">
+                             <div class="flex gap-1">
+                                <button class="w-full btn-icon p-1.5 rounded publish-btn" data-shard="false" title="PUBLISH">
+                                    <i class="fas fa-paper-plane w-4 h-4 mx-auto pointer-events-none"></i>
+                                </button>
+                                <button class="w-full btn-icon p-1.5 rounded publish-btn bg-purple-800/50 hover:bg-purple-700/50" data-shard="true" title="SPUBLISH">
+                                     <i class="fas fa-share-nodes w-4 h-4 mx-auto pointer-events-none"></i>
+                                </button>
+                             </div>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="font-semibold">Subscribe</label>
+                            <input type="text" placeholder="channel / pattern" class="w-full bg-gray-700 p-1.5 rounded border border-transparent focus:border-red-500 focus:outline-none focus:ring-0 sub-input">
+                            <div class="flex gap-1">
+                                <button class="w-full btn-icon p-1.5 rounded subscribe-btn" data-type="SUBSCRIBE" title="SUBSCRIBE">
+                                    <i class="fas fa-satellite-dish w-4 h-4 mx-auto pointer-events-none"></i>
+                                </button>
+                                <button class="w-full btn-icon p-1.5 rounded subscribe-btn" data-type="PSUBSCRIBE" title="PSUBSCRIBE">
+                                    <i class="fas fa-filter w-4 h-4 mx-auto pointer-events-none"></i>
+                                </button>
+                                <button class="w-full btn-icon p-1.5 rounded subscribe-btn bg-purple-800/50 hover:bg-purple-700/50" data-type="SSUBSCRIBE" title="SSUBSCRIBE">
+                                    <i class="fas fa-circle-nodes w-4 h-4 mx-auto pointer-events-none"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Subscriptions & Inbox -->
+                    <div class="space-y-2 text-sm">
+                        ${(client.subscriptions.size > 0 || client.patterns.size > 0 || client.shardSubscriptions.size > 0) ? `
+                        <div>
+                            <h5 class="font-semibold text-gray-400 text-xs mb-1">Subscriptions</h5>
+                            <div class="fira-code text-xs space-y-1">
+                                ${subscriptionsHTML(client.subscriptions, 'UNSUBSCRIBE', 'green')}
+                                ${subscriptionsHTML(client.patterns, 'PUNSUBSCRIBE', 'blue')}
+                                ${subscriptionsHTML(client.shardSubscriptions, 'SUNSUBSCRIBE', 'purple')}
+                            </div>
+                        </div>` : ''}
+
+                        ${client.inbox.length > 0 ? `
+                        <div>
+                            <h5 class="font-semibold text-gray-400 text-xs mb-1 flex items-center gap-1.5" title="Simulation Only: This log shows recent messages for clarity. Standard Redis Pub/Sub does not store messages; they are 'fire-and-forget'. For persistent message history, use Redis Streams.">
+                                Recent Messages (Simulation)
+                                <i class="fas fa-info-circle text-gray-500"></i>
+                            </h5>
+                            <div class="fira-code space-y-1">${inboxHTML}</div>
+                        </div>` : ''}
+                    </div>
+                `;
+                if(isNew) {
+                    clientEl.style.opacity = 0;
+                    clientEl.style.transform = 'translateX(-20px)';
+                    requestAnimationFrame(() => {
+                        clientEl.style.transition = 'opacity 0.3s, transform 0.3s';
+                        clientEl.style.opacity = 1;
+                        clientEl.style.transform = 'translateX(0)';
+                    });
+                }
+            };
+            
+            const renderServer = () => {
+                const renderDict = (map, color) => Array.from(map.entries()).map(([key, clients]) => `
+                    <div>
+                        <span class="text-${color}-400">'${key}'</span>: [${Array.from(clients).map(id => `client-${id}`).join(', ')}]
+                    </div>`).join('') || '<div class="text-gray-500">{empty}</div>';
+
+                channelsList.innerHTML = renderDict(state.server.pubsub_channels, 'green');
+                patternsList.innerHTML = renderDict(state.server.pubsub_patterns, 'blue');
+                shardChannelsList.innerHTML = renderDict(state.server.pubsubshard_channels, 'purple');
+            };
+
+            const drawConnections = () => {
+                svgContainer.innerHTML = '';
+                const gridContainer = svgContainer.parentElement;
+                if (!gridContainer) return;
+                const gridRect = gridContainer.getBoundingClientRect();
+                
+                const serverChannelEl = document.getElementById('server-channels');
+                const serverPatternEl = document.getElementById('server-patterns');
+                const serverShardEl = document.getElementById('server-shard-channels');
+                
+                if(!serverChannelEl || !serverPatternEl || !serverShardEl) return;
+
+                const serverChannelRect = serverChannelEl.getBoundingClientRect();
+                const serverPatternRect = serverPatternEl.getBoundingClientRect();
+                const serverShardRect = serverShardEl.getBoundingClientRect();
+                const clientsContainerRect = clientsContainer.getBoundingClientRect();
+
+                state.clients.forEach(client => {
+                    const clientEl = document.querySelector(`[data-client-id="${client.id}"]`);
+                    if (!clientEl) return;
+                    const clientRect = clientEl.getBoundingClientRect();
+
+                    // Don't draw lines for clients scrolled out of view
+                    if (clientRect.bottom < clientsContainerRect.top || clientRect.top > clientsContainerRect.bottom) {
+                        return;
+                    }
+
+                    const drawLine = (targetRect, color, clientId, targetId) => {
+                        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                        line.id = `line-client-${clientId}-to-${targetId}`;
+                        
+                        // Calculate coordinates relative to the grid container
+                        const x1 = (clientRect.left + clientRect.width / 2) - gridRect.left;
+                        const y1 = (clientRect.top + clientRect.height / 2) - gridRect.top;
+                        const x2 = (targetRect.left + targetRect.width / 2) - gridRect.left;
+                        const y2 = (targetRect.top + targetRect.height / 2) - gridRect.top;
+
+                        line.setAttribute('x1', x1);
+                        line.setAttribute('y1', y1);
+                        line.setAttribute('x2', x2);
+                        line.setAttribute('y2', y2);
+                        line.setAttribute('stroke', `var(--${color}-light)`);
+                        line.style.strokeDasharray = '5, 5';
+                        svgContainer.appendChild(line);
+                    }
+
+                    if (client.subscriptions.size > 0) drawLine(serverChannelRect, 'green', client.id, 'channels');
+                    if (client.patterns.size > 0) drawLine(serverPatternRect, 'blue', client.id, 'patterns');
+                    if (client.shardSubscriptions.size > 0) drawLine(serverShardRect, 'purple', client.id, 'shard-channels');
+                });
+            };
+
+            // --- EVENT LISTENERS ---
+            addClientBtn.addEventListener('click', createClient);
+            clientsContainer.addEventListener('scroll', drawConnections);
+
+            clearLogBtn.addEventListener('click', () => {
+                consoleOutput.innerHTML = '';
+                log('Log cleared.', 'event');
+            });
+
+            const flashInputError = (input) => {
+                input.classList.add('input-error');
+                setTimeout(() => input.classList.remove('input-error'), 500);
+            };
+
+            clientsContainer.addEventListener('click', e => {
+                const button = e.target.closest('button');
+                if (!button) return;
+
+                const card = button.closest('.client-card');
+                const clientId = parseInt(card.dataset.clientId);
+
+                if (button.classList.contains('publish-btn')) {
+                    const channelInput = card.querySelector('.channel-input');
+                    const messageInput = card.querySelector('.message-input');
+                    const channel = channelInput.value.trim();
+                    const message = messageInput.value.trim();
+                    const isShard = button.dataset.shard === 'true';
+
+                    if (!channel) { flashInputError(channelInput); return; }
+                    if (!message) { flashInputError(messageInput); return; }
+
+                    handlePublish(clientId, channel, message, isShard);
+                    channelInput.value = '';
+                    messageInput.value = '';
+                }
+                else if (button.classList.contains('subscribe-btn')) {
+                    const subInput = card.querySelector('.sub-input');
+                    const channel = subInput.value.trim();
+                    if (!channel) { flashInputError(subInput); return; }
+
+                    handleSubscription(clientId, channel, button.dataset.type);
+                    subInput.value = '';
+                }
+                else if (button.classList.contains('unsubscribe-btn')) {
+                    const channel = button.dataset.channel;
+                    handleUnsubscription(clientId, channel, button.dataset.type);
+                }
+                else if (button.classList.contains('remove-client-btn')) {
+                    const client = state.clients.get(clientId);
+                    // Unsubscribe silently from everything
+                    [...client.subscriptions].forEach(ch => handleUnsubscription(clientId, ch, 'UNSUBSCRIBE', true));
+                    [...client.patterns].forEach(p => handleUnsubscription(clientId, p, 'PUNSUBSCRIBE', true));
+                    [...client.shardSubscriptions].forEach(sh => handleUnsubscription(clientId, sh, 'SUNSUBSCRIBE', true));
+                    
+                    state.clients.delete(clientId);
+                    card.style.transition = 'opacity 0.3s, transform 0.3s';
+                    card.style.opacity = 0;
+                    card.style.transform = 'translateX(20px)';
+                    card.addEventListener('transitionend', () => {
+                         card.remove();
+                         updateAllViews();
+                    });
+                    log(`Client-${clientId} disconnected`, 'event');
+                }
+            });
+            
+            new ResizeObserver(drawConnections).observe(document.body);
+
+            // Initial state
+            createClient();
+            createClient();
+            log('Visualizer ready. Add clients or interact with existing ones.', 'event');
+            renderServer();
+        });
+    </script>
+</body>
+</html>
