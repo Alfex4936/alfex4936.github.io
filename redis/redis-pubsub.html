@@ -356,7 +356,11 @@
             const updateAllViews = () => {
                 state.clients.forEach(client => renderClient(client.id));
                 renderServer();
-                setTimeout(drawConnections, 50); // Delay to allow DOM to update
+                // Use a double requestAnimationFrame to ensure the DOM has been painted
+                // before we try to measure elements for line drawing.
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(drawConnections);
+                });
             };
             
             const animateMessage = (fromElem, toElem, onComplete) => {
@@ -563,7 +567,7 @@
                 state.clients.set(clientId, newClient);
                 renderClient(clientId, true);
                 if (!silent) log(`New client connected: client-${clientId}`, 'event');
-                setTimeout(drawConnections, 50);
+                // No longer need to call drawConnections here; the transitionend event will handle it.
                 return clientId;
             };
 
@@ -671,6 +675,11 @@
                 if(isNew) {
                     clientEl.style.opacity = 0;
                     clientEl.style.transform = 'translateX(-20px)';
+                    
+                    // CRITICAL FIX: Wait for the animation to finish before drawing lines
+                    // to ensure we get the final, correct position of the element.
+                    clientEl.addEventListener('transitionend', drawConnections, { once: true });
+
                     requestAnimationFrame(() => {
                         clientEl.style.transition = 'opacity 0.3s, transform 0.3s';
                         clientEl.style.opacity = 1;
@@ -752,6 +761,8 @@
             
             let longPressTimer;
             let isLongPress = false;
+
+            clientsContainer.addEventListener('scroll', drawConnections);
 
             addClientBtn.addEventListener('mousedown', () => {
                 isLongPress = false;
@@ -926,4 +937,3 @@
     </script>
 </body>
 </html>
-
