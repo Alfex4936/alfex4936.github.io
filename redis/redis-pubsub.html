@@ -149,11 +149,20 @@
             <section class="flex flex-col gap-4 min-h-0">
                 <div class="flex-shrink-0 flex items-center justify-between">
                     <h2 class="text-xl font-semibold">Clients</h2>
-                    <button id="add-client-btn" class="flex items-center justify-center w-10 h-10 rounded-full bg-red-600 hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500" title="Add New Client (long press for chaos)">
-                        <i class="fas fa-plus w-4 h-4"></i>
-                    </button>
+                    <div class="flex items-center gap-2">
+                         <button id="remove-all-clients-btn" class="flex items-center justify-center w-10 h-10 rounded-full bg-gray-600 hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed" title="Remove All Clients">
+                            <i class="fas fa-trash-alt w-4 h-4"></i>
+                        </button>
+                        <button id="add-client-btn" class="flex items-center justify-center w-10 h-10 rounded-full bg-red-600 hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed" title="Add New Client (long press for chaos)">
+                            <i class="fas fa-plus w-4 h-4"></i>
+                        </button>
+                    </div>
                 </div>
-                <div id="clients-container" class="flex-grow overflow-y-auto pr-2 space-y-4">
+                <div id="clients-container" class="flex-grow overflow-y-auto pr-2 space-y-4 relative">
+                    <div id="no-clients-placeholder" class="absolute inset-0 flex flex-col items-center justify-center text-gray-500">
+                        <i class="fas fa-ghost fa-3x mb-2"></i>
+                        <p>There are no clients yet.</p>
+                    </div>
                     <!-- Client cards will be injected here -->
                 </div>
             </section>
@@ -249,6 +258,7 @@
             const consoleOutput = document.getElementById('console-output');
             const svgContainer = document.getElementById('connection-svg');
             const clearLogBtn = document.getElementById('clear-log-btn');
+            const removeAllClientsBtn = document.getElementById('remove-all-clients-btn');
 
             let clientIdCounter = 0;
             const state = {
@@ -553,7 +563,24 @@
 
             // --- UI RENDERING ---
 
+            const updateClientControls = () => {
+                const noClientsPlaceholder = document.getElementById('no-clients-placeholder');
+                const clientCount = state.clients.size;
+                noClientsPlaceholder.style.display = clientCount === 0 ? 'flex' : 'none';
+                removeAllClientsBtn.disabled = clientCount === 0;
+                addClientBtn.disabled = clientCount >= 10;
+            };
+
             const createClient = (silent = false) => {
+                if (state.clients.size >= 10) {
+                    if (!silent) log('SIMULATION LIMIT: Max 10 clients reached.', 'event');
+                    return;
+                }
+                // Educational hint for maxclients
+                if (state.clients.size === 9 && !silent) {
+                    log('SIMULATION HINT: You now have 10 clients. In production Redis, the `maxclients` setting (default: 10,000) limits total connections to protect server resources.', 'event');
+                }
+
                 clientIdCounter++;
                 const clientId = clientIdCounter;
                 const newClient = {
@@ -567,7 +594,7 @@
                 state.clients.set(clientId, newClient);
                 renderClient(clientId, true);
                 if (!silent) log(`New client connected: client-${clientId}`, 'event');
-                // No longer need to call drawConnections here; the transitionend event will handle it.
+                updateClientControls();
                 return clientId;
             };
 
@@ -787,6 +814,32 @@
                  addClientBtn.style.transform = 'scale(1)';
             });
 
+            removeAllClientsBtn.addEventListener('click', () => {
+                if (state.clients.size === 0) {
+                    log('No clients to remove.', 'event');
+                    return;
+                }
+
+                log(`Disconnecting all ${state.clients.size} clients.`, 'event');
+
+                // Silent unsubscribe for all clients
+                state.clients.forEach((client, clientId) => {
+                    [...client.subscriptions].forEach(ch => handleUnsubscription(clientId, ch, 'UNSUBSCRIBE', true));
+                    [...client.patterns].forEach(p => handleUnsubscription(clientId, p, 'PUNSUBSCRIBE', true));
+                    [...client.shardSubscriptions].forEach(sh => handleUnsubscription(clientId, sh, 'SUNSUBSCRIBE', true));
+                });
+
+                // Clear state
+                state.clients.clear();
+                
+                // Clear UI of client cards specifically
+                document.querySelectorAll('.client-card').forEach(card => card.remove());
+                
+                // Refresh server view, connection lines, and controls
+                updateAllViews();
+                updateClientControls();
+            });
+
             clearLogBtn.addEventListener('click', () => {
                 consoleOutput.innerHTML = '';
                 log('Log cleared.', 'event');
@@ -845,6 +898,7 @@
                     card.addEventListener('transitionend', () => {
                          card.remove();
                          updateAllViews();
+                         updateClientControls();
                     });
                     log(`Client-${clientId} disconnected`, 'event');
                 }
@@ -862,6 +916,7 @@
 
             const triggerChaosMode = () => {
                 log('EASTER EGG: Chaos mode activated!', 'event');
+                addClientBtn.disabled = true;
                 
                 const randomBetween = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
@@ -910,6 +965,7 @@
                 const publishInterval = setInterval(() => {
                     if (publishCount >= 10 || state.clients.size === 0) {
                         clearInterval(publishInterval);
+                        addClientBtn.disabled = false; // Re-enable button after chaos
                         return;
                     }
                     
@@ -933,7 +989,9 @@
             createClient();
             log('Visualizer ready. Add clients or interact with existing ones.', 'event');
             renderServer();
+            updateClientControls();
         });
     </script>
 </body>
 </html>
+
