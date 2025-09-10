@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redis I/O Buffer Management Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827;
+            color: #d1d5db;
+        }
+        .font-code {
+            font-family: 'Fira Code', monospace;
+        }
+        .buffer {
+            border: 1px solid #374151;
+            background-color: #1f2937;
+            min-height: 80px;
+            transition: all 0.3s ease;
+        }
+        .buffer-block {
+            border: 1px solid #4b5563;
+            background-color: #374151;
+            padding: 8px;
+            margin: 4px;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            opacity: 0;
+            transform: scale(0.95);
+            animation: fadeIn 0.5s forwards;
+        }
+        .buffer-content {
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: #9ca3af;
+        }
+        .highlight-red { color: #f87171; }
+        .highlight-blue { color: #60a5fa; }
+        .highlight-green { color: #4ade80; }
+        .highlight-yellow { color: #facc15; }
+        
+        .icon-btn {
+            background-color: #374151;
+            border: 1px solid #4b5563;
+            transition: background-color 0.2s ease, transform 0.2s ease;
+        }
+        .icon-btn:hover {
+            background-color: #4b5563;
+            transform: translateY(-2px);
+        }
+        .icon-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .info-box {
+            background-color: rgba(31, 41, 55, 0.8);
+            backdrop-filter: blur(5px);
+            border: 1px solid #374151;
+            position: relative; /* Needed for z-index to apply */
+            transition: z-index 0s 0.3s; /* Delay z-index change to prevent flicker */
+        }
+
+        @keyframes fadeIn {
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+        
+        @keyframes flash {
+            0% { background-color: #374151; }
+            50% { background-color: #4b5563; }
+            100% { background-color: #374151; }
+        }
+
+        .processing-flash {
+            animation: flash 0.5s ease-in-out;
+        }
+
+        /* --- Tooltip Styles --- */
+        .tooltip {
+            position: relative;
+            display: inline-block;
+            border-bottom: 1px dotted #6b7280;
+            cursor: help;
+        }
+        .tooltip:hover {
+            z-index: 30; /* Elevate the tooltip on hover to appear above sibling columns */
+        }
+        .tooltip .tooltip-text {
+            visibility: hidden;
+            width: 320px;
+            background-color: #111827;
+            color: #d1d5db;
+            text-align: left;
+            border-radius: 6px;
+            padding: 10px;
+            position: absolute;
+            z-index: 50;
+            top: 110%; /* Positioned below the button */
+            left: 50%;
+            margin-left: -160px; /* Centered horizontally */
+            opacity: 0;
+            transition: opacity 0.3s;
+            border: 1px solid #4b5563;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+        .tooltip:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+        .tooltip .tooltip-text .tooltip-title {
+            font-weight: bold;
+            color: #facc15;
+            font-family: 'Fira Code', monospace;
+        }
+         .tooltip .tooltip-text pre {
+            background-color: #1f2937;
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 8px;
+            white-space: pre-wrap;
+        }
+        .tooltip .tooltip-text .list-disc {
+            padding-left: 1.25rem;
+        }
+
+        .client-flags-display {
+            background-color: #1f2937;
+            border: 1px solid #374151;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-family: 'Fira Code', monospace;
+            color: #facc15;
+        }
+
+
+        .collapsible-content {
+            position: relative;
+            overflow: hidden;
+            transition: max-height 0.4s ease-in-out;
+        }
+        .collapsible-content.is-collapsed {
+            max-height: 70px; /* Approx 3-4 lines */
+        }
+        .collapsible-content.is-collapsed::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 30px;
+            background: linear-gradient(to top, #1f2937, transparent);
+        }
+        .toggle-collapse-btn {
+            color: #9ca3af;
+            background-color: #374151;
+            border: 1px solid #4b5563;
+            cursor: pointer;
+            margin-top: 8px;
+            float: right;
+            transition: all 0.2s ease;
+            width: 28px;
+            height: 28px;
+            border-radius: 9999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .toggle-collapse-btn:hover {
+            color: #e5e7eb;
+            background-color: #4b5563;
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <div class="flex items-center justify-center gap-4">
+                 <svg class="w-12 h-12 text-red-500" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16.994 6.232a1 1 0 0 1 1.414 0l2.475 2.475a1 1 0 0 1 0 1.414l-2.475 2.475a1 1 0 0 1-1.414-1.414l1.06-1.061h-2.11a5.002 5.002 0 0 0-4.99 4.783V17a1 1 0 1 1-2 0v-2.082A7.002 7.002 0 0 1 15.944 8.11H13.88l1.058-1.058a1 1 0 0 1 .056-1.82Zm-9.988 11.536a1 1 0 0 1-1.414 0L3.117 15.293a1 1 0 0 1 0-1.414l2.475-2.475a1 1 0 0 1 1.414 1.414L5.948 13.88h2.11a5.002 5.002 0 0 0 4.99-4.783V7a1 1 0 1 1 2 0v2.082A7.002 7.002 0 0 1 8.056 15.89H10.12l-1.058 1.058a1 1 0 0 1-.056 1.82Z" fill="currentColor"></path></svg>
+                <h1 class="text-3xl md:text-4xl font-bold text-white">Redis Client Connection I/O Visualizer</h1>
+            </div>
+            <p class="mt-2 text-lg text-gray-400">A deep-dive into how Redis handles client command parsing and response buffering.</p>
+        </header>
+
+        <!-- Controls -->
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8 text-white">
+            <button id="sendSmallCmd" class="icon-btn p-3 rounded-lg flex flex-col items-center justify-center tooltip">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                <span>Small Command</span>
+                <span class="text-xs text-gray-400 font-code">GET mykey</span>
+                <span class="tooltip-text">
+                    <span class="tooltip-title">Fast Path: Static Buffer</span>
+                    <p class="mt-2">Simulates a common command like GET or PING. The reply is small and fits entirely in the static `client->buf`. This is the most efficient path as it avoids any `malloc` overhead.</p>
+                </span>
+            </button>
+            <button id="sendLargeCmd" class="icon-btn p-3 rounded-lg flex flex-col items-center justify-center tooltip">
+                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 15 4 4 4-4"/><path d="M7 19V5"/><path d="m21 9-4-4-4 4"/><path d="M17 5v14"/></svg>
+                <span>Large Command</span>
+                <span class="text-xs text-gray-400 font-code">MSET k1..v5</span>
+                 <span class="tooltip-text">
+                    <span class="tooltip-title">Overflow: Dynamic List</span>
+                    <p class="mt-2">Simulates a command with a large reply that exceeds the 16KB static buffer. Redis fills the static buffer first, then allocates heap blocks and adds them to the `client->reply` linked list to handle the rest. This demonstrates the hybrid strategy's overflow mechanism.</p>
+                </span>
+            </button>
+            <button id="sendPipelinedCmd" class="icon-btn p-3 rounded-lg flex flex-col items-center justify-center tooltip">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>
+                <span>Pipelined</span>
+                 <span class="text-xs text-gray-400 font-code">Mixed Batch</span>
+                  <span class="tooltip-text">
+                    <span class="tooltip-title">Pipelining & Sticky Dynamic List</span>
+                    <p class="mt-2">Simulates a client sending multiple commands at once. This shows how once the dynamic list (`client->reply`) is used for a large reply, even subsequent small replies are appended to it to preserve order and prepare for an efficient `writev()` call.</p>
+                </span>
+            </button>
+             <button id="slowClientCmd" class="icon-btn p-3 rounded-lg flex flex-col items-center justify-center tooltip">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2c-1.5 0-3 1.2-3 3v1c0 1.2 1.5 3 3 3s3-1.8 3-3V5c0-1.8-1.5-3-3-3z"/><path d="M10 10c-1.5 0-3 1.2-3 3v1c0 1.2 1.5 3 3 3s3-1.8 3-3v-1c0-1.8-1.5-3-3-3z"/><path d="M10 18c-1.5 0-3 1.2-3 3v1c0 .6.4 1 1 1h4c.6 0 1-.4 1-1v-1c0-1.8-1.5-3-3-3z"/></svg>
+                <span>Slow Client</span>
+                <span class="text-xs text-gray-400 font-code">Buffer Limit</span>
+                 <span class="tooltip-text">
+                    <span class="tooltip-title">How slow is "slow"?</span>
+                    <p class="mt-2">Redis defines this with the <code class="text-xs">client-output-buffer-limit</code> config. It has two conditions for disconnecting a client:</p>
+                    <ul class="list-disc list-inside mt-2 space-y-1">
+                        <li><b>Hard Limit:</b> If the buffer size immediately exceeds this value (e.g., `256mb`), the client is disconnected right away.</li>
+                        <li><b>Soft Limit:</b> If the buffer size exceeds a smaller value (e.g., `64mb`) and stays above it for a continuous period (e.g., `60` seconds), the client is disconnected.</li>
+                    </ul>
+                     <p class="mt-2">This is a crucial defense mechanism to prevent a single slow or buggy client from consuming all the server's memory and causing an outage.</p>
+                </span>
+            </button>
+            <button id="writeToClient" class="icon-btn p-3 rounded-lg flex flex-col items-center justify-center tooltip">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17v-2.2a2 2 0 0 0-.5-1.5L5.8 9.7a2 2 0 0 1-1.6-2V4a2 2 0 0 1 2-2h11.2a2 2 0 0 1 2 2v3.6a2 2 0 0 1-1.6 2l-3.7 3.5a2 2 0 0 0-.5 1.5V17"/><path d="M6 22h12"/></svg>
+                <span>Write to Client</span>
+                <span class="text-xs text-gray-400 font-code">write() / writev()</span>
+                <span class="tooltip-text">
+                    <span class="tooltip-title">Kernel Syscall Simulation</span>
+                    <p class="mt-2">Simulates the network write operation. Redis calls `write()` if only the static buffer is used, or the more efficient `writev()` if the dynamic list has blocks. This action flushes the output buffers and sends the data over the network to the client.</p>
+                </span>
+            </button>
+            <button id="resetSim" class="icon-btn p-3 rounded-lg flex flex-col items-center justify-center bg-red-800/50 border-red-600 hover:bg-red-700/50 tooltip">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v6h6"/><path d="M21 12A9 9 0 0 0 6 5.3L3 8"/><path d="M21 22v-6h-6"/><path d="M3 12a9 9 0 0 0 15 6.7l3-2.7"/></svg>
+                <span>Reset</span>
+                <span class="text-xs text-gray-400">Clear State</span>
+                 <span class="tooltip-text">
+                    <span class="tooltip-title">Reset Simulation</span>
+                    <p class="mt-2">Clears all buffers and logs, returning the visualizer to its initial state, ready for a new scenario.</p>
+                </span>
+            </button>
+        </div>
+
+        <!-- Main Visualization Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            <!-- INPUT BUFFER -->
+            <div class="flex flex-col gap-4">
+                <h2 class="text-2xl font-semibold text-center text-white">1. Input Buffer Management</h2>
+                <div class="info-box p-4 rounded-lg">
+                    <h3 class="font-bold text-lg font-code text-cyan-400">
+                        <span class="tooltip">client->querybuf
+                            <span class="tooltip-text">
+                                <span class="tooltip-title">sds querybuf</span>
+                                <p class="mt-2">The query buffer is an SDS (Simple Dynamic String), Redis's custom string library. It automatically grows to accommodate incoming data from the client's socket. This single buffer is highly efficient as it minimizes the number of `read()` syscalls needed.</p>
+                            </span>
+                        </span>
+                        <span class="text-sm text-gray-400">(sds)</span>
+                    </h3>
+                    <p class="text-sm text-gray-400 mt-1">A single, dynamic string that grows as data arrives from the socket. Redis parses commands directly from this buffer.</p>
+                    <div class="mt-4 flex items-center justify-between font-code text-sm">
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2">
+                             <div>
+                                <span class="tooltip">qbuf
+                                    <span class="tooltip-text">
+                                        <span class="tooltip-title">sdslen(c->querybuf)</span>
+                                        <p class="mt-2">Represents the total number of bytes currently stored in the query buffer, equivalent to its string length. This is the `qbuf` field you see in the `CLIENT LIST` command.</p>
+                                    </span>
+                                </span>: <span id="qbuf" class="font-bold highlight-yellow">0</span>
+                            </div>
+                            <div>
+                                 <span class="tooltip">qbuf-free
+                                    <span class="tooltip-text">
+                                        <span class="tooltip-title">sdsavail(c->querybuf)</span>
+                                        <p class="mt-2">The amount of pre-allocated, unused space at the end of the SDS string. SDS strings often allocate more memory than needed to avoid frequent reallocations on growth, and this value shows that extra capacity. It corresponds to `qbuf-free` in `CLIENT LIST`.</p>
+                                    </span>
+                                </span>: <span id="qbuf-free" class="font-bold highlight-yellow">0</span>
+                            </div>
+                            <div>
+                                <span class="tooltip">qb_pos
+                                    <span class="tooltip-text">
+                                        <span class="tooltip-title">size_t qb_pos</span>
+                                        <p class="mt-2">The "query buffer position". This is a crucial field that marks how far Redis has parsed into the buffer. Instead of deleting processed data immediately (which is slow), Redis just advances this position marker. The buffer is only trimmed later for efficiency.</p>
+                                    </span>
+                                </span>: <span id="qb_pos" class="font-bold highlight-yellow">0</span>
+                            </div>
+                            <div>
+                                <span class="tooltip">peak
+                                    <span class="tooltip-text">
+                                        <span class="tooltip-title">size_t querybuf_peak</span>
+                                        <p class="mt-2">Tracks the maximum size the query buffer has reached since the client connected. This is useful for monitoring and debugging clients that might be sending unusually large commands.</p>
+                                    </span>
+                                </span>: <span id="querybuf_peak" class="font-bold highlight-yellow">0</span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-xs text-gray-400">CLIENT FLAGS</span>
+                             <div class="tooltip">
+                                <div id="clientFlags" class="client-flags-display mt-1">[N]</div>
+                                <span class="tooltip-text">
+                                    <span class="tooltip-title">Client Flags</span>
+                                    <p class="mt-2">Represents the internal state of the client connection. This simulation shows:</p>
+                                    <ul class="list-disc list-inside mt-2 space-y-1 font-code">
+                                        <li><b>N</b>: Normal client</li>
+                                        <li><b>A</b>: CLIENT_CLOSE_ASAP (client will be closed asynchronously, often due to buffer limits)</li>
+                                    </ul>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="inputBuffer" class="buffer p-4 rounded-lg flex-grow">
+                    <div class="w-full text-gray-500">Waiting for client command...</div>
+                </div>
+                <div id="log" class="bg-gray-900 rounded-lg p-4 h-32 overflow-y-auto font-code text-sm text-gray-400">
+                    <p>> Log messages will appear here.</p>
+                </div>
+            </div>
+
+            <!-- OUTPUT BUFFERS -->
+            <div class="flex flex-col gap-4">
+                <h2 class="text-2xl font-semibold text-center text-white">2. Output Buffers (Hybrid Strategy)</h2>
+                
+                <!-- Static Buffer -->
+                <div>
+                    <div class="info-box p-4 rounded-lg">
+                        <h3 class="font-bold text-lg font-code text-fuchsia-400">
+                             <span class="tooltip">client->buf
+                                <span class="tooltip-text">
+                                    <span class="tooltip-title">char *buf</span>
+                                    <p class="mt-2">A pointer to a fixed-size buffer allocated when a client connects. Redis writes small replies here to completely avoid the overhead of a `malloc` call, which is a major performance win for common, short commands (like OK, PONG, integer replies).</p>
+                                </span>
+                            </span>
+                            <span class="text-sm text-gray-400">(char[16384])</span>
+                        </h3>
+                        <p class="text-sm text-gray-400 mt-1">A fixed-size static buffer for small replies. Avoids `malloc` overhead for common cases. <span class="font-code text-gray-300">_addReplyToBuffer()</span></p>
+                        <div class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2 font-code text-sm">
+                            <div>
+                                <span class="tooltip">bufpos
+                                    <span class="tooltip-text">
+                                        <span class="tooltip-title">int bufpos</span>
+                                        <p class="mt-2">An integer that acts as a position marker or offset. It tracks how many bytes have been written into the static `buf` so far. When `bufpos` equals the buffer's size, it's full.</p>
+                                    </span>
+                                </span>: <span id="bufpos" class="font-bold highlight-yellow">0</span>
+                            </div>
+                            <div>
+                                <span class="tooltip">size
+                                     <span class="tooltip-text">
+                                        <span class="tooltip-title">PROTO_REPLY_CHUNK_BYTES</span>
+                                        <p class="mt-2">This is a compile-time constant, typically 16KB. It's chosen to be large enough to handle the vast majority of Redis command replies without needing a heap allocation, but small enough not to waste memory for thousands of connected clients.</p>
+                                    </span>
+                                </span>: <span class="font-bold text-gray-300">16384</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="staticBuffer" class="buffer p-4 rounded-lg mt-2">
+                        <div class="text-center text-gray-500">Empty</div>
+                    </div>
+                </div>
+                
+                <!-- Dynamic List -->
+                <div>
+                    <div class="info-box p-4 rounded-lg">
+                        <h3 class="font-bold text-lg font-code text-fuchsia-400">
+                            <span class="tooltip">client->reply
+                                <span class="tooltip-text">
+                                    <span class="tooltip-title">list *reply</span>
+                                    <p class="mt-2">A pointer to a doubly linked list. When the static buffer overflows, Redis allocates reply blocks on the heap and appends them to this list. Appending to the tail is an O(1) operation, making it extremely fast.</p>
+                                    <pre><code class="language-c">// Simplified C structure for each block
+typedef struct clientReplyBlock {
+  size_t size; // Total allocated size of buf
+  size_t used; // Bytes currently used in buf
+  char buf[];  // Flexible array holding reply data
+} clientReplyBlock;</code></pre>
+                                </span>
+                            </span>
+                             <span class="text-sm text-gray-400">(list *)</span>
+                        </h3>
+                        <p class="text-sm text-gray-400 mt-1">A linked list of heap-allocated blocks for large or subsequent replies. Enables efficient `writev()` syscall. <span class="font-code text-gray-300">_addReplyProtoToList()</span></p>
+                        <div class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2 font-code text-sm">
+                            <div>
+                                <span class="tooltip">list_len
+                                     <span class="tooltip-text">
+                                        <span class="tooltip-title">listLength(c->reply)</span>
+                                        <p class="mt-2">This shows the number of separate heap-allocated blocks in the dynamic list. The size of each block is variable:</p>
+                                        <ul class="list-disc list-inside mt-2 space-y-1">
+                                            <li>If a reply is larger than 16KB, a block of the exact size is created.</li>
+                                            <li>If a reply is smaller, a block of at least 16KB (<code class="text-xs">PROTO_REPLY_CHUNK_BYTES</code>) is created to accommodate future small appends without needing another `malloc`.</li>
+                                        </ul>
+                                    </span>
+                                </span>: <span id="reply_list_len" class="font-bold highlight-yellow">0</span>
+                            </div>
+                            <div>
+                                <span class="tooltip">reply_bytes
+                                     <span class="tooltip-text">
+                                        <span class="tooltip-title">size_t reply_bytes</span>
+                                        <p class="mt-2">Tracks the total *allocated memory* (not just used bytes) of all blocks in the `client->reply` list. This value is critical for enforcing the <code class="text-xs">client-output-buffer-limit</code> to prevent a slow client from consuming all the server's memory.</p>
+                                    </span>
+                                </span>: <span id="reply_bytes" class="font-bold highlight-yellow">0</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="dynamicList" class="buffer p-4 rounded-lg mt-2">
+                         <div class="text-center text-gray-500">Empty</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const sendSmallCmdBtn = document.getElementById('sendSmallCmd');
+        const sendLargeCmdBtn = document.getElementById('sendLargeCmd');
+        const sendPipelinedCmdBtn = document.getElementById('sendPipelinedCmd');
+        const writeToClientBtn = document.getElementById('writeToClient');
+        const resetSimBtn = document.getElementById('resetSim');
+        const slowClientCmdBtn = document.getElementById('slowClientCmd');
+
+        const inputBufferEl = document.getElementById('inputBuffer');
+        const staticBufferEl = document.getElementById('staticBuffer');
+        const dynamicListEl = document.getElementById('dynamicList');
+        const logEl = document.getElementById('log');
+
+        // Info panel elements
+        const qbufEl = document.getElementById('qbuf');
+        const qbufFreeEl = document.getElementById('qbuf-free');
+        const qbPosEl = document.getElementById('qb_pos');
+        const querybufPeakEl = document.getElementById('querybuf_peak');
+        const bufposEl = document.getElementById('bufpos');
+        const replyListLenEl = document.getElementById('reply_list_len');
+        const replyBytesEl = document.getElementById('reply_bytes');
+        const clientFlagsEl = document.getElementById('clientFlags');
+
+        // --- Constants ---
+        const PROTO_REPLY_CHUNK_BYTES = 16 * 1024; // 16KB
+
+        // --- Simulation State ---
+        let state = {};
+
+        function getInitialState() {
+            return {
+                querybuf: '',
+                qb_pos: 0,
+                querybuf_peak: 0,
+                
+                buf: '',
+                bufpos: 0,
+                
+                reply: [], // Array of strings to simulate linked list
+                reply_bytes: 0,
+                
+                flags: ['N'], // 'N' = Normal
+                isProcessing: false
+            };
+        }
+
+        // --- Logging ---
+        function addLog(message, type = 'info') {
+            const p = document.createElement('p');
+            let prefix = '>';
+            if (type === 'client') prefix = '<span class="text-blue-400">[CLIENT]</span>';
+            if (type === 'server') prefix = '<span class="text-green-400">[SERVER]</span>';
+            if (type === 'error') prefix = '<span class="text-red-400">[ERROR]</span>';
+            p.innerHTML = `${prefix} ${message}`;
+            logEl.appendChild(p);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        // --- Rendering ---
+        function render() {
+            // Input Buffer
+            qbufEl.textContent = state.querybuf.length;
+            qbufFreeEl.textContent = 0; // SDS avail is complex, simplifying for viz
+            qbPosEl.textContent = state.qb_pos;
+            querybufPeakEl.textContent = state.querybuf_peak;
+            clientFlagsEl.textContent = `[${state.flags.join(', ')}]`;
+
+            if (state.querybuf.length > 0) {
+                const processed = state.querybuf.substring(0, state.qb_pos);
+                const unprocessed = state.querybuf.substring(state.qb_pos);
+                inputBufferEl.innerHTML = `
+                    <div class="font-code buffer-content text-left w-full">
+                        <span class="text-gray-500">${escapeHtml(processed)}</span><span class="text-yellow-300 animate-pulse">|</span><span class="highlight-green">${escapeHtml(unprocessed)}</span>
+                    </div>
+                `;
+            } else {
+                inputBufferEl.innerHTML = '<div class="w-full text-gray-500">Waiting for client command...</div>';
+            }
+
+            // Static Output Buffer
+            const COLLAPSE_THRESHOLD = 250; // characters
+            bufposEl.textContent = state.bufpos;
+            if (state.bufpos > 0) {
+                 if (state.buf.length > COLLAPSE_THRESHOLD) {
+                    staticBufferEl.innerHTML = `
+                        <div class="flow-root">
+                            <div class="collapsible-content is-collapsed">
+                                <div class="font-code buffer-content highlight-blue">${escapeHtml(state.buf)}</div>
+                            </div>
+                            <button class="toggle-collapse-btn" title="Show More">
+                                <svg class="icon-expand" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                <svg class="icon-collapse hidden" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    staticBufferEl.innerHTML = `<div class="font-code buffer-content highlight-blue">${escapeHtml(state.buf)}</div>`;
+                }
+            } else {
+                staticBufferEl.innerHTML = '<div class="text-center text-gray-500">Empty</div>';
+            }
+
+            // Dynamic Output List
+            replyListLenEl.textContent = state.reply.length;
+            replyBytesEl.textContent = state.reply_bytes;
+            if (state.reply.length > 0) {
+                dynamicListEl.innerHTML = state.reply.map((block, i) => `
+                    <div class="buffer-block">
+                         <div class="text-sm font-bold text-gray-300 tooltip">Block ${i+1} (clientReplyBlock)
+                            <span class="tooltip-text">
+                                <span class="tooltip-title">clientReplyBlock *</span>
+                                <p class="mt-2">Each block is a <code class="text-xs">clientReplyBlock</code> struct created on the heap via <code class="text-xs">zmalloc()</code>. This strategy avoids expensive <code class="text-xs">realloc()</code> calls that would be needed to grow a single large buffer. A list of blocks is also perfect for the <code class="text-xs">writev()</code> syscall, which sends multiple memory chunks in a single kernel call, drastically reducing overhead.</p>
+                            </span>
+                         </div>
+                        <div class="font-code buffer-content highlight-blue text-xs">${escapeHtml(block.substring(0, 100))}${block.length > 100 ? '...' : ''}</div>
+                    </div>
+                `).join('');
+            } else {
+                dynamicListEl.innerHTML = '<div class="text-center text-gray-500">Empty</div>';
+            }
+        }
+        
+        // --- Core Simulation Logic ---
+        function toggleButtons(disabled) {
+            state.isProcessing = disabled;
+            sendSmallCmdBtn.disabled = disabled;
+            sendLargeCmdBtn.disabled = disabled;
+            sendPipelinedCmdBtn.disabled = disabled;
+            writeToClientBtn.disabled = disabled;
+            slowClientCmdBtn.disabled = disabled;
+        }
+
+        function escapeHtml(unsafe) {
+            return unsafe
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;")
+                 .replace(/\r\n/g, '<span class="text-red-400">\\r\\n</span>\n');
+        }
+
+        async function readFromClient(data) {
+            if (state.isProcessing) return;
+            toggleButtons(true);
+
+            addLog(`Client sending ${data.length} bytes.`, 'client');
+            
+            // Simulate reading data into the query buffer
+            for (const char of data) {
+                state.querybuf += char;
+                if (state.querybuf.length > state.querybuf_peak) {
+                    state.querybuf_peak = state.querybuf.length;
+                }
+                if (Math.random() < 0.2) { // Simulate network packets
+                    render();
+                    await sleep(10);
+                }
+            }
+            render();
+            await sleep(200);
+
+            await processQueryBuffer();
+
+            toggleButtons(false);
+        }
+
+        async function processQueryBuffer() {
+            addLog(`Parsing query buffer...`, 'server');
+            
+            while(state.qb_pos < state.querybuf.length) {
+                // This is a naive RESP parser to find the end of the current command in the buffer.
+                const remainingBuffer = state.querybuf.substring(state.qb_pos);
+                const commandMatch = remainingBuffer.match(/^\*(\d+)\r\n/);
+                if (!commandMatch) {
+                    addLog(`Incomplete command in buffer. Waiting for more data.`, 'info');
+                    break; 
+                }
+
+                const argCount = parseInt(commandMatch[1], 10);
+                let commandStr = commandMatch[0];
+                let currentParsePos = commandMatch[0].length;
+                let argsFound = 0;
+
+                for(let i=0; i < argCount; i++) {
+                    const bulkLenMatch = remainingBuffer.substring(currentParsePos).match(/^\$(\d+)\r\n/);
+                    if (!bulkLenMatch) break; 
+                    const bulkLen = parseInt(bulkLenMatch[1], 10);
+                    const argEndPos = currentParsePos + bulkLenMatch[0].length + bulkLen + 2; // +2 for trailing \r\n
+                    if (remainingBuffer.length < argEndPos) break; 
+                    
+                    currentParsePos = argEndPos;
+                    argsFound++;
+                }
+
+                if (argsFound !== argCount) {
+                     addLog(`Incomplete command in buffer. Waiting for more data.`, 'info');
+                     break; 
+                }
+
+                commandStr = remainingBuffer.substring(0, currentParsePos);
+                addLog(`Found command: <code>${escapeHtml(commandStr.split('\r\n')[1])}</code>`, 'server');
+
+                // Animate parsing this single command
+                const endOfCmdPosInQuerybuf = state.qb_pos + commandStr.length;
+                for (let i = state.qb_pos; i < endOfCmdPosInQuerybuf; i++) {
+                    state.qb_pos = i + 1;
+                    if (i % 5 === 0) {
+                        render();
+                        await sleep(1);
+                    }
+                }
+                state.qb_pos = endOfCmdPosInQuerybuf;
+                render();
+                inputBufferEl.classList.add('processing-flash');
+                await sleep(300);
+                inputBufferEl.classList.remove('processing-flash');
+                
+                addLog(`Command parsed. Generating reply.`, 'server');
+                await generateReplyForSingleCommand(commandStr);
+            }
+
+            // After the loop, trim the entire processed part of the buffer.
+            if (state.qb_pos > 0) {
+                addLog(`Trimming ${state.qb_pos} processed bytes from querybuf (sdsrange).`, 'server');
+                state.querybuf = state.querybuf.substring(state.qb_pos);
+                state.qb_pos = 0;
+                render();
+                await sleep(500);
+            }
+        }
+        
+        async function generateReplyForSingleCommand(command) {
+            // Simplified reply generation for individual commands
+            let reply = '';
+            if (command.includes('GET')) {
+                reply = `$"${Math.random().toString(36).substring(7)}"\r\n`;
+            } else if (command.includes('MSET')) {
+                 // For MSET, we generate a reply that is guaranteed to overflow the static buffer
+                let largeVal = 'long_value_'.repeat(2048); // ~30KB reply
+                reply = `$${largeVal.length}\r\n${largeVal}\r\n`;
+            } else if (command.includes('INCR')) {
+                 reply = `:${Math.floor(Math.random() * 100)}\r\n`;
+            } else if (command.includes('PING')) {
+                reply = `+PONG\r\n`;
+            }
+            
+            await _addReplyToBufferOrList(reply);
+        }
+
+        async function _addReplyToBufferOrList(data) {
+            addLog(`Executing _addReplyToBufferOrList for ${data.length} bytes.`, 'server');
+            
+            // If the dynamic list is already in use, append everything there.
+            if (state.reply.length > 0) {
+                addLog(`Dynamic list is active. Appending ${data.length} bytes to a new block.`, 'info');
+                state.reply.push(data);
+                state.reply_bytes += data.length; // Approximate; doesn't account for block overhead
+                render();
+                await sleep(300);
+                return;
+            }
+
+            const available = PROTO_REPLY_CHUNK_BYTES - state.bufpos;
+            const reply_len = data.length > available ? available : data.length;
+
+            if (reply_len > 0) {
+                 addLog(`Adding ${reply_len} bytes to static buffer.`, 'info');
+                state.buf += data.substring(0, reply_len);
+                state.bufpos += reply_len;
+                render();
+                await sleep(300);
+            }
+
+            if (data.length > reply_len) {
+                const remainingData = data.substring(reply_len);
+                addLog(`${remainingData.length} bytes don't fit in static buffer. Adding to dynamic list.`, 'info');
+                state.reply.push(remainingData);
+                state.reply_bytes += remainingData.length;
+                render();
+                await sleep(300);
+            }
+        }
+
+        async function handleWriteToClient() {
+            if (state.isProcessing) return;
+            if (state.bufpos === 0 && state.reply.length === 0) {
+                addLog('Output buffers are empty. Nothing to write.', 'info');
+                return;
+            }
+            toggleButtons(true);
+
+            const totalBytes = state.bufpos + state.reply.reduce((sum, block) => sum + block.length, 0);
+            
+            let syscall = 'write()';
+            let bufferCount = 1;
+            if(state.reply.length > 0) {
+                syscall = 'writev()';
+                bufferCount = state.reply.length + (state.bufpos > 0 ? 1 : 0);
+            }
+            const syscallDesc = state.reply.length > 0 ? 
+                `Gathering ${bufferCount} buffers (1 static + ${state.reply.length} dynamic).` : 
+                `Sending static buffer.`;
+
+
+            const syscallBenefit = syscall === 'writev()' ? ` (1 syscall instead of ${bufferCount})` : ` (1 syscall)`;
+            addLog(`${syscallDesc} Calling ${syscall} to send ${totalBytes} bytes.${syscallBenefit}`, 'server');
+            
+            // Animate clearing buffers
+            if (state.reply.length > 0) {
+                while(state.reply.length > 0) {
+                    state.reply.shift();
+                    render();
+                    await sleep(150);
+                }
+            }
+            if (state.bufpos > 0) {
+                 state.buf = '';
+                 state.bufpos = 0;
+                 render();
+                 await sleep(150);
+            }
+
+            state.reply_bytes = 0;
+            addLog('Output buffers flushed.', 'server');
+            
+            toggleButtons(false);
+        }
+
+        function resetBuffersAndState() {
+            state = getInitialState();
+            render();
+        }
+
+        function initialize() {
+            resetBuffersAndState();
+            logEl.innerHTML = '<p>> Log messages will appear here.</p>';
+            addLog('Simulation reset.', 'info');
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+        
+        // --- Event Listeners ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initialize();
+
+            // Tooltip z-index handler to solve stacking context issues
+            const tooltips = document.querySelectorAll('.tooltip');
+            tooltips.forEach(tooltip => {
+                const infoBox = tooltip.closest('.info-box');
+                if (infoBox) {
+                    tooltip.addEventListener('mouseenter', () => {
+                        infoBox.style.zIndex = '100';
+                        infoBox.style.transition = 'z-index 0s';
+                    });
+                    tooltip.addEventListener('mouseleave', () => {
+                        infoBox.style.zIndex = '0';
+                        infoBox.style.transition = 'z-index 0s 0.3s';
+                    });
+                }
+            });
+        });
+
+        document.addEventListener('click', (e) => {
+            const button = e.target.closest('.toggle-collapse-btn');
+            if (button) {
+                const contentWrapper = button.previousElementSibling;
+                if (contentWrapper && contentWrapper.classList.contains('collapsible-content')) {
+                    contentWrapper.classList.toggle('is-collapsed');
+                    const isCollapsed = contentWrapper.classList.contains('is-collapsed');
+                    
+                    button.querySelector('.icon-expand').classList.toggle('hidden', !isCollapsed);
+                    button.querySelector('.icon-collapse').classList.toggle('hidden', isCollapsed);
+                    button.title = isCollapsed ? 'Show More' : 'Show Less';
+                }
+            }
+        });
+
+        sendSmallCmdBtn.addEventListener('click', () => {
+            const cmd = `*2\r\n$3\r\nGET\r\n$5\r\nmykey\r\n`;
+            readFromClient(cmd);
+        });
+
+        sendLargeCmdBtn.addEventListener('click', () => {
+            // This command text is used to trigger a large reply in the logic
+            const cmd = `*2\r\n$4\r\nMSET\r\n$11\r\nlarge_reply\r\n`; 
+            readFromClient(cmd);
+        });
+        
+        sendPipelinedCmdBtn.addEventListener('click', () => {
+            const cmd1 = `*2\r\n$3\r\nGET\r\n$5\r\nmykey\r\n`; // Small reply
+            const cmd2 = `*2\r\n$4\r\nMSET\r\n$11\r\nbig_trigger\r\n`; // This command text is used to trigger a large reply in the logic
+            const cmd3 = `*2\r\n$4\r\nINCR\r\n$7\r\ncounter\r\n`; // Small reply
+            const cmd = cmd1 + cmd2 + cmd3;
+            readFromClient(cmd);
+        });
+
+        slowClientCmdBtn.addEventListener('click', async () => {
+            if (state.isProcessing) return;
+            toggleButtons(true); // Disable all buttons
+
+            // We need to call the internal logic of readFromClient without disabling buttons at the end
+            addLog(`Client sending large command...`, 'client');
+            const cmd = `*2\r\n$4\r\nMSET\r\n$11\r\nlarge_reply\r\n`; 
+            state.querybuf += cmd;
+            if (state.querybuf.length > state.querybuf_peak) {
+                state.querybuf_peak = state.querybuf.length;
+            }
+            render();
+            await sleep(200);
+            await processQueryBuffer();
+            
+            // Now, simulate the "slow client" part
+            addLog('Client is slow and not reading replies. Output buffer memory is held.', 'client');
+            writeToClientBtn.disabled = true; // Keep write disabled
+            
+            await sleep(1500);
+
+            addLog('Output buffer limit reached! Flagging client with CLIENT_CLOSE_ASAP.', 'error');
+            state.flags.push('A'); // A for ASAP
+            render();
+
+            await sleep(2500);
+            addLog('Disconnecting slow client to protect server memory. (closeClientOnOutputBufferLimitReached)', 'server');
+            
+            // Flash the whole screen red briefly
+            document.body.style.transition = 'background-color 0.2s';
+            document.body.style.backgroundColor = '#7f1d1d';
+            await sleep(200);
+            document.body.style.backgroundColor = '#111827';
+            
+            await sleep(500);
+            addLog('Client disconnected. Simulation ready for next scenario.', 'info');
+            resetBuffersAndState();
+            toggleButtons(false);
+        });
+
+        writeToClientBtn.addEventListener('click', handleWriteToClient);
+        resetSimBtn.addEventListener('click', initialize);
+
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
