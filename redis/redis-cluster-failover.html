@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Redis Cluster Failover Visualizer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { background-color: #0f172a; font-family: 'Inter', sans-serif; }
+    .card { background-color: rgba(30, 41, 59, 0.5); border: 1px solid #334155; }
+    .chip { background-color: #1e293b; border: 1px solid #334155; }
+    .flag { background-color: #1e293b; border: 1px solid #334155; font-variant-numeric: tabular-nums; }
+    .mono { font-family: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .btn { border: 1px solid #475569; background-color: #1e293b; transition: all 0.2s ease; }
+    .btn:hover { border-color: #38bdf8; color: #38bdf8; box-shadow: 0 0 10px rgba(56, 189, 248, 0.2); }
+    .btn-primary { border-color: #0ea5e9; background-color: #0284c7; color: white; }
+    .btn-primary:hover { background-color: #0369a1; border-color: #0ea5e9; }
+    .pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); } 50% { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); } }
+    .log-line { border-bottom: 1px dashed #334155; }
+    .slot { width: 8px; height: 8px; border-radius: 2px; background-color: #334155; display: inline-block; margin: 1px; }
+    .slot.owned { background-color: #22c55e; }
+    .led { width: 10px; height: 10px; border-radius: 50%; display: inline-block; transition: background-color 0.3s ease; }
+    .led.ok { background-color: #22c55e; }
+    .led.warn { background-color: #f59e0b; }
+    .led.err { background-color: #ef4444; }
+    .node-card { cursor: pointer; transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s; }
+    .node-card:hover {
+      box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+      border-color: #64748b;
+    }
+    .node-card.selected { border-color: #38bdf8; box-shadow: 0 0 15px rgba(56, 189, 248, 0.3); }
+    .tooltip { position: relative; }
+    .tooltip:hover .tooltip-text { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
+    .tooltip-text {
+        visibility: hidden; opacity: 0;
+        position: absolute; z-index: 60; /* Increased z-index */
+        top: 100%; /* Position below the parent */
+        left: 50%;
+        margin-top: 8px; /* Add spacing */
+        transform: translateX(-50%) translateY(-5px); /* Animate from slightly up */
+        background-color: #1e293b; color: #cbd5e1;
+        padding: 6px 12px; border-radius: 6px;
+        font-size: 0.75rem; white-space: nowrap;
+        transition: opacity 0.2s, transform 0.2s;
+        border: 1px solid #334155;
+    }
+
+    /* --- Animations for visual feedback --- */
+    .anim-request { animation: highlight-request 0.8s ease-out; }
+    .anim-vote { animation: highlight-vote 0.8s ease-out; }
+    .anim-promote { animation: highlight-promote 1.5s ease-in-out; }
+
+    @keyframes highlight-request {
+      0% { box-shadow: 0 0 15px rgba(56, 189, 248, 0); }
+      50% { box-shadow: 0 0 20px 5px rgba(56, 189, 248, 0.5); }
+      100% { box-shadow: 0 0 15px rgba(56, 189, 248, 0); }
+    }
+    @keyframes highlight-vote {
+      0% { box-shadow: 0 0 15px rgba(34, 197, 94, 0); }
+      50% { box-shadow: 0 0 20px 5px rgba(34, 197, 94, 0.6); }
+      100% { box-shadow: 0 0 15px rgba(34, 197, 94, 0); }
+    }
+    @keyframes highlight-promote {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 15px rgba(74, 222, 128, 0); }
+      50% { transform: scale(1.05); box-shadow: 0 0 30px 10px rgba(74, 222, 128, 0.7); }
+    }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body class="text-slate-300">
+  <!-- Header -->
+  <header class="sticky top-0 z-50 border-b border-slate-800/80 bg-[#0f172a]/80 backdrop-blur-lg">
+    <div class="max-w-screen-xl mx-auto px-4 py-3 flex items-center gap-4">
+      <div class="w-10 h-10 rounded-lg bg-sky-500/10 border border-sky-500/40 grid place-items-center">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12V8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v4"/><path d="M4 12v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/><path d="M12 18v-6"/><path d="M12 6V4"/></svg>
+      </div>
+      <div>
+        <h1 class="text-lg font-bold text-slate-100">Interactive Redis Cluster Failover</h1>
+        <p class="text-xs text-slate-400">Visualizing PFAIL → FAIL → Election → Promotion with internal state details.</p>
+      </div>
+      <div class="ml-auto flex items-center gap-2">
+        <button id="btnRunDemo" class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-2 font-semibold">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          Run Demo
+        </button>
+        <button id="btnReset" class="btn text-sm px-4 py-2 rounded-lg flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6"/><path d="M3.5 22v-6h6"/><path d="M22 11.5A10 10 0 0 1 3.5 22"/><path d="M2 12.5a10 10 0 0 1 18.5-10"/></svg>
+          Reset
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Controls -->
+  <section class="max-w-screen-xl mx-auto px-4 mt-4">
+    <div class="card rounded-xl p-4">
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div class="flex items-center gap-2 text-sm"><span class="led ok"></span> Masters: <span id="statMasters" class="mono font-semibold text-green-400">0</span></div>
+        <div class="flex items-center gap-2 text-sm"><span class="led warn"></span> Slaves: <span id="statSlaves" class="mono font-semibold text-amber-400">0</span></div>
+        <div class="flex items-center gap-2 text-sm font-medium tooltip cursor-help"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> currentEpoch: <span id="statCurrentEpoch" class="mono text-blue-400">0</span><span class="tooltip-text">A cluster-wide 'term' number. A slave increments it to start a new election.</span></div>
+        <div class="flex items-center gap-2 text-sm tooltip cursor-help"><svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> replica-validity-factor: <input id="inpRVF" type="number" class="mono w-16 bg-slate-800 rounded-md p-1 border border-slate-700" value="10"><span class="tooltip-text">A slave is disqualified if its link is down for `node_timeout * factor`</span></div>
+        
+        <div class="ml-auto flex items-center gap-2">
+           <button id="btnFailM1" class="btn text-sm px-3 py-1.5 rounded-md flex items-center gap-1.5 tooltip"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg> Fail M1<span class="tooltip-text">Mark Master #1 as PFAIL</span></button>
+           <button id="btnHeal" class="btn text-sm px-3 py-1.5 rounded-md flex items-center gap-1.5 tooltip"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22V9"/></svg> Heal All<span class="tooltip-text">Clear all FAIL/PFAIL flags</span></button>
+           <button id="btnTick" class="btn text-sm px-3 py-1.5 rounded-md flex items-center gap-1.5 tooltip"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg> Tick +250ms<span class="tooltip-text">Advance simulation time</span></button>
+           <label class="flex items-center gap-2 text-sm pl-2 tooltip cursor-help">
+            <input id="chkAuto" type="checkbox" class="w-4 h-4 rounded accent-sky-500 bg-slate-700 border-slate-600" /> Auto-run
+            <span class="tooltip-text">Automatically advances time every 500ms</span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Layout -->
+  <main class="max-w-screen-xl mx-auto px-4 mt-4 grid lg:grid-cols-2 gap-4">
+    <!-- Left Column: Topology + Data Structures -->
+    <div class="flex flex-col gap-4">
+      <section class="card rounded-xl p-4">
+        <h2 class="text-md font-semibold text-slate-200 mb-3">Cluster Topology</h2>
+        <div id="topology" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3"></div>
+      </section>
+      <section class="card rounded-xl p-4">
+        <h2 class="text-md font-semibold text-slate-200 mb-3">Core Data Structures (clang types)</h2>
+        <div class="grid md:grid-cols-2 gap-3">
+          <div class="chip rounded-lg p-3"><pre class="mono text-xs leading-relaxed whitespace-pre-wrap"><span class="text-slate-500">/* clusterNode (partial) */</span>
+<span class="text-pink-400">struct</span> <span class="text-emerald-400">clusterNode</span> {
+  <span class="text-cyan-400">uint16_t</span> flags;
+  <span class="text-cyan-400">mstime_t</span> pong_received;
+  <span class="text-cyan-400">uint64_t</span> configEpoch;
+  <span class="text-cyan-400">long long</span> repl_offset;
+  <span class="text-pink-400">struct</span> <span class="text-emerald-400">clusterNode</span> *slaveof;
+  <span class="text-cyan-400">list</span> *fail_reports;
+};
+<span class="text-slate-500">/* Flags */</span>
+<span class="text-pink-400">#define</span> CLUSTER_NODE_MASTER    <span class="text-amber-400">(1&lt;&lt;0)</span>
+<span class="text-pink-400">#define</span> CLUSTER_NODE_SLAVE     <span class="text-amber-400">(1&lt;&lt;1)</span>
+<span class="text-pink-400">#define</span> CLUSTER_NODE_PFAIL     <span class="text-amber-400">(1&lt;&lt;2)</span>
+<span class="text-pink-400">#define</span> CLUSTER_NODE_FAIL      <span class="text-amber-400">(1&lt;&lt;3)</span>
+<span class="text-pink-400">#define</span> CLUSTER_NODE_NOFAILOVER <span class="text-amber-400">(1&lt;&lt;4)</span></pre></div>
+          <div class="chip rounded-lg p-3"><pre class="mono text-xs leading-relaxed whitespace-pre-wrap"><span class="text-slate-500">/* clusterState (partial) */</span>
+<span class="text-pink-400">struct</span> <span class="text-emerald-400">clusterState</span> {
+  <span class="text-cyan-400">uint64_t</span> currentEpoch;
+  <span class="text-cyan-400">uint64_t</span> lastVoteEpoch;
+  <span class="text-cyan-400">mstime_t</span> failover_auth_time;
+  <span class="text-cyan-400">int</span> failover_auth_count;
+  <span class="text-cyan-400">int</span> failover_auth_rank;
+};
+<span class="text-slate-500">/* Logic */</span>
+<span class="text-cyan-400">int</span> <span class="text-yellow-400">clusterGetSlaveRank</span>() {
+    <span class="text-slate-500">// Counts how many of its</span>
+    <span class="text-slate-500">// sibling slaves have a</span>
+    <span class="text-slate-500">// greater repl_offset.</span>
+}</pre></div>
+        </div>
+      </section>
+    </div>
+    <!-- Right Column: Inspector + Process + Logs -->
+    <div class="flex flex-col gap-4">
+      <section class="card rounded-xl p-4">
+        <h2 class="text-md font-semibold text-slate-200 mb-3">Node Inspector</h2>
+        <div id="inspector" class="text-slate-400 text-center pt-10">Select a node to inspect its internal state.</div>
+      </section>
+      
+      <section class="card rounded-xl p-4">
+        <h2 class="text-md font-semibold text-slate-200 mb-2">Failover Process Explained</h2>
+        <div class="text-xs text-slate-400 space-y-2">
+            <details>
+                <summary class="cursor-pointer font-semibold text-slate-300">0. Node-Specific Views</summary>
+                <p class="mt-1 pl-4 border-l-2 border-slate-700">There is no "global state". Every node maintains its own map of all other nodes. When Node A thinks Node B is failing, it sets a <b class="text-amber-400">PFAIL</b> flag on its <i>local</i> representation of Node B. The inspector shows this per-node perspective.</p>
+            </details>
+            <details>
+                <summary class="cursor-pointer font-semibold text-slate-300">1. Failure Detection (PFAIL → FAIL)</summary>
+                <p class="mt-1 pl-4 border-l-2 border-slate-700">A node marks another as <b class="text-amber-400">PFAIL</b> if it doesn't receive a PONG reply within `node_timeout`. It elevates this to <b class="text-red-400">FAIL</b> after receiving failure reports from a majority of other masters (<b class="mono">(N/2) + 1</b>) via the gossip protocol.</p>
+            </details>
+            <details open>
+                <summary class="cursor-pointer font-semibold text-slate-300">2. Slave Election: Initiation & Ranking</summary>
+                <p class="mt-1 pl-4 border-l-2 border-slate-700 space-y-1">
+                    <span>A slave begins a failover if: its master is <b class="text-red-400">FAIL</b>, owns slots, its replication link is not too old (<b class="mono">replica-validity-factor</b>), and it isn't configured with <b class="mono">NOFAILOVER</b>. It calculates its <b class="text-sky-400">rank</b> based on replication offset.</span>
+                    <span class="block mt-2 pt-2 border-t border-slate-700/50">
+                        <b>Election Delay Formula:</b>
+                        <span class="block ml-2 mono">500ms (Base) + random(0-500ms) + (rank * 1000ms)</span>
+                    </span>
+                </p>
+            </details>
+            <details>
+                <summary class="cursor-pointer font-semibold text-slate-300">3. Slave Election: Voting & Winning</summary>
+                <p class="mt-1 pl-4 border-l-2 border-slate-700 space-y-1">
+                  The slave increments <b class="text-blue-400">currentEpoch</b> and requests votes. Masters grant a vote if:
+                  <ul class="list-disc pl-5 mt-1 space-y-1">
+                    <li>They haven't voted in the current epoch (<b class="mono">lastVoteEpoch < currentEpoch</b>).</li>
+                    <li>The slave's master is indeed marked as <b class="text-red-400">FAIL</b>.</li>
+                    <li>The slave's claimed <b class="text-violet-400">configEpoch</b> is not stale compared to other nodes.</li>
+                    <li>They haven't voted for another slave of the same master recently (anti-flapping).</li>
+                  </ul>
+                  A slave wins with a majority of votes (<b class="mono">(N/2) + 1</b>).
+                </p>
+            </details>
+            <details>
+                <summary class="cursor-pointer font-semibold text-slate-300">4. Slave Promotion & Healing</summary>
+                <p class="mt-1 pl-4 border-l-2 border-slate-700">The winner becomes a master, takes the slots with a higher <b class="text-violet-400">configEpoch</b>, and broadcasts its new state. Other nodes receive this gossip and update their local views. Orphaned slaves of the old master also learn of the new master via gossip and reconfigure to replicate from it.</p>
+            </details>
+        </div>
+      </section>
+
+      <section class="card rounded-xl p-4">
+        <div class="flex items-center mb-3">
+          <h2 class="text-md font-semibold text-slate-200">Event Log</h2>
+          <button id="btnClearLog" class="ml-auto btn text-xs px-3 py-1 rounded-md">Clear</button>
+        </div>
+        <div id="log" class="mono text-xs max-h-[250px] h-[250px] overflow-y-auto pr-2"></div>
+      </section>
+    </div>
+  </main>
+  
+  <footer class="max-w-screen-xl mx-auto px-4 my-6 text-center text-xs text-slate-500">
+      Built to clarify the Redis failover state machine. Click "Run Demo" to start.
+  </footer>
+  
+  <script>
+    // --- Simulation Core ---
+    const $ = (selector) => document.querySelector(selector);
+    const $$ = (selector) => document.querySelectorAll(selector);
+
+    const FLAGS = { MASTER: 1, SLAVE: 2, PFAIL: 4, FAIL: 8, NOFAILOVER: 16 };
+    let now = 0;
+    let clusterState = {};
+    let nodes = [];
+    let selectedNodeId = null;
+    let autoTimer = null;
+
+    function flagStr(f) {
+        const out = [];
+        if (f & FLAGS.MASTER) out.push('MASTER');
+        if (f & FLAGS.SLAVE) out.push('SLAVE');
+        if (f & FLAGS.PFAIL) out.push('PFAIL');
+        if (f & FLAGS.FAIL) out.push('FAIL');
+        if (f & FLAGS.NOFAILOVER) out.push('NOFAILOVER');
+        return out.length ? out.join(', ') : 'NONE';
+    }
+
+    function animateNode(nodeId, animationClass) {
+        const el = $(`[data-node-id="${nodeId}"]`);
+        if (el) {
+            el.classList.remove('anim-request', 'anim-vote', 'anim-promote');
+            el.classList.add(animationClass);
+            el.addEventListener('animationend', () => {
+                el.classList.remove(animationClass);
+            }, { once: true });
+        }
+    }
+
+    function log(msg, type = 'info') {
+        const el = document.createElement('div');
+        el.className = 'log-line py-1 flex items-start';
+        let color = 'text-slate-400';
+        if (type === 'warn') color = 'text-amber-400';
+        if (type === 'err') color = 'text-red-400';
+        if (type === 'ok') color = 'text-green-400';
+        
+        el.innerHTML = `<span class="w-16 text-right pr-2 text-slate-500">${now}ms</span><span class="${color}">${msg}</span>`;
+        $('#log').prepend(el);
+    }
+    
+    function createNode({ id, flags, masterId = null, configEpoch = 0, repl_offset = 0 }) {
+        return {
+            id, flags, masterId, configEpoch, repl_offset,
+            last_master_contact: 0,
+            fail_reports: new Set(),
+            failover_auth_time: 0, failover_auth_sent: false,
+            failover_auth_count: 0, failover_auth_epoch: 0, failover_auth_rank: -1,
+            lastVoteEpoch: 0,
+            lastVoteSentTo: null,
+            lastVoteSentTime: 0,
+            slots: new Set(),
+            promoted_by_failover: false,
+            initial_delay: 0,
+            rehome_at_time: 0,
+            pending_new_master_id: null,
+            peers: {}, // Each node has its own view of other nodes
+            gossip_update_at_time: 0,
+            pending_gossip_payload: null,
+        };
+    }
+    
+    function initCluster() {
+        now = 0;
+        nodes = [];
+        clusterState = { 
+            currentEpoch: 3, 
+            nodeTimeout: 1500, 
+            replicaValidityFactor: parseInt($('#inpRVF').value, 10) || 10,
+        };
+        
+        const m1 = createNode({ id: 'M1', flags: FLAGS.MASTER, configEpoch: 1, repl_offset: 10000 });
+        const m2 = createNode({ id: 'M2', flags: FLAGS.MASTER, configEpoch: 2, repl_offset: 12050 });
+        const m3 = createNode({ id: 'M3', flags: FLAGS.MASTER, configEpoch: 3, repl_offset: 11111 });
+        
+        for (let s = 0; s < 5461; s++) m1.slots.add(s);
+        for (let s = 5461; s < 10922; s++) m2.slots.add(s);
+        for (let s = 10922; s < 16384; s++) m3.slots.add(s);
+        
+        nodes.push(m1, m2, m3,
+            createNode({ id: 'S1A', flags: FLAGS.SLAVE, masterId: 'M1', repl_offset: 9980 }),
+            createNode({ id: 'S1B', flags: FLAGS.SLAVE, masterId: 'M1', repl_offset: 10000 }),
+            createNode({ id: 'S2A', flags: FLAGS.SLAVE | FLAGS.NOFAILOVER, masterId: 'M2', repl_offset: 12050 }),
+            createNode({ id: 'S3A', flags: FLAGS.SLAVE, masterId: 'M3', repl_offset: 11000 }),
+            createNode({ id: 'S3B', flags: FLAGS.SLAVE, masterId: 'M3', repl_offset: 10950 })
+        );
+        
+        nodes.forEach(node1 => {
+            nodes.forEach(node2 => {
+                if (node1.id !== node2.id) {
+                    node1.peers[node2.id] = { flags: node2.flags };
+                }
+            });
+        });
+
+        log('Cluster initialized.', 'ok');
+        render();
+    }
+
+    const getNode = (id) => nodes.find(n => n.id === id);
+    const getMasters = (includeFailed = false) => nodes.filter(n => (n.flags & FLAGS.MASTER) && (includeFailed || !(n.flags & FLAGS.FAIL)));
+    const getSlavesOf = (masterId) => nodes.filter(n => n.masterId === masterId);
+    
+    // --- Simulation Logic ---
+
+    function markPFAIL(reporterId, targetId) {
+        const reporter = getNode(reporterId);
+        const target = getNode(targetId);
+        if (!reporter || !target) return;
+
+        reporter.peers[targetId].flags |= FLAGS.PFAIL;
+        log(`${reporterId} updates its local view of ${targetId} to PFAIL.`, 'warn');
+        target.fail_reports.add(reporterId);
+    }
+    
+    function checkQuorumAndMarkFAIL(targetId) {
+        const target = getNode(targetId);
+        if (!target || target.flags & FLAGS.FAIL) return;
+
+        const masters = getMasters();
+        const quorum = Math.floor(masters.length / 2) + 1;
+        
+        if (target.fail_reports.size >= quorum) {
+            target.flags |= FLAGS.FAIL;
+            target.flags &= ~FLAGS.PFAIL;
+            log(`${targetId} is globally marked FAIL (quorum: ${quorum}). Broadcasting...`, 'err');
+
+            nodes.forEach(node => {
+                if (node.id !== targetId && node.peers[targetId]) {
+                    node.peers[targetId].flags |= FLAGS.FAIL;
+                    node.peers[targetId].flags &= ~FLAGS.PFAIL;
+                }
+            });
+
+            getSlavesOf(targetId).forEach(s => scheduleFailoverAuth(s.id));
+        }
+    }
+    
+    function getSlaveRank(slaveId) {
+        const slave = getNode(slaveId);
+        if (!slave || !slave.masterId) return -1;
+        const peers = getSlavesOf(slave.masterId).filter(p => !(p.flags & FLAGS.NOFAILOVER));
+        let rank = 0;
+        for (const peer of peers) {
+            if (peer.id !== slaveId && peer.repl_offset > slave.repl_offset) {
+                rank++;
+            }
+        }
+        return rank;
+    }
+    
+    function scheduleFailoverAuth(slaveId) {
+        const slave = getNode(slaveId);
+
+        // Check for NOFAILOVER flag
+        if (slave.flags & FLAGS.NOFAILOVER) {
+            log(`${slave.id} has NOFAILOVER flag, will not participate in election.`, 'warn');
+            return;
+        }
+        
+        // Check for replica validity
+        const max_downtime = clusterState.nodeTimeout * clusterState.replicaValidityFactor;
+        if ((now - slave.last_master_contact) > max_downtime) {
+             log(`${slave.id} disqualified: replication link down for too long.`, 'err');
+             return;
+        }
+
+        const rank = getSlaveRank(slaveId);
+        slave.failover_auth_rank = rank;
+        const delay = 500 + Math.random() * 500 + rank * 1000;
+        slave.initial_delay = delay;
+        slave.failover_auth_time = now + delay;
+        slave.failover_auth_sent = false;
+        slave.failover_auth_count = 0;
+        log(`${slaveId} calculates RANK ${rank}. Failover attempt scheduled for t=${slave.failover_auth_time.toFixed(0)}ms.`);
+    }
+    
+    function attemptFailoverAuth(slaveId) {
+        const slave = getNode(slaveId);
+        if (!slave || slave.failover_auth_sent || now < slave.failover_auth_time) return;
+        
+        const master = getNode(slave.masterId);
+        if(!master || !(slave.peers[slave.masterId].flags & FLAGS.FAIL) || master.slots.size === 0) {
+            return;
+        }
+
+        clusterState.currentEpoch++;
+        slave.failover_auth_epoch = clusterState.currentEpoch;
+        slave.failover_auth_sent = true;
+
+        const logMessageHTML = `${slaveId} broadcasts <span class="font-semibold text-sky-400 tooltip relative cursor-help">FAILOVER_AUTH_REQUEST<span class="tooltip-text !bottom-auto !top-full !mt-2">Sent to all nodes to request votes.</span></span> for epoch ${clusterState.currentEpoch}.`;
+        log(logMessageHTML, 'info');
+        
+        animateNode(slaveId, 'anim-request');
+        
+        const masters = getMasters();
+        const neededVotes = Math.floor(masters.length / 2) + 1;
+        
+        masters.forEach(voter => {
+            // Anti-Flapping Check
+            if (voter.lastVoteSentTo === slave.masterId && (now - voter.lastVoteSentTime) < clusterState.nodeTimeout * 2) {
+                log(`${voter.id} denies vote for ${slaveId}: voted for another slave of ${slave.masterId} too recently (anti-flapping).`, 'warn');
+                return;
+            }
+            // Freshness Check
+            if (voter.lastVoteEpoch < clusterState.currentEpoch) {
+                 voter.lastVoteEpoch = clusterState.currentEpoch;
+                 voter.lastVoteSentTo = slave.masterId;
+                 voter.lastVoteSentTime = now;
+                 slave.failover_auth_count++;
+                 log(`${voter.id} votes for ${slaveId} in epoch ${clusterState.currentEpoch}.`);
+                 animateNode(voter.id, 'anim-vote');
+            }
+        });
+        
+        if (slave.failover_auth_count >= neededVotes) {
+            log(`${slaveId} won election with ${slave.failover_auth_count}/${neededVotes} votes!`, 'ok');
+            promoteSlave(slaveId);
+        } else {
+             log(`${slaveId} has ${slave.failover_auth_count}/${neededVotes} votes. Waiting.`);
+        }
+    }
+    
+    function promoteSlave(slaveId) {
+        const newMaster = getNode(slaveId);
+        if (!newMaster || !(newMaster.flags & FLAGS.SLAVE)) return;
+
+        const oldMasterId = newMaster.masterId;
+        const oldMaster = getNode(oldMasterId);
+        
+        newMaster.flags &= ~FLAGS.SLAVE;
+        newMaster.flags |= FLAGS.MASTER;
+        newMaster.masterId = null;
+        newMaster.configEpoch = newMaster.failover_auth_epoch;
+        newMaster.promoted_by_failover = true;
+        
+        log(`${newMaster.id} promoted to MASTER! New configEpoch: ${newMaster.configEpoch}.`, 'ok');
+        animateNode(slaveId, 'anim-promote');
+        
+        if (oldMaster) {
+            newMaster.slots = oldMaster.slots;
+            oldMaster.slots = new Set();
+            log(`Slots from ${oldMaster.id} reassigned to new master ${newMaster.id}.`, 'ok');
+            
+            if (newMaster.peers[oldMaster.id]) {
+                newMaster.peers[oldMaster.id].flags &= ~FLAGS.MASTER;
+            }
+
+            const gossipDelay = 250 + Math.random() * 250;
+            nodes.forEach(node => {
+                if (node.id !== newMaster.id && node.id !== oldMaster.id) {
+                    node.gossip_update_at_time = now + gossipDelay;
+                    node.pending_gossip_payload = { new_master_id: newMaster.id, old_master_id: oldMaster.id };
+                }
+            });
+
+            getSlavesOf(oldMaster.id).forEach(sibling => {
+                if (sibling.id !== newMaster.id) {
+                    sibling.rehome_at_time = now + 500 + Math.random() * 250;
+                    sibling.pending_new_master_id = newMaster.id;
+                }
+            });
+        }
+    }
+    
+    function processRehoming() {
+        nodes.forEach(node => {
+            if (node.rehome_at_time > 0 && now >= node.rehome_at_time) {
+                const newMasterId = node.pending_new_master_id;
+                log(`${node.id} detects new master ${newMasterId} via gossip. Re-homing.`, 'info');
+                node.masterId = newMasterId;
+                node.rehome_at_time = 0;
+                node.pending_new_master_id = null;
+            }
+        });
+    }
+    
+    function processGossipUpdates() {
+        nodes.forEach(node => {
+            if (node.gossip_update_at_time > 0 && now >= node.gossip_update_at_time) {
+                const payload = node.pending_gossip_payload;
+                log(`${node.id} received gossip: ${payload.new_master_id} is now MASTER for slots of ${payload.old_master_id}.`, 'info');
+
+                if (node.peers[payload.new_master_id]) {
+                    node.peers[payload.new_master_id].flags |= FLAGS.MASTER;
+                    node.peers[payload.new_master_id].flags &= ~FLAGS.SLAVE;
+                }
+                if (node.peers[payload.old_master_id]) {
+                    node.peers[payload.old_master_id].flags &= ~FLAGS.MASTER;
+                }
+
+                node.gossip_update_at_time = 0;
+                node.pending_gossip_payload = null;
+            }
+        });
+    }
+
+    // --- Rendering ---
+    
+    function render() {
+        renderStats();
+        renderTopology();
+        if (selectedNodeId) renderInspector(selectedNodeId);
+    }
+    
+    function renderStats() {
+        $('#statMasters').textContent = getMasters().length;
+        $('#statSlaves').textContent = nodes.filter(n => n.flags & FLAGS.SLAVE).length;
+        $('#statCurrentEpoch').textContent = clusterState.currentEpoch;
+    }
+    
+    function renderTopology() {
+        const container = $('#topology');
+        const mastersData = getMasters(true);
+        const existingMasterElements = new Map([...container.querySelectorAll(':scope > .node-card')].map(el => [el.dataset.nodeId, el]));
+        const renderedMasterIds = new Set();
+
+        const allSlaveElements = new Map([...container.querySelectorAll('.slaves-container .node-card')].map(el => [el.dataset.nodeId, el]));
+
+        mastersData.forEach(master => {
+            renderedMasterIds.add(master.id);
+            let masterEl = existingMasterElements.get(master.id);
+            
+            if (!masterEl) {
+                masterEl = document.createElement('div');
+                masterEl.dataset.nodeId = master.id;
+                container.appendChild(masterEl);
+            }
+            
+            updateMasterCard(master, masterEl, allSlaveElements);
+        });
+
+        existingMasterElements.forEach((el, id) => {
+            if (!renderedMasterIds.has(id)) {
+                el.remove();
+            }
+        });
+    }
+
+    function updateMasterCard(master, masterEl, allSlaveElements) {
+        masterEl.className = `node-card rounded-lg p-3 border relative ${master.id === selectedNodeId ? 'selected' : 'border-slate-700'}`;
+
+        let statusClass = 'ok';
+        if (master.flags & FLAGS.FAIL) statusClass = 'err';
+        else if (master.flags & FLAGS.PFAIL) statusClass = 'warn';
+
+        let slotHTML = '';
+        const numBlocks = Math.ceil(master.slots.size / 410);
+        for(let i=0; i<numBlocks; i++) slotHTML += `<span class="slot owned"></span>`;
+
+        let promotedIconHTML = '';
+        if (master.promoted_by_failover) {
+            promotedIconHTML = `<div class="absolute top-2 right-2 tooltip"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg><span class="tooltip-text">Promoted via Failover</span></div>`;
+        }
+        
+        masterEl.innerHTML = `<div class="flex items-center gap-3">${promotedIconHTML}<span class="led ${statusClass}"></span><div><div class="font-bold text-slate-100">${master.id} <span class="text-xs font-normal text-slate-400">(MASTER)</span></div><div class="text-xs mono">configEpoch: ${master.configEpoch} | slots: ${master.slots.size}</div></div></div><div class="mt-2">${slotHTML}</div><div class="pl-6 pt-2 space-y-2 slaves-container"></div>`;
+
+        const slavesContainer = masterEl.querySelector('.slaves-container');
+        getSlavesOf(master.id).forEach(slave => {
+            let slaveEl = allSlaveElements.get(slave.id);
+            if (!slaveEl) {
+                slaveEl = document.createElement('div');
+                slaveEl.dataset.nodeId = slave.id;
+            }
+            updateSlaveCard(slave, slaveEl);
+            slavesContainer.appendChild(slaveEl);
+        });
+    }
+
+    function updateSlaveCard(slave, slaveEl) {
+        slaveEl.className = `node-card flag rounded-md p-2 relative ${slave.id === selectedNodeId ? 'selected' : 'border-slate-700'}`;
+        const rank = getSlaveRank(slave.id);
+
+        let extrasHTML = '';
+        if (slave.flags & FLAGS.NOFAILOVER) {
+            extrasHTML += `<div class="absolute top-2 left-2 tooltip"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg><span class="tooltip-text">NOFAILOVER Flag Set</span></div>`;
+        }
+        
+        if (slave.peers[slave.masterId] && (slave.peers[slave.masterId].flags & FLAGS.FAIL)) {
+            if (slave.failover_auth_time > now && !(slave.flags & FLAGS.MASTER)) {
+                const remaining = Math.max(0, slave.failover_auth_time - now);
+                const progress = Math.min(100, ((slave.initial_delay - remaining) / slave.initial_delay) * 100);
+                extrasHTML += `<div class="absolute top-1 right-2 text-[10px] mono text-sky-300">${remaining.toFixed(0)}ms</div><div class="absolute bottom-0 left-0 right-0 h-1 bg-slate-600 rounded-b-md overflow-hidden"><div class="h-full bg-sky-500" style="width: ${progress}%"></div></div>`;
+            }
+        }
+
+        slaveEl.innerHTML = `<div class="text-sm font-semibold text-slate-200 ml-5">${slave.id}</div><div class="text-xs mono ml-5">offset: ${slave.repl_offset} | rank: ${rank >= 0 ? rank : '-'}</div>${extrasHTML}`;
+    }
+
+    function renderInspector(nodeId) {
+        const node = getNode(nodeId);
+        const container = $('#inspector');
+        if (!node) {
+            container.innerHTML = `<div class="text-slate-400 text-center pt-10">Node not found.</div>`;
+            return;
+        }
+
+        const createField = (label, value, type) => `<div class="chip rounded-md p-2"><div class="text-[10px] uppercase font-semibold text-slate-500">${label} (${type})</div><div class="mono text-sm text-slate-200">${value}</div></div>`;
+
+        let inspectorHTML = `
+            <h3 class="font-bold text-lg text-sky-400 col-span-2">${node.id}'s Internal State</h3>
+            <div class="grid grid-cols-2 gap-2 col-span-2">
+                ${createField('Own Flags', flagStr(node.flags), 'uint16_t')}
+                ${createField('Master ID', node.masterId || 'N/A', 'char*')}
+                ${createField('configEpoch', node.configEpoch, 'uint64_t')}
+                ${createField('repl_offset', node.repl_offset, 'long long')}
+                ${createField('Last Master Contact', `${node.last_master_contact}ms`, 'mstime_t')}
+                ${createField('Last Vote Epoch', node.lastVoteEpoch, 'uint64_t')}
+            </div>
+            <h4 class="font-semibold text-slate-300 col-span-2 mt-4 border-t border-slate-700 pt-3">Peer Status (from ${node.id}'s perspective)</h4>
+            <div class="col-span-2 grid grid-cols-3 gap-1 text-xs mono max-h-32 overflow-y-auto pr-2">
+        `;
+        
+        Object.keys(node.peers).sort().forEach(peerId => {
+            const peerView = node.peers[peerId];
+            let flagColor = 'text-slate-500';
+            if (peerView.flags & FLAGS.FAIL) flagColor = 'text-red-400';
+            else if (peerView.flags & FLAGS.PFAIL) flagColor = 'text-amber-400';
+            
+            inspectorHTML += `<div class="col-span-1">${peerId}</div><div class="col-span-2 ${flagColor} font-semibold">${flagStr(peerView.flags)}</div>`;
+        });
+
+        inspectorHTML += `</div>`;
+        container.innerHTML = inspectorHTML;
+    }
+    
+    // --- Demo Flow & Controls ---
+    function runDemo() {
+        initCluster();
+        stopAuto();
+        const steps = [
+            () => { now += 250; nodes.forEach(n => { if (n.flags & FLAGS.SLAVE) n.last_master_contact = now; }); markPFAIL('M2', 'M1'); render(); },
+            () => { now += 250; markPFAIL('M3', 'M1'); render(); },
+            () => { now += 250; checkQuorumAndMarkFAIL('M1'); render(); },
+        ];
+        
+        let delay = 500;
+        steps.forEach(step => { setTimeout(step, delay); delay += 750; });
+        
+        setTimeout(() => { $('#chkAuto').checked = true; startAuto(); }, delay);
+    }
+
+    function advanceTime() {
+        now += 250;
+        
+        processGossipUpdates();
+
+        nodes.forEach(node => {
+            if ((node.flags & FLAGS.SLAVE) && node.masterId) {
+                if (Math.random() > 0.1) node.last_master_contact = now; // Simulate ongoing contact
+                const master = getNode(node.masterId);
+                if (master && (master.flags & FLAGS.FAIL)) {
+                    attemptFailoverAuth(node.id);
+                }
+            }
+        });
+        
+        processRehoming();
+        render();
+    }
+    
+    function startAuto() {
+        if (autoTimer) clearInterval(autoTimer);
+        autoTimer = setInterval(advanceTime, 500);
+    }
+
+    function stopAuto() {
+        if(autoTimer) clearInterval(autoTimer);
+        autoTimer = null;
+        $('#chkAuto').checked = false;
+    }
+
+    // Event Listeners
+    function setupEventListeners() {
+        $('#btnRunDemo').addEventListener('click', runDemo);
+        $('#btnReset').addEventListener('click', () => { stopAuto(); initCluster(); });
+        $('#btnClearLog').addEventListener('click', () => { $('#log').innerHTML = ''; });
+        $('#btnTick').addEventListener('click', advanceTime);
+        $('#inpRVF').addEventListener('change', () => { clusterState.replicaValidityFactor = parseInt($('#inpRVF').value, 10) || 10; });
+        $('#btnFailM1').addEventListener('click', () => {
+            markPFAIL('M2', 'M1');
+            markPFAIL('M3', 'M1');
+            checkQuorumAndMarkFAIL('M1');
+            render();
+        });
+        $('#btnHeal').addEventListener('click', () => {
+            nodes.forEach(n => {
+                n.flags &= ~(FLAGS.FAIL | FLAGS.PFAIL);
+                n.fail_reports.clear();
+                Object.keys(n.peers).forEach(peerId => { n.peers[peerId].flags &= ~(FLAGS.FAIL | FLAGS.PFAIL); });
+            });
+            log('All nodes healed.', 'ok');
+            render();
+        });
+        $('#chkAuto').addEventListener('change', (e) => {
+            if (e.target.checked) startAuto();
+            else stopAuto();
+        });
+        
+        $('#topology').addEventListener('click', (e) => {
+            const card = e.target.closest('.node-card');
+            if (card && card.dataset.nodeId) {
+                e.stopPropagation();
+                selectedNodeId = card.dataset.nodeId;
+                $$('#topology .node-card').forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+                renderInspector(selectedNodeId);
+            }
+        });
+    }
+
+    // Initial boot
+    setupEventListeners();
+    initCluster();
+  </script>
+</body>
+</html>
+
