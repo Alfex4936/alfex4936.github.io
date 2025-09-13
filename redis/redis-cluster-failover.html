@@ -9,7 +9,7 @@
     :root { color-scheme: dark; }
     html, body { background-color: #0f172a; font-family: 'Inter', sans-serif; }
     .card { background-color: rgba(30, 41, 59, 0.5); border: 1px solid #334155; }
-    .chip { background-color: #1e293b; border: 1px solid #334155; }
+    .chip { background-color: #1e2_A93b; border: 1px solid #334155; }
     .flag { background-color: #1e293b; border: 1px solid #334155; font-variant-numeric: tabular-nums; }
     .mono { font-family: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
     .btn { border: 1px solid #475569; background-color: #1e293b; transition: all 0.2s ease; }
@@ -126,37 +126,49 @@
         <div id="topology" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3"></div>
       </section>
       <section class="card rounded-xl p-4">
-        <h2 class="text-md font-semibold text-slate-200 mb-3">Core Data Structures (clang types)</h2>
+        <h2 class="text-md font-semibold text-slate-200 mb-3">Core Data Structures & Logic (clang types)</h2>
         <div class="grid md:grid-cols-2 gap-3">
-          <div class="chip rounded-lg p-3"><pre class="mono text-xs leading-relaxed whitespace-pre-wrap"><span class="text-slate-500">/* clusterNode (partial) */</span>
+          <div class="chip rounded-lg p-3"><pre class="mono text-xs leading-relaxed whitespace-pre-wrap"><span class="text-slate-500">/* Represents a single node's state */</span>
 <span class="text-pink-400">struct</span> <span class="text-emerald-400">clusterNode</span> {
-  <span class="text-cyan-400">uint16_t</span> flags;
-  <span class="text-cyan-400">mstime_t</span> pong_received;
-  <span class="text-cyan-400">uint64_t</span> configEpoch;
-  <span class="text-cyan-400">long long</span> repl_offset;
+  <span class="text-cyan-400">uint16_t</span> flags;         <span class="text-slate-500">// MASTER, SLAVE, FAIL?</span>
+  <span class="text-cyan-400">uint64_t</span> configEpoch;   <span class="text-slate-500">// Slot version number</span>
+  <span class="text-cyan-400">long long</span> repl_offset; <span class="text-slate-500">// Sync progress</span>
   <span class="text-pink-400">struct</span> <span class="text-emerald-400">clusterNode</span> *slaveof;
-  <span class="text-cyan-400">list</span> *fail_reports;
 };
-<span class="text-slate-500">/* Flags */</span>
+
+<span class="text-slate-500">/* Cluster-wide (per-node view) */</span>
+<span class="text-pink-400">struct</span> <span class="text-emerald-400">clusterState</span> {
+  <span class="text-cyan-400">uint64_t</span> currentEpoch;  <span class="text-slate-500">// Election term</span>
+  <span class="text-cyan-400">uint64_t</span> lastVoteEpoch; <span class="text-slate-500">// Last term voted in</span>
+};
+<span class="text-slate-500">/* Node Flags (Bitmap) */</span>
 <span class="text-pink-400">#define</span> CLUSTER_NODE_MASTER    <span class="text-amber-400">(1&lt;&lt;0)</span>
 <span class="text-pink-400">#define</span> CLUSTER_NODE_SLAVE     <span class="text-amber-400">(1&lt;&lt;1)</span>
 <span class="text-pink-400">#define</span> CLUSTER_NODE_PFAIL     <span class="text-amber-400">(1&lt;&lt;2)</span>
 <span class="text-pink-400">#define</span> CLUSTER_NODE_FAIL      <span class="text-amber-400">(1&lt;&lt;3)</span>
 <span class="text-pink-400">#define</span> CLUSTER_NODE_NOFAILOVER <span class="text-amber-400">(1&lt;&lt;4)</span></pre></div>
-          <div class="chip rounded-lg p-3"><pre class="mono text-xs leading-relaxed whitespace-pre-wrap"><span class="text-slate-500">/* clusterState (partial) */</span>
-<span class="text-pink-400">struct</span> <span class="text-emerald-400">clusterState</span> {
-  <span class="text-cyan-400">uint64_t</span> currentEpoch;
-  <span class="text-cyan-400">uint64_t</span> lastVoteEpoch;
-  <span class="text-cyan-400">mstime_t</span> failover_auth_time;
-  <span class="text-cyan-400">int</span> failover_auth_count;
-  <span class="text-cyan-400">int</span> failover_auth_rank;
-};
-<span class="text-slate-500">/* Logic */</span>
+          <div class="chip rounded-lg p-3"><pre class="mono text-xs leading-relaxed whitespace-pre-wrap"><span class="text-slate-500">/* Calculates slave's rank. Lower is better. */</span>
 <span class="text-cyan-400">int</span> <span class="text-yellow-400">clusterGetSlaveRank</span>() {
-    <span class="text-slate-500">// Counts how many of its</span>
-    <span class="text-slate-500">// sibling slaves have a</span>
-    <span class="text-slate-500">// greater repl_offset.</span>
-}</pre></div>
+    <span class="text-cyan-400">long long</span> myoffset;
+    <span class="text-cyan-400">int</span> j, rank = <span class="text-amber-400">0</span>;
+    <span class="text-emerald-400">clusterNode</span> *master = myself->slaveof;
+
+    <span class="text-pink-400">if</span> (master == <span class="text-violet-400">NULL</span>) <span class="text-pink-400">return</span> <span class="text-amber-400">0</span>;
+    <span class="text-slate-500">// Get my own replication progress</span>
+    myoffset = replicationGetSlaveOffset();
+
+    <span class="text-slate-500">// Count sibling slaves with a better offset</span>
+    <span class="text-pink-400">for</span> (j = <span class="text-amber-400">0</span>; j &lt; master->numslaves; j++)
+        <span class="text-pink-400">if</span> (master->slaves[j] != myself &&
+            !nodeCantFailover(master->slaves[j]) &&
+            master->slaves[j]->repl_offset > myoffset)
+                rank++;
+    <span class="text-pink-400">return</span> rank;
+}
+
+<span class="text-slate-500">/* Helper to check the NOFAILOVER flag */</span>
+<span class="text-pink-400">#define</span> <span class="text-yellow-400">nodeCantFailover</span>(n) \\
+    ((n)->flags & CLUSTER_NODE_NOFAILOVER)</pre></div>
         </div>
       </section>
     </div>
