@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redis syncCommand Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827;
+            color: #d1d5db;
+        }
+        .mono {
+            font-family: 'Fira Code', monospace;
+        }
+        .card {
+            background-color: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid #4b5563;
+            background-color: #374151;
+            color: #d1d5db;
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .btn:hover {
+            background-color: #4b5563;
+            border-color: #6b7280;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn i {
+            margin-right: 0.5rem;
+            font-size: 1.25rem;
+        }
+        .state-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+        .state-online { background-color: #10b981; color: #064e3b; }
+        .state-wait { background-color: #f59e0b; color: #78350f; }
+        .state-offline { background-color: #6b7280; color: #1f2937; }
+        .state-transfer { background-color: #3b82f6; color: #1e3a8a; }
+        .data-label {
+            color: #9ca3af;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+        }
+        .data-type {
+            font-family: 'Fira Code', monospace;
+            font-size: 0.75rem;
+            color: #6b7280;
+            margin-left: 0.5rem;
+            border: 1px solid #4b5563;
+            padding: 0.1rem 0.3rem;
+            border-radius: 0.25rem;
+        }
+        .data-value {
+            color: #e5e7eb;
+            font-size: 1.125rem;
+            word-break: break-all;
+        }
+        #communication-channel {
+            transition: opacity 0.5s ease-in-out;
+        }
+        .command-packet {
+            position: absolute;
+            background-color: #dc382d;
+            color: white;
+            padding: 0.75rem 1.25rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 0 15px rgba(220, 56, 45, 0.5);
+            transition: all 1.5s ease-in-out;
+            opacity: 0;
+            transform: translateY(20px);
+            z-index: 10;
+            text-align: center;
+        }
+        .log-entry {
+            border-left: 3px solid #4b5563;
+            padding-left: 1rem;
+            margin-bottom: 0.75rem;
+            transition: opacity 0.3s;
+        }
+        [data-tooltip] {
+            position: relative;
+            cursor: help;
+        }
+        [data-tooltip]::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%) translateY(-8px);
+            background-color: #111827;
+            color: #e5e7eb;
+            border: 1px solid #4b5563;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            z-index: 20;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+            width: max-content;
+            max-width: 320px;
+            text-align: left;
+            font-family: 'Inter', sans-serif;
+            font-weight: 400;
+        }
+        [data-tooltip]:hover::after {
+            opacity: 1;
+            visibility: visible;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-6 md:p-8">
+    <div class="max-w-7xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl sm:text-4xl font-bold text-white">Redis Replication: The `syncCommand` Visualizer</h1>
+            <p class="mt-2 text-lg text-gray-400">An interactive guide to how a new replica connection is handled.</p>
+        </header>
+
+        <!-- Controls -->
+        <div id="controls" class="card mb-8 flex flex-wrap justify-center items-center gap-4">
+            <h2 class="text-lg font-semibold mr-4">Scenarios:</h2>
+            <button id="btn-partial" class="btn" data-tooltip="Simulates a reconnecting replica whose offset is still within the master's backlog. This is the fastest, most efficient sync.">
+                <i class="ph ph-plug-charging"></i> PSYNC (Partial)
+            </button>
+            <button id="btn-full" class="btn" data-tooltip="Simulates a replica that is too far behind or has a different replication ID. This forces a costly full dataset transfer.">
+                <i class="ph ph-plugs-connected"></i> PSYNC (Full)
+            </button>
+            <button id="btn-legacy" class="btn" data-tooltip="Simulates an old client using SYNC. This protocol doesn't support partial syncs, so the replica doesn't cache the master's ID/offset and always triggers a full sync.">
+                <i class="ph ph-plug"></i> SYNC (Legacy)
+            </button>
+            <div class="border-l border-gray-600 h-8 mx-2"></div>
+            <button id="btn-reset" class="btn bg-red-800/50 border-red-700 hover:bg-red-700/50">
+                <i class="ph ph-arrow-counter-clockwise"></i> Reset
+            </button>
+        </div>
+
+        <!-- Log & Explanation -->
+        <div class="mb-8 card" id="log-card">
+             <h2 class="text-2xl font-bold text-white mb-4 flex items-center"><i class="ph-fill ph-terminal-window mr-3"></i> Process Log & Explanation</h2>
+             <div id="log-container" class="space-y-3 max-h-96 overflow-y-auto pr-2">
+                <p class="text-gray-400">Click a scenario button above to start the visualization.</p>
+             </div>
+        </div>
+
+        <!-- Main Visualization -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            <!-- Master -->
+            <div class="lg:col-span-5 card" id="master-card">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-2xl font-bold text-white flex items-center" data-tooltip="The primary Redis instance that accepts writes and propagates them to replicas."><i class="ph-fill ph-database text-red-500 mr-3"></i> Master</h2>
+                    <div id="master-state" class="state-badge state-online">ONLINE</div>
+                </div>
+                <div class="space-y-4">
+                    <div data-tooltip="A 40-character pseudo-random string that uniquely identifies a master's dataset history. If this changes, a full resync is required.&#10;&#10;Type: char* (CONFIG_RUN_ID_SIZE)">
+                        <div class="data-label">Replication ID (replid) <span class="data-type">char*</span></div>
+                        <p id="master-replid" class="data-value mono"></p>
+                    </div>
+                    <div data-tooltip="A counter tracking the number of bytes produced in the replication stream. This is the key to partial resynchronization.&#10;&#10;Type: long long">
+                        <div class="data-label">Replication Offset <span class="data-type">long long</span></div>
+                        <p id="master-offset" class="data-value mono"></p>
+                    </div>
+                    <div data-tooltip="The actual size in bytes of the data currently stored in the backlog. It's the 'history length' available for partial syncs.&#10;&#10;Type: size_t">
+                        <div class="data-label">Backlog History Length (histlen) <span class="data-type">size_t</span></div>
+                        <p id="master-histlen" class="data-value mono"></p>
+                    </div>
+                </div>
+                <div class="mt-6">
+                    <h3 class="font-semibold text-white mb-2" data-tooltip="A circular buffer (FIFO queue) on the master storing recent write commands. Essential for PSYNC.&#10;&#10;- The size is configured via `repl-backlog-size` in redis.conf (default 1MB).&#10;- As new commands arrive, the oldest are overwritten. The offset range it covers slides forward over time, it's not random.">Replication Backlog</h3>
+                    <div id="backlog" class="bg-gray-900/50 p-3 rounded-lg flex flex-col space-y-1 overflow-x-auto">
+                        <!-- Backlog blocks will be generated here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Communication Channel -->
+            <div class="lg:col-span-2 flex justify-center items-center min-h-[150px] relative" id="communication-channel">
+                 <!-- Command packets will appear here -->
+            </div>
+
+            <!-- Replica -->
+            <div class="lg:col-span-5 card" id="replica-card">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-2xl font-bold text-white flex items-center" data-tooltip="A copy of the master instance. It receives updates from the master to stay in sync."><i class="ph-fill ph-hard-drives text-blue-400 mr-3"></i> Replica</h2>
+                    <div id="replica-state" class="state-badge state-offline">OFFLINE</div>
+                </div>
+                <div class="space-y-4">
+                    <div data-tooltip="The last known replication ID of the master. This is cached in the Replica's memory inside the `server.cached_master` struct when a connection is lost. It's used for the next PSYNC attempt.">
+                        <div class="data-label">Master's Repl ID (cached) <span class="data-type">char*</span></div>
+                        <p id="replica-replid" class="data-value mono">?</p>
+                    </div>
+                    <div data-tooltip="The last replication offset processed by the replica. This is cached in the Replica's memory along with the repl ID. It tells the master exactly where the replica needs to resume the data stream from.">
+                        <div class="data-label">Master's Offset (cached) <span class="data-type">long long</span></div>
+                        <p id="replica-offset" class="data-value mono">?</p>
+                    </div>
+                    <div id="rdb-progress-container" class="hidden">
+                        <div class="data-label">RDB Transfer Progress</div>
+                        <div class="w-full bg-gray-700 rounded-full h-2.5 mt-1">
+                          <div id="rdb-progress-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const masterState = {
+            replid: '',
+            offset: 0,
+            histlen: 0,
+            backlog: [],
+            backlogStartOffset: 0,
+        };
+
+        const replicaState = {
+            knownReplid: '?',
+            knownOffset: '?',
+        };
+
+        const dom = {
+            masterCard: document.getElementById('master-card'),
+            replicaCard: document.getElementById('replica-card'),
+            masterReplid: document.getElementById('master-replid'),
+            masterOffset: document.getElementById('master-offset'),
+            masterHistlen: document.getElementById('master-histlen'),
+            masterState: document.getElementById('master-state'),
+            replicaReplid: document.getElementById('replica-replid'),
+            replicaOffset: document.getElementById('replica-offset'),
+            replicaState: document.getElementById('replica-state'),
+            backlog: document.getElementById('backlog'),
+            channel: document.getElementById('communication-channel'),
+            logContainer: document.getElementById('log-container'),
+            rdbProgressContainer: document.getElementById('rdb-progress-container'),
+            rdbProgressBar: document.getElementById('rdb-progress-bar'),
+            buttons: {
+                partial: document.getElementById('btn-partial'),
+                full: document.getElementById('btn-full'),
+                legacy: document.getElementById('btn-legacy'),
+                reset: document.getElementById('btn-reset'),
+            }
+        };
+
+        const generateRandomId = (length) => {
+            let result = '';
+            const characters = 'abcdefghijklmnopqrstuvwxyz0123456789';
+            for (let i = 0; i < length; i++) {
+                result += characters.charAt(Math.floor(Math.random() * characters.length));
+            }
+            return result;
+        };
+        
+        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+        
+        function updateUI() {
+            dom.masterReplid.textContent = masterState.replid;
+            dom.masterOffset.textContent = masterState.offset;
+            dom.masterHistlen.textContent = masterState.histlen;
+            dom.replicaReplid.textContent = replicaState.knownReplid;
+            dom.replicaOffset.textContent = replicaState.knownOffset;
+
+            dom.backlog.innerHTML = '';
+            const backlogSize = 10;
+            const start = Math.max(0, masterState.backlog.length - backlogSize);
+            const visibleBacklog = masterState.backlog.slice(start);
+            
+            visibleBacklog.forEach((item, index) => {
+                const block = document.createElement('div');
+                block.className = 'bg-gray-700 p-1.5 rounded text-xs mono flex justify-between items-center';
+                block.innerHTML = `<span>Offset: ${masterState.backlogStartOffset + start + index}</span> <span class="text-gray-400">${item}</span>`;
+                block.id = `backlog-${masterState.backlogStartOffset + start + index}`;
+                block.setAttribute('data-tooltip', `Represents a real Redis write command (e.g., 'SET key value') that was propagated to replicas. The 'CMD_X' is a placeholder for visualization.`);
+                dom.backlog.appendChild(block);
+            });
+        }
+
+        function setButtonsDisabled(disabled) {
+            Object.values(dom.buttons).forEach(btn => {
+                if(btn.id !== 'btn-reset') btn.disabled = disabled;
+            });
+        }
+        
+        function addLog(title, detail) {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry opacity-0';
+            entry.innerHTML = `
+                <p class="font-semibold text-white">${title}</p>
+                <p class="text-gray-400 text-sm">${detail}</p>
+            `;
+            dom.logContainer.appendChild(entry);
+            // Scroll to bottom
+            dom.logContainer.scrollTop = dom.logContainer.scrollHeight;
+            // Fade in effect
+            setTimeout(() => entry.classList.remove('opacity-0'), 50);
+        }
+        
+        function setReplicaState(state, text) {
+            dom.replicaState.className = `state-badge ${state}`;
+            dom.replicaState.textContent = text;
+        }
+
+        async function createAndMovePacket(text, from, to, tooltipText, duration = 1500) {
+            const packet = document.createElement('div');
+            packet.className = 'command-packet mono';
+            packet.innerHTML = text;
+            if (tooltipText) {
+                packet.setAttribute('data-tooltip', tooltipText);
+            }
+            dom.channel.appendChild(packet);
+
+            const fromRect = from.getBoundingClientRect();
+            const toRect = to.getBoundingClientRect();
+            const channelRect = dom.channel.getBoundingClientRect();
+            
+            const startX = fromRect.right - channelRect.left - (fromRect.width / 4);
+            const endX = toRect.left - channelRect.left + (toRect.width / 4);
+            
+            packet.style.left = from === dom.replicaCard ? `${startX}px` : `${endX}px`;
+            
+            await sleep(100);
+            packet.style.opacity = '1';
+            packet.style.transform = 'translateY(0)';
+            
+            await sleep(100);
+            packet.style.left = from === dom.replicaCard ? `${endX}px` : `${startX}px`;
+
+            await sleep(duration);
+            packet.style.opacity = '0';
+            await sleep(500);
+            packet.remove();
+        }
+
+        function reset() {
+            setButtonsDisabled(false);
+            dom.logContainer.innerHTML = '<p class="text-gray-400">Click a scenario button above to start the visualization.</p>';
+            
+            masterState.replid = generateRandomId(40);
+            masterState.offset = 1000;
+            masterState.backlogStartOffset = 990;
+            masterState.backlog = Array.from({length: 10}, (_, i) => `CMD_${i}`);
+            masterState.histlen = masterState.offset - masterState.backlogStartOffset;
+            
+            replicaState.knownReplid = '?';
+            replicaState.knownOffset = '?';
+            
+            setReplicaState('state-offline', 'OFFLINE');
+            dom.rdbProgressContainer.classList.add('hidden');
+            dom.rdbProgressBar.style.width = '0%';
+            
+            updateUI();
+        }
+        
+        async function runPartialSync() {
+            setButtonsDisabled(true);
+            dom.logContainer.innerHTML = '';
+            addLog("Scenario Started: Partial Resynchronization", "Replica reconnects with valid credentials, allowing for a fast catch-up.");
+
+            replicaState.knownReplid = masterState.replid;
+            replicaState.knownOffset = 995;
+            updateUI();
+            await sleep(500);
+            
+            addLog("1. Replica Connects", "Replica establishes a TCP connection to the Master and prepares to send PSYNC.");
+            setReplicaState('state-wait', 'HANDSHAKE');
+            await sleep(1000);
+
+            addLog("2. Replica Sends PSYNC", `Sends <code>PSYNC ${replicaState.knownReplid.substring(0,8)}... ${replicaState.knownOffset}</code>. It's asking the master if it can resume from this point.`);
+            await createAndMovePacket(`PSYNC ${replicaState.knownReplid.substring(0,8)}... ${replicaState.knownOffset}`, dom.replicaCard, dom.masterCard, "The command sent by a modern replica to initiate synchronization.\n\nPSYNC <replid> <offset>");
+            
+            addLog("3. Master Processes PSYNC", "Master receives the command and calls <code>masterTryPartialResynchronization()</code> to check if a partial sync is possible.");
+            await sleep(1000);
+
+            const checkCode = `<code class="text-xs block bg-gray-900/50 p-2 rounded mt-1">
+// Simplified check in replication.c<br>
+if (master_replid == server.replid && <br>
+&nbsp;&nbsp;&nbsp;&nbsp;psync_offset >= backlog.offset && <br>
+&nbsp;&nbsp;&nbsp;&nbsp;psync_offset <= (backlog.offset + backlog.histlen)) {<br>
+&nbsp;&nbsp;// OK: Partial resync possible<br>
+} else {<br>
+&nbsp;&nbsp;// FAIL: Full resync required<br>
+}</code>`;
+            addLog("4. Master Checks Conditions (SUCCESS)", `Replica's ID matches and the requested offset (${replicaState.knownOffset}) is within the master's backlog range. The master checks: <code>${replicaState.knownOffset} <= (${masterState.backlogStartOffset} + ${masterState.histlen})</code>. This is true. ${checkCode}`);
+            await sleep(3000);
+
+            addLog("5. Master Responds with +CONTINUE", "Master sends a +CONTINUE reply, confirming that partial sync will proceed.");
+            await createAndMovePacket('+CONTINUE', dom.masterCard, dom.replicaCard, "Master's reply indicating a partial resync is possible. The replica should prepare to receive stream data from the backlog.\n\nType: Simple String Reply");
+            setReplicaState('state-transfer', 'SYNCING');
+
+            addLog("6. Master Streams Backlog Data", "Master sends the missing commands directly from the backlog to the replica.");
+            for (let i = replicaState.knownOffset + 1; i <= masterState.offset; i++) {
+                const block = document.getElementById(`backlog-${i}`);
+                if (block) {
+                    block.style.transition = 'all 0.3s';
+                    block.style.backgroundColor = '#dc382d';
+                    block.style.transform = 'scale(1.05)';
+                    await sleep(300);
+                    replicaState.knownOffset++;
+                    updateUI();
+                }
+            }
+            await sleep(500);
+
+            addLog("7. Synchronization Complete", "Replica has received all missing data and is now in sync with the master.");
+            setReplicaState('state-online', 'ONLINE');
+            dom.backlog.querySelectorAll('div').forEach(d => {
+                d.style.backgroundColor = '';
+                d.style.transform = '';
+            });
+
+            addLog("FINISHED", "The replica is now online and will receive new write commands in real-time. This process was extremely efficient, avoiding a full data transfer.");
+            setButtonsDisabled(false);
+        }
+
+        async function runFullSync() {
+            setButtonsDisabled(true);
+            dom.logContainer.innerHTML = '';
+            addLog("Scenario Started: Full Resynchronization", "Replica has an outdated Replication ID, forcing a full, more expensive, data synchronization.");
+
+            replicaState.knownReplid = generateRandomId(40); // Mismatched ID
+            replicaState.knownOffset = 950;
+            updateUI();
+            await sleep(500);
+            
+            addLog("1. Replica Connects & Sends PSYNC", `Replica sends <code>PSYNC ${replicaState.knownReplid.substring(0,8)}... ${replicaState.knownOffset}</code>.`);
+            setReplicaState('state-wait', 'HANDSHAKE');
+            await createAndMovePacket(`PSYNC ${replicaState.knownReplid.substring(0,8)}...`, dom.replicaCard, dom.masterCard, "The command sent by a modern replica to initiate synchronization.\n\nPSYNC <replid> <offset>");
+            
+            addLog("2. Master Processes PSYNC", "Master calls <code>masterTryPartialResynchronization()</code> to check conditions.");
+            await sleep(1000);
+
+            const checkCode = `<code class="text-xs block bg-gray-900/50 p-2 rounded mt-1">
+// Simplified check in replication.c<br>
+if (master_replid == server.replid && ...) { // <-- This fails! <br>
+&nbsp;&nbsp;// ...<br>
+} else {<br>
+&nbsp;&nbsp;// FAIL: Full resync required<br>
+}</code>`;
+            addLog("3. Master Checks Conditions (FAILURE)", `The replica's Replication ID does not match the master's. A full resync is required. ${checkCode}`);
+            await sleep(3000);
+
+            addLog("4. Master Responds with +FULLRESYNC", `Master replies with <code>+FULLRESYNC ${masterState.replid.substring(0,8)}... ${masterState.offset}</code>. This tells the replica to discard its data and prepare for a full snapshot, while also giving it the new, correct credentials for next time.`);
+            await createAndMovePacket(`+FULLRESYNC ${masterState.replid.substring(0,8)}... ${masterState.offset}`, dom.masterCard, dom.replicaCard, "Master's reply indicating a full resync is required. It includes the master's current replid and offset for the replica to cache for future attempts.\n\nType: Simple String Reply");
+            
+            // Replica updates its info
+            replicaState.knownReplid = masterState.replid;
+            replicaState.knownOffset = masterState.offset;
+            updateUI();
+            
+            addLog("5. Master Starts BGSAVE", "The master forks a background process to save its entire dataset to an RDB file. The replica is put into a waiting state.");
+            setReplicaState('state-wait', 'WAIT_BGSAVE');
+            await sleep(2500);
+
+            addLog("6. Master Transfers RDB File", "The BGSAVE is complete. The master now sends the entire RDB snapshot over the network.");
+            setReplicaState('state-transfer', 'TRANSFER');
+            dom.rdbProgressContainer.classList.remove('hidden');
+            for(let i = 0; i <= 100; i+=2) {
+                dom.rdbProgressBar.style.width = `${i}%`;
+                await sleep(50);
+            }
+
+            addLog("7. Synchronization Complete", "Replica receives and loads the RDB file. It is now a perfect copy of the master at the moment the BGSAVE started.");
+            setReplicaState('state-online', 'ONLINE');
+            
+            addLog("FINISHED", "The replica is now online. From this point, it will receive a continuous stream of new write commands, just like after a partial sync. This process was much slower due to the RDB generation and transfer.");
+            setButtonsDisabled(false);
+        }
+        
+        async function runLegacySync() {
+            setButtonsDisabled(true);
+            dom.logContainer.innerHTML = '';
+            addLog("Scenario Started: Legacy SYNC", "An older replica connects using the outdated SYNC command. It does not cache the master's replid/offset and cannot perform a partial sync.");
+            await sleep(500);
+
+            addLog("1. Replica Connects & Sends SYNC", "The replica sends the legacy <code>SYNC</code> command. This command has no arguments for partial sync.");
+            setReplicaState('state-wait', 'HANDSHAKE');
+            await createAndMovePacket(`SYNC`, dom.replicaCard, dom.masterCard, "The legacy command sent by older replicas. It always triggers a full resync.");
+            
+            addLog("2. Master Processes SYNC", "The master immediately recognizes this as a request for a full resync. It skips the partial sync check entirely.");
+            await sleep(2000);
+            
+            addLog("3. Master Initiates Full Resync", "The process now follows the same path as a failed PSYNC. The master starts a BGSAVE and prepares to send the RDB file.");
+            setReplicaState('state-wait', 'WAIT_BGSAVE');
+            await sleep(2500);
+
+            // The rest is identical to the full sync flow
+            addLog("4. Master Transfers RDB File", "The BGSAVE is complete. The master now sends the entire RDB snapshot over the network.");
+            setReplicaState('state-transfer', 'TRANSFER');
+            dom.rdbProgressContainer.classList.remove('hidden');
+            for(let i = 0; i <= 100; i+=2) {
+                dom.rdbProgressBar.style.width = `${i}%`;
+                await sleep(50);
+            }
+            addLog("5. Synchronization Complete", "Replica receives and loads the RDB file and is now in sync.");
+            setReplicaState('state-online', 'ONLINE');
+            addLog("FINISHED", "The replica is online. Modern Redis uses PSYNC for its efficiency improvements over the legacy SYNC protocol.");
+            setButtonsDisabled(false);
+        }
+
+        // Event Listeners
+        dom.buttons.partial.addEventListener('click', runPartialSync);
+        dom.buttons.full.addEventListener('click', runFullSync);
+        dom.buttons.legacy.addEventListener('click', runLegacySync);
+        dom.buttons.reset.addEventListener('click', reset);
+        
+        // Initial setup
+        window.onload = reset;
+    </script>
+</body>
+</html>
+
+
+
+
+
+
