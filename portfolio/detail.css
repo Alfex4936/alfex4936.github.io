@@ -216,6 +216,14 @@ button {
   padding: 0 9px;
 }
 
+/* The meta line mixes three kinds of fact — dates, team size, my role. Only the
+   role answers "what did he do here", so it is the one that takes ink weight.
+   Deliberately not the measure colour: teal on this site means a result. */
+.hero__role {
+  color: var(--ink);
+  font-weight: 500;
+}
+
 /* --------------------------------------------------------------- section */
 
 .section {
