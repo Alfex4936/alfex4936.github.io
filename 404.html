@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="robots" content="noindex" />
+    <title>404 · seok</title>
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap"
+    />
+    <link rel="stylesheet" href="/css/site.css" />
+    <script>
+      const theme = localStorage.getItem('portfolio:theme')
+      if (theme === 'dark' || theme === 'light') document.documentElement.dataset.theme = theme
+    </script>
+  </head>
+  <body>
+    <header class="bar"><span>seok · portfolio</span><span>404</span></header>
+    <main class="session">
+      <section class="turn" style="--i: 0">
+        <h2 class="prompt"><span id="path">open this page</span></h2>
+        <p class="tool"><span class="tool__name">Read</span><span class="tool__arg" id="arg">(…)</span></p>
+        <p class="out">Error: ENOENT: no such file or directory</p>
+        <p class="reply">
+          Nothing lives at that path. Try <a href="/">the session</a>, or the
+          <a href="/portfolio/k-pullup-detail-eng.html">project pages</a>, or the
+          <a href="/redis/redis-listpack.html">Redis visualizers</a>.
+        </p>
+      </section>
+    </main>
+    <script>
+      const p = location.pathname
+      document.getElementById('path').textContent = `open ${p}`
+      document.getElementById('arg').textContent = `(${p})`
+    </script>
+  </body>
+</html>

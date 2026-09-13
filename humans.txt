@@ -1,0 +1,16 @@
+/* TEAM */
+  Seokwon Choi (최석원) — backend & platform engineer, DBaaS DevOps
+  Site: https://alfex4936.github.io
+  GitHub: https://github.com/Alfex4936
+  Location: Seongnam, South Korea
+
+/* SITE */
+  Last update: 2026-09-13
+  Language: Korean / English, one document
+  Doctype: HTML5
+  Built with: hand-written HTML, CSS, JavaScript. No framework, no build step.
+  Fonts: IBM Plex Mono, IBM Plex Sans KR
+  The only colour on this page marks a measured result.
+
+/* THANKS */
+  Redis, for having internals worth drawing.

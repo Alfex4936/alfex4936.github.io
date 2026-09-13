@@ -210,6 +210,7 @@ button {
   display: inline-block;
   width: 1.3em;
   color: var(--claude);
+  cursor: pointer;
 }
 
 .welcome__meta {
@@ -714,9 +715,12 @@ button {
 .composer__out {
   position: relative;
   min-height: 1.6em;
+  max-height: 40vh;
+  overflow-y: auto;
   padding-left: 2ch;
   font-size: 13px;
   color: var(--dim);
+  white-space: pre-wrap;
 }
 
 .composer__out:not(:empty)::before {
