@@ -786,6 +786,11 @@ button {
   color: var(--faint);
 }
 
+/* Chrome draws a ▾ for datalist inputs; the real prompt has no such thing. */
+.composer input::-webkit-calendar-picker-indicator {
+  display: none !important;
+}
+
 .composer__hint {
   display: flex;
   flex-wrap: wrap;
