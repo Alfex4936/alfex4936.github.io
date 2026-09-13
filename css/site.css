@@ -758,6 +758,15 @@ button {
   border-color: var(--dim);
 }
 
+[data-theme="redis"] .composer__line,
+[data-theme="redis"] .composer__line:focus-within {
+  border-color: var(--claude);
+}
+
+[data-theme="redis"] .composer__caret {
+  color: var(--claude);
+}
+
 .composer__caret {
   color: var(--dim);
 }
