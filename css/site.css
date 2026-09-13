@@ -585,7 +585,7 @@ button {
 
 .tl li {
   display: grid;
-  grid-template-columns: 72px 112px minmax(0, 1fr);
+  grid-template-columns: 84px 112px minmax(0, 1fr);
   gap: 0 16px;
   align-items: start;
 }
