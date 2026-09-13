@@ -42,6 +42,7 @@ function enterRedis() {
   reflectTheme()
   caret.textContent = '127.0.0.1:6379>'
   input.placeholder = 'PING'
+  refreshGhost()
 }
 function leaveRedis() {
   if (!redisMode) return false
@@ -51,6 +52,7 @@ function leaveRedis() {
   reflectTheme()
   caret.textContent = '>'
   input.placeholder = '/help'
+  refreshGhost()
   return true
 }
 
@@ -240,6 +242,56 @@ form.addEventListener('submit', (event) => {
   }
   say(`zsh: command not found: ${cmd}`)
 })
+
+// ---- completion, redis-cli style ------------------------------------------
+
+const typed = form.querySelector('.composer__typed')
+const completion = form.querySelector('.composer__completion')
+const REDIS_SYNTAX = {
+  PING: '[message]', ECHO: 'message', GET: 'key', SET: 'key value', DEL: 'key', KEYS: 'pattern',
+  DBSIZE: '', TTL: 'key', TYPE: 'key', INFO: '[section]', FLUSHALL: '', FLUSHDB: '', SELECT: 'index',
+  AUTH: 'password', ACL: 'LIST|WHOAMI', QUIT: '', EXIT: '',
+}
+const SLASH_SYNTAX = {
+  '/help': '', '/about': '', '/measurements': '', '/projects': '', '/redis': '', '/timeline': '',
+  '/resume': '', '/lang': 'ko|en', '/theme': 'dark|light', '/clear': '',
+}
+
+// Returns { name, rest } for the current input, or null when nothing applies.
+function suggest(value) {
+  if (!value) return null
+  const [head, ...args] = value.split(' ')
+  // Slash completes everywhere; Redis completes in Redis mode or once the caps signal it.
+  let table
+  if (head.startsWith('/')) table = SLASH_SYNTAX
+  else if (redisMode || /^[A-Z]+$/.test(head)) table = REDIS_SYNTAX
+  else return null
+  const key = table === REDIS_SYNTAX ? head.toUpperCase() : head.toLowerCase()
+  const name = Object.keys(table).find((k) => k.startsWith(key))
+  if (!name) return null
+  if (!value.includes(' ')) return { name, rest: name.slice(head.length) + (table[name] ? ' ' + table[name] : '') }
+  const tokens = table[name] ? table[name].split(' ') : []
+  const typedArgs = args.filter(Boolean).length
+  if (key !== name || typedArgs >= tokens.length) return null
+  const trailing = value.endsWith(' ') ? '' : ' '
+  return { name, rest: trailing + tokens.slice(typedArgs).join(' ') }
+}
+
+function refreshGhost() {
+  const s = suggest(input.value)
+  typed.textContent = input.value
+  completion.textContent = s ? s.rest : ''
+}
+input.addEventListener('input', refreshGhost)
+input.addEventListener('keydown', (event) => {
+  if (event.key !== 'Tab') return
+  const s = suggest(input.value)
+  if (!s || input.value.includes(' ')) return
+  event.preventDefault()
+  input.value = s.name + (s.rest.includes(' ') ? ' ' : '')
+  refreshGhost()
+})
+form.addEventListener('submit', refreshGhost)
 
 for (const b of document.querySelectorAll('[data-cmd]'))
   b.addEventListener('click', () => {

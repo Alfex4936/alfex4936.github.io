@@ -17,7 +17,7 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap"
     />
-    <link rel="stylesheet" href="css/site.css?v=2" />
+    <link rel="stylesheet" href="css/site.css?v=3" />
     <script>
       // Resolve language and theme before first paint so nothing flashes.
       ;(() => {
@@ -415,33 +415,36 @@ master   +FULLRESYNC -&gt; fork -&gt; rdb
         <label class="composer__line">
           <span class="composer__caret" aria-hidden="true">&gt;</span>
           <span class="sr-only">Command</span>
-          <input name="cmd" list="cmds" placeholder="/help" spellcheck="false" />
+          <span class="composer__field">
+            <input name="cmd" placeholder="/help" spellcheck="false" autocomplete="off" />
+            <span class="composer__ghost" aria-hidden="true"><span class="composer__typed"></span><span class="composer__completion"></span></span>
+          </span>
         </label>
-        <datalist id="cmds">
-          <option value="/help"></option>
-          <option value="/about"></option>
-          <option value="/measurements"></option>
-          <option value="/projects"></option>
-          <option value="/redis"></option>
-          <option value="/timeline"></option>
-          <option value="/resume"></option>
-          <option value="/lang ko"></option>
-          <option value="/lang en"></option>
-          <option value="/theme dark"></option>
-          <option value="/theme light"></option>
-        </datalist>
-        <p class="composer__hint">
+        <p class="composer__hint" data-mode="claude">
           <button type="button" data-cmd="/help">/help</button>
           <button type="button" data-cmd="/measurements">/measurements</button>
           <button type="button" data-cmd="/projects">/projects</button>
           <button type="button" data-cmd="/redis">/redis</button>
           <button type="button" data-cmd="/timeline">/timeline</button>
           <button type="button" data-cmd="/resume">/resume</button>
-          <span><span lang="ko">· 아무 데서나 / 를 누르면 입력창으로</span><span lang="en">· press / anywhere to type</span></span>
+          <span><span lang="ko">· 아무 데서나 / 를 누르면 입력창으로 · tab 자동완성</span><span lang="en">· press / anywhere to type · tab completes</span></span>
+        </p>
+        <p class="composer__hint" data-mode="redis">
+          <button type="button" data-cmd="PING">PING</button>
+          <button type="button" data-cmd="GET name">GET name</button>
+          <button type="button" data-cmd="KEYS *">KEYS *</button>
+          <button type="button" data-cmd="INFO">INFO</button>
+          <button type="button" data-cmd="DBSIZE">DBSIZE</button>
+          <button type="button" data-cmd="TTL name">TTL name</button>
+          <button type="button" data-cmd="ACL LIST">ACL LIST</button>
+          <button type="button" data-cmd="SET a b">SET a b</button>
+          <button type="button" data-cmd="FLUSHALL">FLUSHALL</button>
+          <button type="button" data-cmd="QUIT">QUIT</button>
+          <span><span lang="ko">· tab 자동완성</span><span lang="en">· tab completes</span></span>
         </p>
       </div>
     </form>
 
-    <script src="js/site.js?v=2"></script>
+    <script src="js/site.js?v=3"></script>
   </body>
 </html>

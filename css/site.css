@@ -771,15 +771,49 @@ button {
   color: var(--dim);
 }
 
+.composer__field {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
 .composer input {
   flex: 1;
   min-width: 0;
+  padding: 0;
   font: inherit;
   color: var(--fg);
   background: none;
   border: 0;
   outline: none;
   caret-color: var(--claude);
+}
+
+/* redis-cli style hint: the typed text is mirrored invisibly so the completion
+   lands exactly where the caret is. Same font, same size, so widths match. */
+.composer__ghost {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: pre;
+  color: var(--faint);
+  pointer-events: none;
+}
+
+.composer__typed {
+  visibility: hidden;
+}
+
+.composer__hint[data-mode="redis"],
+[data-theme="redis"] .composer__hint[data-mode="claude"] {
+  display: none;
+}
+
+[data-theme="redis"] .composer__hint[data-mode="redis"] {
+  display: flex;
 }
 
 .composer input::placeholder {
