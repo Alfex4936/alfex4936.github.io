@@ -32,8 +32,21 @@
   color-scheme: light;
 }
 
+/* Hidden: entered by typing a Redis command. Redis red on Redis midnight. */
+[data-theme="redis"] {
+  --bg: #091a23;
+  --bg-2: #0f2430;
+  --fg: #e8eef1;
+  --dim: #97abb5;
+  --faint: #5b7581;
+  --rule: #1c3542;
+  --claude: #ff4438;
+  --ok: #4eba65;
+  color-scheme: dark;
+}
+
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
+  :root:not([data-theme="dark"]):not([data-theme="redis"]) {
     --bg: #faf9f5;
     --bg-2: #f0eee6;
     --fg: #141413;

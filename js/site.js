@@ -23,9 +23,34 @@ function reflectTheme() {
 
 function setTheme(theme) {
   if (theme !== 'dark' && theme !== 'light') return false
+  leaveRedis()
   root.dataset.theme = theme
   localStorage.setItem(KEY.theme, theme)
   reflectTheme()
+  return true
+}
+
+// Hidden Redis mode: the first Redis command turns the accent Redis red and the
+// prompt into redis-cli's. Session-only, never stored; exit or a theme change leaves.
+let redisMode = false
+let themeBefore = null
+function enterRedis() {
+  if (redisMode) return
+  redisMode = true
+  themeBefore = root.dataset.theme ?? null
+  root.dataset.theme = 'redis'
+  reflectTheme()
+  caret.textContent = '127.0.0.1:6379>'
+  input.placeholder = 'PING'
+}
+function leaveRedis() {
+  if (!redisMode) return false
+  redisMode = false
+  if (themeBefore) root.dataset.theme = themeBefore
+  else delete root.dataset.theme
+  reflectTheme()
+  caret.textContent = '>'
+  input.placeholder = '/help'
   return true
 }
 
@@ -42,6 +67,7 @@ for (const b of document.querySelectorAll('[data-theme-set]'))
 const form = document.querySelector('.composer')
 const input = form.querySelector('input')
 const out = form.querySelector('.composer__out')
+const caret = form.querySelector('.composer__caret')
 
 const go = (id) => {
   document.getElementById(id)?.scrollIntoView({ block: 'start' })
@@ -65,7 +91,13 @@ const COMMANDS = {
   },
   '/lang': (arg) =>
     setLang(arg) ? T('한국어로 전환했습니다', 'Switched to English') : 'usage: /lang ko|en',
-  '/theme': (arg) => (setTheme(arg) ? `theme: ${arg}` : 'usage: /theme dark|light'),
+  '/theme': (arg) => {
+    if (arg === 'redis') {
+      enterRedis()
+      return 'theme: redis'
+    }
+    return setTheme(arg) ? `theme: ${arg}` : 'usage: /theme dark|light'
+  },
   '/clear': () => '',
 }
 
@@ -110,6 +142,8 @@ const REDIS = {
       : sub?.toUpperCase() === 'LIST'
         ? '1) "user visitor on nopass ~* +@read -@dangerous"'
         : "(error) ERR unknown subcommand. Try ACL HELP.",
+  QUIT: () => (leaveRedis() ? T('redis-cli 종료', 'redis-cli closed') : 'OK'),
+  EXIT: () => REDIS.QUIT(),
   INFO: () =>
     [
       '# Server',
@@ -139,7 +173,7 @@ const SHELL = {
   ':q': () => T('vim이 아닙니다. 반사신경은 존중합니다.', 'Not vim. Respect the reflex, though.'),
   ':q!': () => SHELL[':q'](),
   ':wq': () => SHELL[':q'](),
-  exit: () => T('세션은 열려 있습니다. 웹페이지예요.', 'The session stays open. It is a web page.'),
+  exit: () => (leaveRedis() ? T('redis-cli 종료', 'redis-cli closed') : T('세션은 열려 있습니다. 웹페이지예요.', 'The session stays open. It is a web page.')),
   quit: () => SHELL.exit(),
   logout: () => SHELL.exit(),
   rm: (...a) => (a.join(' ').includes('/') ? "rm: it is dangerous to operate recursively on '/'" : 'rm: read-only file system'),
@@ -194,14 +228,17 @@ form.addEventListener('submit', (event) => {
     return
   }
   const redis = REDIS[cmd.toUpperCase()]
-  if (redis) return say(redis(...args))
+  if (redis) {
+    if (!['QUIT', 'EXIT'].includes(cmd.toUpperCase())) enterRedis()
+    return say(redis(...args))
+  }
   const shell = SHELL[cmd.toLowerCase()]
   if (shell) return say(shell(...args))
-  say(
-    /^[A-Z]+$/.test(cmd)
-      ? `(error) ERR unknown command '${cmd}', with args beginning with: ${args.map((a) => `'${a}'`).join(' ')}`
-      : `zsh: command not found: ${cmd}`,
-  )
+  if (/^[A-Z]+$/.test(cmd) || redisMode) {
+    enterRedis()
+    return say(`(error) ERR unknown command '${cmd}', with args beginning with: ${args.map((a) => `'${a}'`).join(' ')}`)
+  }
+  say(`zsh: command not found: ${cmd}`)
 })
 
 for (const b of document.querySelectorAll('[data-cmd]'))
