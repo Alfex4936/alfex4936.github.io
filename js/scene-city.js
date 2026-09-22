@@ -698,33 +698,63 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
       const bw = CELL * (0.36 + 0.26 * r2)
       const bd = CELL * (0.36 + 0.26 * r3)
 
-      // Out in the gutters the carpet is Korean fabric rather than anonymous boxes:
-      // a row of matching apartment slabs, a tiled low-rise, or a flat roof with the
-      // rooftop room and water tank you see on every one of them. Behind the column
-      // it stays a plain floor, because nothing there is meant to be looked at.
-      const kind = gut ? rnd(i, j, 6) : 1
-      if (kind < 0.24 && h > 0.7) {
-        // 아파트: three or four parallel slabs on one plot, all the same height.
-        const n = 3 + (rnd(i, j, 7) > 0.55 ? 1 : 0)
-        const sw = bw / (n * 1.9)
-        for (let k = 0; k < n; k++) {
-          const off = (k - (n - 1) / 2) * sw * 1.9
-          emitBox(x + off, 0, z, sw, h * 1.25, bd * 0.52)
-        }
-        if (Math.abs(u) > GUTTER_U) roofs.push({ u, v, y: h * 1.25 })
-      } else if (kind < 0.4 && h < 0.9) {
-        // 기와 저층: a low building under a tiled roof.
-        emitBox(x, 0, z, bw * 0.86, h * 0.72, bd * 0.86, RAMP.mark)
-        emitRoof(x, h * 0.72, z, bw * 0.56, bd * 0.56, 0.24, 16, false)
-        if (Math.abs(u) > GUTTER_U) roofs.push({ u, v, y: h * 0.72 + 0.5 })
-      } else {
+      // Behind the column it stays an anonymous floor; nothing there is meant to be
+      // looked at. Out in the gutters there is no plain box at all - every plot is
+      // one of five Korean shapes, because a field of cuboids is what made the last
+      // pass read as generic no matter how the landmarks were arranged.
+      if (!gut) {
         emitBox(x, 0, z, bw, h, bd)
-        if (kind < 0.62) {
-          // 옥탑: the rooftop room, and the water tank beside it.
-          emitBox(x - bw * 0.16, h, z + bd * 0.1, bw * 0.34, 0.22, bd * 0.34)
-          emitCyl(x + bw * 0.24, h, z - bd * 0.14, bw * 0.11, 0.16, RAMP.store)
-        }
-        if (h > 0.95 && Math.abs(u) > GUTTER_U) roofs.push({ u, v, y: h })
+        continue
+      }
+
+      const kind = rnd(i, j, 6)
+      const r4 = rnd(i, j, 7)
+      const top = (y) => {
+        if (Math.abs(u) > GUTTER_U) roofs.push({ u, v, y })
+      }
+
+      if (kind < 0.26) {
+        // 아파트: a row of matching slabs, which is the single most Korean thing a
+        // city block can be. Always tall enough to read as a row.
+        const n = 3 + (r4 > 0.5 ? 1 : 0)
+        const sw = bw / (n * 1.85)
+        const sh = Math.max(1.15, h * 1.45)
+        for (let k = 0; k < n; k++)
+          emitBox(x + (k - (n - 1) / 2) * sw * 1.85, 0, z, sw, sh, bd * 0.5)
+        top(sh)
+      } else if (kind < 0.46) {
+        // 기와 저층: a low hall under a tiled roof.
+        const bh = Math.min(h, 0.62) * 0.8
+        emitBox(x, 0, z, bw * 0.84, bh, bd * 0.84, RAMP.mark)
+        emitRoof(x, bh, z, bw * 0.58, bd * 0.58, 0.26, 16, false)
+        top(bh + 0.5)
+      } else if (kind < 0.68) {
+        // 상가: a flat roof carrying the rooftop room and the water tank on legs that
+        // every one of them has, plus the parapet round the edge.
+        emitBox(x, 0, z, bw, h, bd)
+        emitBox(x, h, z, bw * 1.04, 0.06, bd * 1.04, RAMP.stone)
+        emitBox(x - bw * 0.15, h + 0.06, z + bd * 0.12, bw * 0.42, 0.3, bd * 0.4)
+        emitBox(x + bw * 0.26, h + 0.06, z - bd * 0.16, bw * 0.07, 0.16, bd * 0.07, RAMP.stone)
+        emitCyl(x + bw * 0.26, h + 0.22, z - bd * 0.16, bw * 0.16, 0.22, RAMP.store)
+        top(h + 0.36)
+      } else if (kind < 0.86) {
+        // 계단식: an office block that steps back twice on the way up.
+        const h1 = h * 0.55
+        const h2 = h * 0.3
+        const h3 = h * 0.34
+        emitBox(x, 0, z, bw, h1, bd)
+        emitBox(x - bw * 0.05, h1, z + bd * 0.04, bw * 0.78, h2, bd * 0.78)
+        emitBox(x - bw * 0.09, h1 + h2, z + bd * 0.07, bw * 0.54, h3, bd * 0.54)
+        emitBox(x - bw * 0.09, h1 + h2 + h3, z + bd * 0.07, 0.07, 0.34, 0.07, RAMP.stone)
+        top(h1 + h2 + h3)
+      } else {
+        // 좁은 빌딩: narrow, tall, with a floor band every few storeys.
+        const nh = Math.max(1.0, h * 1.5)
+        emitBox(x, 0, z, bw * 0.52, nh, bd * 0.52)
+        const bands = Math.max(2, Math.round(nh / 0.34))
+        for (let k = 1; k < bands; k++)
+          emitBox(x, (nh * k) / bands, z, bw * 0.58, 0.04, bd * 0.58, RAMP.stone)
+        top(nh)
       }
     }
   }
