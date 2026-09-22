@@ -106,6 +106,11 @@ const LOW = 0.62 // most of what is left never leaves the low-rise carpet
 // built inside it; GUTTER_U adds the room a bubble needs for its own width.
 const INK_U = 448 / SCALE
 const GUTTER_U = INK_U + 0.85
+// The river's own band, in v. Placed in the gap between the Gyeongbokgung and 63
+// clusters so no set piece has to stand in the water.
+const RIVER_V = 9.2
+const RIVER_HALF = 1.75
+
 const GUT_KEEP = 0.46 // of the plots the avenues leave, out where the ink is full
 const MID_KEEP = 0.18 // and a sparse ankle-high floor behind the column
 const MID_H = 0.2
@@ -120,6 +125,10 @@ const RAMP = {
   roof: { top: 0.17, pz: 0.152, px: 0.086, dark: 0.016 }, // tile, and nothing else
   store: { top: 0.135, pz: 0.075, px: 0.032, dark: 0.01 },
   fig: { top: 0.2, pz: 0.14, px: 0.085, dark: 0.045 },
+  // Flat by design: the river is one surface seen from above, so every slot is the
+  // same and it sits below the carpet's 0.105 to read as water rather than ground.
+  water: { top: 0.042, pz: 0.042, px: 0.042, dark: 0.042 },
+  deck: { top: 0.115, pz: 0.07, px: 0.03, dark: 0.009 },
 }
 const LIT_INK = 0.14 // how far a landed disc lifts its top face
 const LIT_TAU = 0.44
@@ -344,6 +353,17 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
 
   const line = (a, b, c, d, e, f) => cEdge.push(a, b, c, d, e, f)
 
+  // A flat quad in any orientation, which a box cannot give: boxes are axis-aligned
+  // in x/z, and anything running along u is diagonal there, so a strip of boxes would
+  // come out as a staircase. Four verts, two triangles, every slot the top face.
+  const QUAD_FACE = [0, 0, 0, 0]
+  const emitQuad = (p0, p1, p2, p3, ramp) => {
+    const v0 = cPos.length / 3
+    for (const p of [p0, p1, p2, p3]) cPos.push(p[0], p[1], p[2])
+    cIdx.push(v0, v0 + 1, v0 + 2, v0, v0 + 2, v0 + 3)
+    parts.push({ v0, n: 4, ramp, face: QUAD_FACE })
+  }
+
   // hx, hz are the eave half-extents before the corners flare; rise is ridge over eave.
   // n perimeter samples, a multiple of four so the corners land on samples.
   const emitRoof = (cx, y, cz, hx, hz, rise, n, ribs) => {
@@ -420,6 +440,10 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   const at = (u, v) => [(u + v) * ISQ2, (v - u) * ISQ2]
 
   // A wooded hill, a banded shaft out of it, the observation drum, a mast.
+  // The real one is mostly mast: the antenna is about a third of everything above the
+  // mountain, the deck is several floors flaring out over a slender shaft, and the
+  // hill it stands on is half the silhouette. Getting those three proportions right is
+  // the whole recognition; the previous drum-on-a-stick had none of them.
   const namsan = (u, v) => {
     const [x, z] = at(u, v)
     emitBox(x, 0, z, 3.4, 0.44, 2.9, RAMP.stone)
@@ -431,16 +455,29 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
       [-0.25, 1.3, 0.48],
       [1.4, -1.05, 0.38],
       [-1.5, 0.6, 0.35],
+      [0.95, -1.35, 0.42],
+      [-0.9, -1.25, 0.34],
     ]
     for (const [dx, dz, th] of trees) emitBox(x + dx, 0.4, z + dz, 0.46, th, 0.46, RAMP.mark)
-    emitBox(x + 0.18, 1.22, z - 0.1, 1.0, 0.3, 0.85, RAMP.mark)
-    emitBox(x + 0.18, 1.52, z - 0.1, 0.44, 0.55, 0.44, RAMP.mark)
-    emitBox(x + 0.18, 2.07, z - 0.1, 0.36, 0.5, 0.36, RAMP.mark)
-    emitBox(x + 0.18, 2.57, z - 0.1, 0.3, 0.44, 0.3, RAMP.mark)
-    emitCyl(x + 0.18, 3.01, z - 0.1, 0.56, 0.34, RAMP.store)
-    emitCyl(x + 0.18, 3.35, z - 0.1, 0.44, 0.22, RAMP.store)
-    emitBox(x + 0.18, 3.57, z - 0.1, 0.1, 0.78, 0.1, RAMP.mark)
-    roofs.push({ u, v, y: 3.57 })
+
+    const cx = x + 0.18
+    const cz = z - 0.1
+    emitBox(cx, 1.22, cz, 0.92, 0.26, 0.78, RAMP.mark) // the base building on the summit
+    // A slender shaft, tapering, so the deck above it reads as overhanging.
+    emitBox(cx, 1.48, cz, 0.36, 0.46, 0.36, RAMP.mark)
+    emitBox(cx, 1.94, cz, 0.31, 0.44, 0.31, RAMP.mark)
+    emitBox(cx, 2.38, cz, 0.27, 0.42, 0.27, RAMP.mark)
+    // The deck flares out over it and is several floors, not one drum.
+    emitCyl(cx, 2.8, cz, 0.34, 0.08, RAMP.store)
+    emitCyl(cx, 2.88, cz, 0.52, 0.09, RAMP.store)
+    emitCyl(cx, 2.97, cz, 0.6, 0.2, RAMP.store)
+    emitCyl(cx, 3.17, cz, 0.55, 0.13, RAMP.store)
+    emitCyl(cx, 3.3, cz, 0.43, 0.11, RAMP.store)
+    emitCyl(cx, 3.41, cz, 0.24, 0.1, RAMP.mark)
+    // And then the mast, which is the part that makes it Namsan from a long way off.
+    emitBox(cx, 3.51, cz, 0.11, 0.62, 0.11, RAMP.mark)
+    emitBox(cx, 4.13, cz, 0.07, 0.52, 0.07, RAMP.mark)
+    roofs.push({ u, v, y: 3.41 })
     keepOut.push([x, z, 1.9, 1.65])
   }
 
@@ -540,6 +577,57 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     keepOut.push([x, z, 1.7, 1.7])
   }
 
+  // 한강. The one thing that crosses the whole frame. It runs along u, so it projects
+  // screen-horizontal, and behind the column the mask leaves it at 8% - enough to read
+  // as continuing, which is what stops the two gutters looking like two cities.
+  const river = () => {
+    const nearV = RIVER_V - RIVER_HALF
+    const farV = RIVER_V + RIVER_HALF
+    const uEnd = U_HALF + 4
+    const c = (uu, vv) => {
+      const [xx, zz] = at(uu, vv)
+      return [xx, -0.05, zz]
+    }
+    emitQuad(c(-uEnd, nearV), c(uEnd, nearV), c(uEnd, farV), c(-uEnd, farV), RAMP.water)
+    for (const vv of [nearV, farV]) {
+      const a = c(-uEnd, vv)
+      const b = c(uEnd, vv)
+      line(a[0], a[1], a[2], b[0], b[1], b[2])
+    }
+  }
+
+  // A girder deck on piers, which is what most of the Han crossings actually are.
+  const bridge = (u0) => {
+    const hw = 0.44
+    const L = RIVER_HALF + 0.9
+    const y = 0.44
+    const c = (uu, vv) => {
+      const [xx, zz] = at(uu, vv)
+      return [xx, y, zz]
+    }
+    emitQuad(
+      c(u0 - hw, RIVER_V - L),
+      c(u0 + hw, RIVER_V - L),
+      c(u0 + hw, RIVER_V + L),
+      c(u0 - hw, RIVER_V + L),
+      RAMP.deck,
+    )
+    for (const s of [-1, 1]) {
+      const a = c(u0 + s * hw, RIVER_V - L)
+      const b = c(u0 + s * hw, RIVER_V + L)
+      line(a[0], a[1], a[2], b[0], b[1], b[2])
+    }
+    for (const dv of [-RIVER_HALF * 0.6, 0, RIVER_HALF * 0.6]) {
+      const [px, pz] = at(u0, RIVER_V + dv)
+      emitBox(px, -0.05, pz, 0.26, y + 0.05, 0.26, RAMP.stone)
+    }
+  }
+
+  river()
+  bridge(-10.6)
+  bridge(0.8) // mostly behind the column, but the crossing has to continue
+  bridge(10.8)
+
   // Three set pieces a gutter and a datastore, staggered against the other side so no
   // two big shapes sit at the same height, and spaced so the scroll retires one and
   // brings in the next. The masked band is about 25 units of v tall, which is what
@@ -549,11 +637,11 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   // outward from behind it. On a wide screen the old spacing put anonymous boxes
   // next to the text and the set pieces off at the margin, which is backwards.
   namsan(-10.9, -3.5)
-  geunjeongjeon(-10.8, 6.5)
-  hanok(-11.2, 15.5)
+  geunjeongjeon(-10.8, 5.1)
+  hanok(-11.2, 15.8)
   lotte(10.7, -8)
   sungnyemun(10.9, 2)
-  bldg63(11.4, 11.5)
+  bldg63(11.4, 13.6)
 
   // ---- the carpet --------------------------------------------------------
   const cellKey = (i, j) => i * 1000 + j
@@ -586,6 +674,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
       const u = (x - z) * ISQ2
       const v = (x + z) * ISQ2
       if (Math.abs(u) > U_HALF || v < -V_BACK || v > V_FWD) continue
+      if (Math.abs(v - RIVER_V) < RIVER_HALF + 0.55) continue // nothing stands in the water
       let blocked = false
       for (const [kx, kz, ka, kb] of keepOut)
         if (Math.abs(x - kx) < ka + CELL * 0.4 && Math.abs(z - kz) < kb + CELL * 0.4) {
