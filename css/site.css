@@ -1073,3 +1073,13 @@ button {
     animation: none;
   }
 }
+
+/* The timeline heading is the door to the corridor page: the only prompt that
+   is a link, so it says so with a rule under it and by warming its own caret. */
+.prompt a {
+  text-decoration-color: var(--rule);
+}
+
+.prompt:has(a:hover)::before {
+  color: var(--claude);
+}
