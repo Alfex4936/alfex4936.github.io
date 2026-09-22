@@ -999,7 +999,10 @@ button {
 
 .scene--terrain {
   position: relative;
+  /* svh, not vh: on a phone the URL bar collapsing as you scroll changes vh, which
+     resizes this box mid-scroll and makes the scene re-fit as though it reloaded. */
   height: clamp(340px, 54vh, 520px);
+  height: clamp(340px, 54svh, 520px);
   border: 1px solid var(--rule);
   border-radius: 6px;
   background: var(--bg-2);
@@ -1029,6 +1032,7 @@ button {
 @media (max-width: 720px) {
   .scene--terrain {
     height: clamp(260px, 42vh, 340px);
+    height: clamp(260px, 42svh, 340px);
   }
 }
 

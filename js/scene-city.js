@@ -695,8 +695,37 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
         if (rnd(i, j, 5) < LOW) h = Math.min(h, 0.5 + 0.45 * r1)
         h = Math.min(1.9, h) // less than half a landmark: the set pieces stay the skyline
       }
-      emitBox(x, 0, z, CELL * (0.36 + 0.26 * r2), h, CELL * (0.36 + 0.26 * r3))
-      if (h > 0.95 && Math.abs(u) > GUTTER_U) roofs.push({ u, v, y: h })
+      const bw = CELL * (0.36 + 0.26 * r2)
+      const bd = CELL * (0.36 + 0.26 * r3)
+
+      // Out in the gutters the carpet is Korean fabric rather than anonymous boxes:
+      // a row of matching apartment slabs, a tiled low-rise, or a flat roof with the
+      // rooftop room and water tank you see on every one of them. Behind the column
+      // it stays a plain floor, because nothing there is meant to be looked at.
+      const kind = gut ? rnd(i, j, 6) : 1
+      if (kind < 0.24 && h > 0.7) {
+        // 아파트: three or four parallel slabs on one plot, all the same height.
+        const n = 3 + (rnd(i, j, 7) > 0.55 ? 1 : 0)
+        const sw = bw / (n * 1.9)
+        for (let k = 0; k < n; k++) {
+          const off = (k - (n - 1) / 2) * sw * 1.9
+          emitBox(x + off, 0, z, sw, h * 1.25, bd * 0.52)
+        }
+        if (Math.abs(u) > GUTTER_U) roofs.push({ u, v, y: h * 1.25 })
+      } else if (kind < 0.4 && h < 0.9) {
+        // 기와 저층: a low building under a tiled roof.
+        emitBox(x, 0, z, bw * 0.86, h * 0.72, bd * 0.86, RAMP.mark)
+        emitRoof(x, h * 0.72, z, bw * 0.56, bd * 0.56, 0.24, 16, false)
+        if (Math.abs(u) > GUTTER_U) roofs.push({ u, v, y: h * 0.72 + 0.5 })
+      } else {
+        emitBox(x, 0, z, bw, h, bd)
+        if (kind < 0.62) {
+          // 옥탑: the rooftop room, and the water tank beside it.
+          emitBox(x - bw * 0.16, h, z + bd * 0.1, bw * 0.34, 0.22, bd * 0.34)
+          emitCyl(x + bw * 0.24, h, z - bd * 0.14, bw * 0.11, 0.16, RAMP.store)
+        }
+        if (h > 0.95 && Math.abs(u) > GUTTER_U) roofs.push({ u, v, y: h })
+      }
     }
   }
 
@@ -715,6 +744,13 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   )
 
   const paintCity = () => {
+    // ink() blends bg2 toward fg, so a higher t is lighter on a dark theme and darker
+    // on a light one. The water has to sit under the carpet's 0.105 either way or it
+    // reads as a pale gap rather than a river, which means it flips with the theme.
+    const lightBg = P.bg2[0] + P.bg2[1] + P.bg2[2] > 382
+    const wt = lightBg ? 0.30 : 0.042
+    RAMP.water.top = RAMP.water.pz = RAMP.water.px = RAMP.water.dark = wt
+
     const a = cityCol.array
     let ramp = null
     for (const p of parts) {

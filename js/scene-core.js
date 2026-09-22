@@ -103,10 +103,18 @@ export function mount(el, factory) {
       }
     }
 
+    // A phone's URL bar collapsing mid-scroll changes the viewport height by a few
+    // tens of pixels, and re-fitting a scene on every one of those reads as the
+    // background reloading under the page. Width always counts; height only when it
+    // moves enough to be a real layout change rather than browser chrome.
+    const CHROME_PX = 130
+
     new ResizeObserver(() => {
-      if (el.clientWidth === w && el.clientHeight === h) return
-      w = el.clientWidth
-      h = el.clientHeight
+      const nw = el.clientWidth
+      const nh = el.clientHeight
+      if (nw === w && Math.abs(nh - h) < CHROME_PX) return
+      w = nw
+      h = nh
       scene.resize(w, h)
       if (paused) once()
     }).observe(el)
