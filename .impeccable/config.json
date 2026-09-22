@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "broken-image",
+        "value": "*",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-09-22T06:41:28.209Z",
+        "reason": "verified: 10 img tags, 0 empty src, 0 missing files on disk (all deck-232ebf/*.png|gif and portfolio/*.png resolve)"
+      },
+      {
+        "rule": "em-dash-overuse",
+        "value": "*",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-09-22T07:12:32.704Z",
+        "reason": "verified: 0 em-dashes in prose. 11 true U+2014 are 1 title separator + 10 aria-labels; the rest of the count is <!-- --> comments, BEM (scene--cluster), --i custom props, and the page's ASCII diagrams"
+      }
+    ]
+  }
+}

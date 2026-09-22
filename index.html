@@ -45,6 +45,8 @@
       The prompt at the bottom also answers PING, KEYS *, INFO, ls, uptime, :q and sudo.
       The console has something for you too.
     -->
+    <div class="scene scene--cluster" id="scene-cluster" aria-hidden="true"></div>
+
     <header class="bar">
       <span>seok · portfolio</span>
       <nav class="bar__ctl" aria-label="Language and theme">
@@ -223,6 +225,13 @@
             </span>
           </li>
         </ol>
+        <figure class="fig" hidden>
+          <div class="scene scene--terrain" id="scene-terrain"></div>
+          <figcaption>
+            <span lang="ko">같은 열한 줄을 프로젝트·연도·규모로 놓은 것입니다. 막대에 커서를 올리면 값이 나옵니다.</span>
+            <span lang="en">The same eleven lines, placed by project, year and magnitude. Hover a column for the value.</span>
+          </figcaption>
+        </figure>
         <p class="reply">
           <span lang="ko">위의 모든 줄은 테스트나 대시보드에서 읽은 값입니다. 추정치는 없습니다.</span>
           <span lang="en">Every line above was read off a test or a dashboard. None of it is an estimate.</span>
@@ -446,5 +455,18 @@ master   +FULLRESYNC -&gt; fork -&gt; rdb
     </form>
 
     <script src="js/site.js?v=3"></script>
+    <script type="module">
+      // three itself is not fetched until a mount comes near the viewport.
+      import { mount } from './js/scene-core.js?v=1'
+      import cluster from './js/scene-cluster.js?v=1'
+      import terrain from './js/scene-terrain.js?v=1'
+
+      // Reaching this line means every import resolved, which is the only point
+      // at which the figure is worth showing.
+      for (const fig of document.querySelectorAll('.fig')) fig.hidden = false
+
+      mount(document.getElementById('scene-cluster'), cluster)
+      mount(document.getElementById('scene-terrain'), terrain)
+    </script>
   </body>
 </html>

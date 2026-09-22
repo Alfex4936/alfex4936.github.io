@@ -6,7 +6,10 @@
   --bg-2: #1c1b19;
   --fg: #f0eee6;
   --dim: #a3a19b;
-  --faint: #66645e;
+  /* --faint carries real text (cwd/loc, the IPA line, stack labels, the
+     composer placeholder), so each theme's value is the minimum lift that
+     clears 4.5:1 on its own --bg. It was 3.12:1 here, 2.54:1 on light. */
+  --faint: #807d76;
   --rule: #2b2a27;
   --claude: #d97757;
   --ok: #4eba65;
@@ -25,9 +28,9 @@
   --bg-2: #f0eee6;
   --fg: #141413;
   --dim: #625f59;
-  --faint: #a19e96;
+  --faint: #75736d;
   --rule: #e2ded4;
-  --claude: #b85c38;
+  --claude: #b35a37; /* 2.5% darker than it was, to clear 4.5:1 on paper */
   --ok: #2c7a39;
   color-scheme: light;
 }
@@ -38,7 +41,7 @@
   --bg-2: #0f2430;
   --fg: #e8eef1;
   --dim: #97abb5;
-  --faint: #5b7581;
+  --faint: #678592;
   --rule: #1c3542;
   --claude: #ff4438;
   --ok: #4eba65;
@@ -51,9 +54,9 @@
     --bg-2: #f0eee6;
     --fg: #141413;
     --dim: #625f59;
-    --faint: #a19e96;
+    --faint: #75736d;
     --rule: #e2ded4;
-    --claude: #b85c38;
+    --claude: #b35a37;
     --ok: #2c7a39;
     color-scheme: light;
   }
@@ -71,6 +74,7 @@ html {
 }
 
 body {
+  position: relative; /* containing block for the hero scene */
   margin: 0;
   font: 400 15px/1.7 var(--font-sans);
   color: var(--fg);
@@ -194,6 +198,8 @@ button {
 /* -------------------------------------------------------------- session */
 
 .session {
+  position: relative;
+  z-index: 1; /* transcript above the hero scene; open background stays hoverable */
   max-width: 760px;
   margin: 0 auto;
   padding: 40px 24px 170px;
@@ -943,5 +949,73 @@ button {
 
   .composer {
     padding: 8px 16px 12px;
+  }
+}
+
+/* ------------------------------------------------------------- scenes */
+
+.scene canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.scene--cluster {
+  --scene-clear: 404px; /* read by scene-cluster.js so labels dodge the band */
+  position: absolute;
+  inset: 0 0 auto;
+  height: min(86vh, 800px);
+}
+
+/* The city shows only in the gutters either side of the transcript, so it never
+   sits behind prose; under ~1100px there are no gutters and it fades out. The
+   mask is on the canvas, not the mount, or it slices the label layer too. */
+.scene--cluster canvas {
+  mask-image: linear-gradient(to bottom, #000 54%, transparent),
+    linear-gradient(
+      to right,
+      #000 0,
+      #000 calc(50% - 404px),
+      transparent calc(50% - 388px),
+      transparent calc(50% + 388px),
+      #000 calc(50% + 404px)
+    );
+  mask-composite: intersect;
+}
+
+/* The figure ships with [hidden]; the module clears it once its imports
+   resolved, so no-JS and a broken module both leave the page as it was. It must
+   have layout before then or the mount's observer never fires. */
+.fig {
+  margin-top: 26px;
+}
+
+.scene--terrain {
+  position: relative;
+  height: clamp(340px, 54vh, 520px);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+
+/* three itself never arrived: an empty bordered box explains nothing. */
+.fig:has([data-scene="unavailable"]) {
+  display: none;
+}
+
+.fig figcaption {
+  margin-top: 10px;
+  font: 400 12px/1.7 var(--font);
+  color: var(--dim);
+}
+
+@media (max-width: 720px) {
+  .scene--cluster {
+    height: min(70vh, 560px);
+  }
+
+  .scene--terrain {
+    height: clamp(260px, 42vh, 340px);
   }
 }
