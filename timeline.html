@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="ko" data-lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <meta
+      name="description"
+      content="최석원 · Seokwon Choi — timeline. Thirteen projects and milestones from 2012 to 2026, as a corridor you scroll through."
+    />
+    <title>타임라인 · Timeline — 최석원 · Seokwon Choi</title>
+    <link rel="icon" href="favicon.ico" />
+    <link rel="author" href="humans.txt" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap"
+    />
+    <link rel="stylesheet" href="css/site.css?v=4" />
+    <script>
+      // Resolve language and theme before first paint so nothing flashes.
+      ;(() => {
+        const q = new URLSearchParams(location.search).get('lang')
+        const stored = localStorage.getItem('portfolio:lang')
+        const lang =
+          q === 'ko' || q === 'en'
+            ? q
+            : stored === 'ko' || stored === 'en'
+              ? stored
+              : navigator.language.startsWith('ko')
+                ? 'ko'
+                : 'en'
+        document.documentElement.dataset.lang = lang
+        document.documentElement.lang = lang
+        const theme = localStorage.getItem('portfolio:theme')
+        if (theme === 'dark' || theme === 'light') document.documentElement.dataset.theme = theme
+      })()
+    </script>
+    <style>
+      /* This page is one scene, so the bar leaves the flow entirely and the
+         corridor sits behind it at full bleed. */
+      body {
+        overflow-x: hidden;
+      }
+
+      .bar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+      }
+
+      .bar__where a {
+        color: var(--dim);
+        text-decoration: none;
+        border-bottom: 1px solid transparent;
+      }
+
+      .bar__where a:hover {
+        color: var(--fg);
+        border-bottom-color: var(--rule);
+      }
+
+      .bar__where > span {
+        color: var(--faint);
+      }
+
+      .bar__ctl button {
+        white-space: nowrap;
+      }
+
+      /* index.html fits this bar at 390px with the wordmark alone; the crumb is
+         what tips it into wrapping the control labels, so the crumb goes */
+      @media (max-width: 560px) {
+        .bar__where > span {
+          display: none;
+        }
+      }
+
+      /* ---------------------------------------------------------- fallback
+
+         Without WebGL the factory never runs, .flight--on is never added, and
+         what is left is a plain readable timeline. Everything below the
+         .flight--on line is the upgrade, not the page. */
+
+      .flight {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 96px 24px 80px;
+      }
+
+      .flight__hero {
+        margin: 0;
+        font-weight: 400;
+      }
+
+      .flight__hero-big {
+        display: block;
+        white-space: pre-line;
+        font: 500 clamp(30px, 6vw, 46px) / 1.06 var(--font);
+        letter-spacing: -0.035em;
+        color: var(--fg);
+      }
+
+      .flight__hero-rule {
+        display: block;
+        width: 64px;
+        height: 1px;
+        margin-top: 18px;
+        background: var(--rule);
+      }
+
+      .flight__hero-meta {
+        display: block;
+        margin-top: 14px;
+        font: 400 12.5px/1.85 var(--font);
+        letter-spacing: 0.06em;
+        color: var(--faint);
+      }
+
+      .flight__hero-meta > span {
+        display: block;
+      }
+
+      .flight__cards {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        gap: 26px;
+        margin: 44px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .flight-card {
+        border: 1px solid var(--rule);
+        border-radius: 8px;
+        background: var(--bg-2);
+        overflow: hidden;
+      }
+
+      .flight-card__inner {
+        padding: 15px;
+      }
+
+      .flight-card__box {
+        display: block;
+        width: 100%;
+        aspect-ratio: 16 / 10;
+        margin-bottom: 15px;
+        border-radius: 5px;
+        overflow: hidden;
+      }
+
+      .flight-card--mark .flight-card__box {
+        aspect-ratio: 16 / 9;
+      }
+
+      .flight-card__img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      /* The wordmark is dark navy on transparent and the app icon is square:
+         both need paper under them and air around them, never a crop. */
+      .flight-card--mark .flight-card__img {
+        object-fit: contain;
+        padding: 9% 19%;
+        background: var(--fg);
+      }
+
+      .flight-card__year {
+        margin: 0;
+        font: 500 12.5px/1.4 var(--font);
+        letter-spacing: 0.07em;
+        font-variant-numeric: tabular-nums;
+        color: var(--dim);
+      }
+
+      .flight-card__title {
+        margin: 6px 0 0;
+        font: 600 25px/1.16 var(--font);
+        letter-spacing: -0.022em;
+        color: var(--fg);
+      }
+
+      .flight-card__desc {
+        margin: 9px 0 0;
+        font: 400 14.5px/1.56 var(--font-sans);
+        color: var(--dim);
+        transition: color 0.18s linear;
+      }
+
+      .flight-card--mark .flight-card__title {
+        font: 500 27px/1.14 var(--font);
+        letter-spacing: -0.026em;
+      }
+
+      .flight-card--mark .flight-card__desc {
+        margin-top: 7px;
+        color: var(--faint);
+      }
+
+      .flight__rail,
+      .flight__keys {
+        display: none;
+      }
+
+      /* ------------------------------------------------------------ flight
+
+         Added by scene-timeline.js once three resolved and the corridor is
+         real. The cards stop being a list and become surfaces the module
+         positions by projecting their 3D anchor; only their text is left. */
+
+      .flight--on {
+        max-width: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      .flight--on .flight__cards {
+        display: block;
+        margin: 0;
+      }
+
+      .flight--on .flight__hero,
+      .flight--on .flight-card {
+        position: fixed;
+        left: 0;
+        top: 0;
+        transform-origin: 0 0;
+        visibility: hidden;
+        margin: 0;
+        border: 0;
+        border-radius: 0;
+        background: none;
+        overflow: visible;
+        /* deliberately no will-change and no 3d transform: promoting these to
+           their own composited layer would freeze the raster scale and soften
+           the type the moment a card is not sitting at exactly scale 1 */
+      }
+
+      .flight--on .flight-card {
+        width: var(--flight-card-w);
+      }
+
+      .flight--on .flight-card--mark {
+        width: var(--flight-card-wm);
+      }
+
+      .flight--on .flight__hero {
+        width: var(--flight-hero-w);
+      }
+
+      .flight--on .flight__hero-big {
+        font-size: var(--flight-hero-size);
+      }
+
+      /* the box stays as an empty rectangle: the screenshot is drawn in WebGL
+         at exactly its measured position, and the fallback <img> never loads */
+      .flight--on .flight-card__img {
+        display: none;
+      }
+
+      .flight--on .flight-card__box {
+        border-radius: 0;
+      }
+
+      .flight--on .flight-card.is-hover .flight-card__desc {
+        color: color-mix(in srgb, var(--dim) 45%, var(--fg));
+      }
+
+      /* ----------------------------------------------------------- corridor */
+
+      .scene--flight {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+      }
+
+      .scene--flight canvas {
+        pointer-events: auto;
+      }
+
+      /* -------------------------------------------------------- year rail */
+
+      .flight--on .flight__rail {
+        position: fixed;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 3;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 2px;
+        margin: 0;
+        padding: 0 14px 0 26px;
+      }
+
+      .flight-rail__t {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 5px 0 5px 12px;
+        font: 400 10.5px/1 var(--font);
+        letter-spacing: 0.06em;
+        font-variant-numeric: tabular-nums;
+        color: var(--faint);
+        background: none;
+        border: 0;
+        cursor: pointer;
+      }
+
+      .flight-rail__t i {
+        display: block;
+        width: 13px;
+        height: 1px;
+        background: currentColor;
+        transition: width 0.22s cubic-bezier(0.2, 0.7, 0.2, 1);
+      }
+
+      .flight-rail__t u {
+        text-decoration: none;
+        white-space: nowrap;
+        opacity: 0;
+        transition: opacity 0.22s;
+      }
+
+      .flight-rail__t:hover {
+        color: var(--dim);
+      }
+
+      .flight-rail__t:hover i {
+        width: 22px;
+      }
+
+      .flight-rail__t:hover u,
+      .flight-rail__t:focus-visible u {
+        opacity: 1;
+      }
+
+      .flight-rail__t[aria-current="true"] {
+        color: var(--claude);
+      }
+
+      .flight-rail__t[aria-current="true"] i {
+        width: 28px;
+      }
+
+      .flight-rail__t[aria-current="true"] u {
+        opacity: 1;
+      }
+
+      .flight-rail__t[data-mark="1"] i {
+        opacity: 0.45;
+      }
+
+      .flight--on .flight__keys {
+        position: fixed;
+        left: 20px;
+        bottom: 12px;
+        z-index: 3;
+        display: block;
+        margin: 0;
+        font: 400 11px/1.5 var(--font);
+        letter-spacing: 0.04em;
+        color: var(--faint);
+      }
+
+      @media (max-width: 780px) {
+        .flight--on .flight__keys {
+          display: none;
+        }
+
+        .flight--on .flight__rail {
+          padding: 0 8px 0 18px;
+        }
+
+        /* clipped rather than removed, or the year leaves the accessible name */
+        .flight-rail__t u {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          overflow: hidden;
+          clip-path: inset(50%);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .flight-rail__t i,
+        .flight-rail__t u,
+        .flight-card__desc {
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="bar">
+      <span class="bar__where">
+        <a href="index.html">seok · portfolio</a>
+        <span aria-hidden="true">·</span>
+        <span lang="ko">타임라인</span><span lang="en">timeline</span>
+      </span>
+      <nav class="bar__ctl" aria-label="Language and theme">
+        <button type="button" data-lang-set="ko" aria-pressed="false">ko</button>
+        <button type="button" data-lang-set="en" aria-pressed="false">en</button>
+        <span class="bar__sep" aria-hidden="true">·</span>
+        <button type="button" data-theme-set="dark" aria-pressed="false">dark</button>
+        <button type="button" data-theme-set="light" aria-pressed="false">light</button>
+      </nav>
+    </header>
+
+    <main class="flight" id="flight">
+      <h1 class="flight__hero" id="flight-hero">
+        <span class="flight__hero-big"
+          ><span lang="ko">열세 가지,
+순서대로</span
+          ><span lang="en">thirteen things,
+in order</span></span
+        >
+        <span class="flight__hero-rule" aria-hidden="true"></span>
+        <span class="flight__hero-meta">
+          <span>2012 — 2026</span>
+          <span lang="ko">스크롤로 이동</span><span lang="en">scroll to fly</span>
+        </span>
+      </h1>
+
+      <!-- filled from js/timeline-data.js below, so the copy lives in one place -->
+      <ol class="flight__cards" id="flight-cards"></ol>
+
+      <nav class="flight__rail" id="flight-rail" aria-labelledby="flight-rail-h">
+        <h2 class="sr-only" id="flight-rail-h">
+          <span lang="ko">연도 레일</span><span lang="en">Year rail</span>
+        </h2>
+      </nav>
+
+      <p class="flight__keys">
+        <span lang="ko">방향키 · page up/down · 카드 클릭</span
+        ><span lang="en">arrows · page up/down · click a card</span>
+      </p>
+
+      <div class="scene scene--flight" id="scene-timeline" aria-hidden="true"></div>
+      <div id="flight-spacer" aria-hidden="true"></div>
+    </main>
+
+    <script>
+      // The same two keys js/site.js uses, so a choice made here is still in
+      // force back on the index. site.js itself owns the composer and the
+      // command line and expects elements this page does not have.
+      ;(() => {
+        const root = document.documentElement
+        const KEY = { lang: 'portfolio:lang', theme: 'portfolio:theme' }
+
+        function reflect() {
+          const theme =
+            root.dataset.theme ??
+            (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+          for (const b of document.querySelectorAll('[data-lang-set]'))
+            b.setAttribute('aria-pressed', String(b.dataset.langSet === root.dataset.lang))
+          for (const b of document.querySelectorAll('[data-theme-set]'))
+            b.setAttribute('aria-pressed', String(b.dataset.themeSet === theme))
+        }
+
+        for (const b of document.querySelectorAll('[data-lang-set]'))
+          b.addEventListener('click', () => {
+            root.dataset.lang = b.dataset.langSet
+            root.lang = b.dataset.langSet
+            localStorage.setItem(KEY.lang, b.dataset.langSet)
+          })
+
+        for (const b of document.querySelectorAll('[data-theme-set]'))
+          b.addEventListener('click', () => {
+            root.dataset.theme = b.dataset.themeSet
+            localStorage.setItem(KEY.theme, b.dataset.themeSet)
+          })
+
+        // Subscribe to the attribute rather than to the click, so the hidden
+        // redis theme — which arrives from somewhere else entirely — cannot
+        // leave a button claiming to be pressed.
+        new MutationObserver(reflect).observe(root, { attributeFilter: ['data-theme', 'data-lang'] })
+        reflect()
+      })()
+    </script>
+
+    <script type="module">
+      import { entries } from './js/timeline-data.js?v=1'
+      import { mount } from './js/scene-core.js?v=1'
+      import timeline from './js/scene-timeline.js?v=1'
+
+      const root = document.documentElement
+      const list = document.getElementById('flight-cards')
+      const isKo = () => root.dataset.lang === 'ko'
+      const imgFor = (e) => (e.imgKo && isKo() ? e.imgKo : e.img)
+
+      const el = (tag, cls) => {
+        const n = document.createElement(tag)
+        if (cls) n.className = cls
+        return n
+      }
+      // One document, two languages: both are written, and css/site.css hides
+      // whichever is not current. Nothing here re-renders on a language change.
+      const bi = (ko, en) => {
+        const k = el('span')
+        k.lang = 'ko'
+        k.textContent = ko
+        const e = el('span')
+        e.lang = 'en'
+        e.textContent = en
+        return [k, e]
+      }
+
+      for (const entry of entries) {
+        const li = el('li', `flight-card flight-card--${entry.kind}`)
+        const inner = el('div', 'flight-card__inner')
+
+        const box = el('span', 'flight-card__box')
+        const img = el('img', 'flight-card__img')
+        img.loading = 'lazy' // never fetched in flight mode, where it is display:none
+        img.decoding = 'async'
+        img.alt = ''
+        img.src = imgFor(entry)
+        box.append(img)
+
+        const year = el('p', 'flight-card__year')
+        year.textContent = entry.year
+
+        const title = el('h2', 'flight-card__title')
+        if (entry.title) title.textContent = entry.title
+        else title.append(...bi(entry.titleKo, entry.titleEn))
+
+        const desc = el('p', 'flight-card__desc')
+        desc.append(...bi(entry.ko, entry.en))
+
+        inner.append(box, year, title, desc)
+        li.append(inner)
+        list.append(li)
+      }
+
+      // The fallback images follow the language too; the scene swaps its own.
+      const imgs = [...list.querySelectorAll('.flight-card__img')]
+      new MutationObserver(() => {
+        entries.forEach((e, i) => {
+          if (e.imgKo) imgs[i].src = imgFor(e)
+        })
+      }).observe(root, { attributeFilter: ['data-lang'] })
+
+      mount(document.getElementById('scene-timeline'), timeline)
+    </script>
+  </body>
+</html>
