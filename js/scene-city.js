@@ -156,18 +156,23 @@ const FIG_HAND = [0.08, 0.07, 0.08]
 const FIG_BOXES = 3
 const WALK = 1.15 // half the walker's beat, in world x; keeps him inside his gutter
 
-// One datastore per gutter, and three figures each, all of them clear of INK_U.
+// One datastore per gutter, sat outboard of the landmarks so the inner ring is set
+// pieces. Ten figures, spread down both sides, all of them clear of INK_U.
 const STORES = [
-  { u: -11.5, v: -12 },
-  { u: 11.5, v: 15 },
+  { u: -13.4, v: -12 },
+  { u: 13.6, v: 15 },
 ]
 const FIGS = [
-  { u: -11.7, v: -10, kind: 2 }, // taps a phone up the street from the left-hand store
-  { u: -13.5, v: 1.7, kind: 1 },
+  { u: -11.9, v: -10, kind: 2 }, // taps a phone up the street from the left-hand store
+  { u: -13.9, v: 1.7, kind: 1 },
   { u: -11.5, v: 11, kind: 0 },
-  { u: 13.5, v: -3.5, kind: 0 },
+  { u: -12.8, v: -5.4, kind: 0 },
+  { u: -10.6, v: 19.2, kind: 1 },
+  { u: 13.9, v: -3.5, kind: 0 },
   { u: 11.9, v: 6.8, kind: 1 },
   { u: 11.5, v: 18.5, kind: 0 },
+  { u: 12.7, v: -12.6, kind: 2 }, // and one sending from the right-hand side
+  { u: 10.8, v: 22.4, kind: 0 },
 ]
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v))
@@ -539,12 +544,16 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   // two big shapes sit at the same height, and spaced so the scroll retires one and
   // brings in the next. The masked band is about 25 units of v tall, which is what
   // caps this at four objects a side.
-  namsan(-12.7, -3.5)
-  geunjeongjeon(-12.6, 6.5)
-  hanok(-13, 15.5)
-  lotte(12.2, -8)
-  sungnyemun(12.7, 2)
-  bldg63(13.5, 11.5)
+  // Hugging the ink boundary rather than sitting out by the frame edge: the first
+  // thing outside the column should be a landmark, and the plain carpet fills
+  // outward from behind it. On a wide screen the old spacing put anonymous boxes
+  // next to the text and the set pieces off at the margin, which is backwards.
+  namsan(-10.9, -3.5)
+  geunjeongjeon(-10.8, 6.5)
+  hanok(-11.2, 15.5)
+  lotte(10.7, -8)
+  sungnyemun(10.9, 2)
+  bldg63(11.4, 11.5)
 
   // ---- the carpet --------------------------------------------------------
   const cellKey = (i, j) => i * 1000 + j
@@ -927,24 +936,29 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
 
   const visible = (u, v) => Math.abs(u) < uVis + 1.5 && Math.abs(v - panV) < vVis + 2
 
+  // side 0 means either side, which is what a message crossing the frame wants.
   const pick = (list, side) => {
     let n = 0
     let hit = null
     for (const c of list) {
-      if (Math.sign(c.u) !== side || !visible(c.u, c.v)) continue
+      if (side !== 0 && Math.sign(c.u) !== side) continue
+      if (!visible(c.u, c.v)) continue
       n++
       if (Math.random() * n < 1) hit = c // reservoir: one pass, no array built
     }
     return hit
   }
 
-  // Both ends of an arc are on the same side of the frame, and u is interpolated, so a
-  // message never crosses the column it is meant to stay out of. Most go to a store,
-  // because that is the beat worth reading; the rest go roof to roof.
+  // Most arcs stay on their own side, where they are at full ink and worth watching.
+  // Roughly a third cross the frame instead: the mask has them at 8% over the column
+  // so they read as something passing behind the text rather than over it, and the
+  // city stops looking like two unrelated halves.
+  const CROSS = 0.32
   const launch = (src, near) => {
     const p = pool.pop()
     if (!p) return null
-    const side = Math.sign(src.u) || 1
+    const home = Math.sign(src.u) || 1
+    const side = Math.random() < CROSS ? -home : home
     let got = false
     if (Math.random() < 0.72) {
       let best = Infinity
