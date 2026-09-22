@@ -55,7 +55,8 @@ const Y_MIN = GROUND_Y - 1
 const Y_SPAN = 24
 const HUE_BUCKETS = 24
 
-export default function timeline({ THREE, canvas, width, height, tokens, still }) {
+export default function timeline({ THREE, canvas, tokens, still }) {
+  const host = canvas.parentElement
   const page = document.getElementById('flight')
   const heroEl = document.getElementById('flight-hero')
   const spacer = document.getElementById('flight-spacer')
@@ -551,6 +552,7 @@ export default function timeline({ THREE, canvas, width, height, tokens, still }
           applyWash(rec)
         }
         rec.shot.material.needsUpdate = true
+        nudge() // in still mode nothing else will paint the texture that just arrived
       },
       () => {},
     )
@@ -580,8 +582,8 @@ export default function timeline({ THREE, canvas, width, height, tokens, still }
   }
 
   // ---- layout: the DOM is the authority ------------------------------------
-  let VW = Math.max(width, 1)
-  let VH = Math.max(height, 1)
+  let VW = 1
+  let VH = 1
   let U = 1
   let sideOffset = 0
   let stepPx = 1
@@ -590,6 +592,13 @@ export default function timeline({ THREE, canvas, width, height, tokens, still }
   let heroX = 0
 
   function layout() {
+    // Measured here rather than carried from the factory arguments: the whole
+    // corridor is derived from the viewport, and every caller — first paint,
+    // fonts, resize, language — then gets a self-correcting layout. Trusting a
+    // size captured once left the cards laid out for a viewport that no longer
+    // existed, with nothing in still mode to put them right.
+    VW = Math.max(host.clientWidth, 1)
+    VH = Math.max(host.clientHeight, 1)
     const cardW = Math.min(VW * 0.88, 460)
     const cardWM = Math.min(VW * 0.78, 360)
     const heroPx = Math.min(VW * 0.9, 430)
@@ -982,9 +991,7 @@ export default function timeline({ THREE, canvas, width, height, tokens, still }
       draw(dt)
     },
 
-    resize(w, h) {
-      VW = Math.max(w, 1)
-      VH = Math.max(h, 1)
+    resize() {
       layout()
     },
 

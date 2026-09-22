@@ -76,6 +76,12 @@ const go = (id) => {
   return T(`#${id} 로 이동`, `Jumped to #${id}`)
 }
 
+// The same thirteen entries, as the space you fly through. Unlisted in /help.
+const walk = () => {
+  location.href = 'timeline.html'
+  return T('타임라인을 공간으로 엽니다…', 'Opening the timeline as a space…')
+}
+
 const COMMANDS = {
   '/help': () =>
     T(
@@ -87,6 +93,7 @@ const COMMANDS = {
   '/projects': () => go('projects'),
   '/redis': () => go('redis'),
   '/timeline': () => go('timeline'),
+  '/walk': walk,
   '/resume': () => {
     window.open(`resume/seokwon-resume-${root.dataset.lang}.pdf`, '_blank', 'noopener')
     return T('이력서 PDF를 새 탭에서 엽니다', 'Opening the résumé PDF in a new tab')
@@ -179,7 +186,12 @@ const SHELL = {
   quit: () => SHELL.exit(),
   logout: () => SHELL.exit(),
   rm: (...a) => (a.join(' ').includes('/') ? "rm: it is dangerous to operate recursively on '/'" : 'rm: read-only file system'),
-  git: (sub) => (sub === 'log' ? go('timeline') : 'nothing to commit, working tree clean'),
+  git: (sub, ...rest) =>
+    sub === 'log'
+      ? rest.includes('--graph')
+        ? walk()
+        : go('timeline')
+      : 'nothing to commit, working tree clean',
   clear: () => '',
   help: () => COMMANDS['/help'](),
   man: () => COMMANDS['/help'](),
