@@ -129,6 +129,10 @@ const RAMP = {
   // same and it sits below the carpet's 0.105 to read as water rather than ground.
   water: { top: 0.042, pz: 0.042, px: 0.042, dark: 0.042 },
   deck: { top: 0.115, pz: 0.07, px: 0.03, dark: 0.009 },
+  // An opening, not a surface. Isometric never sees through a gate, so the arch only
+  // reads if what sits behind it is darker than the stone - which, like the water,
+  // means the value has to flip with the theme.
+  gate: { top: 0.004, pz: 0.004, px: 0.004, dark: 0.004 },
 }
 const LIT_INK = 0.14 // how far a landed disc lifts its top face
 const LIT_TAU = 0.44
@@ -535,6 +539,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     const half = bw / 2 - pier / 2
     emitBox(x - half, 0, z, pier, bh, bd, RAMP.stone)
     emitBox(x + half, 0, z, pier, bh, bd, RAMP.stone)
+    emitBox(x, 0, z, bw - 2 * pier + 0.06, bh * 0.86, bd * 0.86, RAMP.gate) // the opening
     const lip = bw / 2 - pier
     for (let s = 1; s <= 3; s++) {
       const inset = 0.17 * s
@@ -740,11 +745,12 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
         top(sh)
         note('아파트 · Apartment slabs', u, v, sh)
       } else if (kind < 0.46) {
-        // 기와 저층: a low hall under a tiled roof.
-        const bh = Math.min(h, 0.62) * 0.8
-        emitBox(x, 0, z, bw * 0.84, bh, bd * 0.84, RAMP.mark)
-        emitRoof(x, bh, z, bw * 0.58, bd * 0.58, 0.26, 16, false)
-        top(bh + 0.5)
+        // 기와 저층: a low hall under a tiled roof. The eave used to overhang the
+        // walls by nearly 40% and the thing read as a mushroom; 15% is a roof.
+        const bh = Math.max(0.44, Math.min(h, 0.72) * 0.95)
+        emitBox(x, 0, z, bw * 0.8, bh, bd * 0.8, RAMP.mark)
+        emitRoof(x, bh, z, bw * 0.46, bd * 0.46, 0.2, 16, false)
+        top(bh + 0.42)
         note('기와 저층 · Tiled low-rise', u, v, bh + 0.6)
       } else if (kind < 0.68) {
         // 상가: a flat roof carrying the rooftop room and the water tank on legs that
@@ -757,23 +763,30 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
         top(h + 0.36)
         note('상가 · Shop block with 옥탑', u, v, h + 0.5)
       } else if (kind < 0.86) {
-        // 계단식: an office block that steps back twice on the way up.
-        const h1 = h * 0.55
-        const h2 = h * 0.3
-        const h3 = h * 0.34
-        emitBox(x, 0, z, bw, h1, bd)
-        emitBox(x - bw * 0.05, h1, z + bd * 0.04, bw * 0.78, h2, bd * 0.78)
-        emitBox(x - bw * 0.09, h1 + h2, z + bd * 0.07, bw * 0.54, h3, bd * 0.54)
-        emitBox(x - bw * 0.09, h1 + h2 + h3, z + bd * 0.07, 0.07, 0.34, 0.07, RAMP.stone)
-        top(h1 + h2 + h3)
+        // 계단식: an office tower that sets back twice near the top. Every tier used
+        // to be as wide as it was tall, which is a ziggurat, not an office. Narrow
+        // footprint, most of the height in the shaft, small setbacks high up.
+        const fw = bw * 0.6
+        const fd = bd * 0.6
+        const th = Math.max(1.7, h * 2.15)
+        const h1 = th * 0.63
+        const h2 = th * 0.23
+        const h3 = th * 0.14
+        emitBox(x, 0, z, fw, h1, fd)
+        emitBox(x - fw * 0.04, h1, z + fd * 0.03, fw * 0.85, h2, fd * 0.85)
+        emitBox(x - fw * 0.07, h1 + h2, z + fd * 0.05, fw * 0.68, h3, fd * 0.68)
+        emitBox(x - fw * 0.07, th, z + fd * 0.05, 0.06, 0.3, 0.06, RAMP.stone)
+        top(th)
         note('계단식 빌딩 · Stepped office', u, v, h1 + h2 + h3)
       } else {
         // 좁은 빌딩: narrow, tall, with a floor band every few storeys.
-        const nh = Math.max(1.0, h * 1.5)
-        emitBox(x, 0, z, bw * 0.52, nh, bd * 0.52)
-        const bands = Math.max(2, Math.round(nh / 0.34))
+        // Thin bands close together read as storeys; three fat ones read as three
+        // boxes stacked, which is what it looked like.
+        const nh = Math.max(1.3, h * 1.9)
+        emitBox(x, 0, z, bw * 0.46, nh, bd * 0.46)
+        const bands = Math.max(5, Math.round(nh / 0.19))
         for (let k = 1; k < bands; k++)
-          emitBox(x, (nh * k) / bands, z, bw * 0.58, 0.04, bd * 0.58, RAMP.stone)
+          emitBox(x, (nh * k) / bands, z, bw * 0.5, 0.02, bd * 0.5, RAMP.stone)
         top(nh)
         note('좁은 빌딩 · Narrow tower', u, v, nh)
       }
@@ -801,6 +814,8 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     const lightBg = P.bg2[0] + P.bg2[1] + P.bg2[2] > 382
     const wt = lightBg ? 0.30 : 0.042
     RAMP.water.top = RAMP.water.pz = RAMP.water.px = RAMP.water.dark = wt
+    const gt = lightBg ? 0.42 : 0.004
+    RAMP.gate.top = RAMP.gate.pz = RAMP.gate.px = RAMP.gate.dark = gt
 
     const a = cityCol.array
     let ramp = null
