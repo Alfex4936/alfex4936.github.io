@@ -960,17 +960,18 @@ button {
   height: 100%;
 }
 
-/* Fixed, so the traffic runs the whole way down rather than only behind the
+/* Fixed, so the city is there the whole way down rather than only behind the
    hero. The transcript's own z-index puts it in front. */
-.scene--traffic {
+.scene--city {
   position: fixed;
   inset: 0;
 }
 
-/* It shows only in the gutters either side of the transcript, so it never sits
-   behind prose; under ~1100px there are no gutters and it fades out. The
-   vertical pair keeps it off the sticky bar and the composer. */
-.scene--traffic canvas {
+/* One city across the full width, not two strips: rather than cutting a hole
+   for the transcript the mask only drops its ink to 14% behind the column, so
+   it still reads as a single place. The vertical pair keeps it off the sticky
+   bar and the composer. */
+.scene--city canvas {
   mask-image: linear-gradient(
       to bottom,
       transparent 0,
@@ -981,10 +982,10 @@ button {
     linear-gradient(
       to right,
       #000 0,
-      #000 calc(50% - 404px),
-      transparent calc(50% - 388px),
-      transparent calc(50% + 388px),
-      #000 calc(50% + 404px)
+      #000 calc(50% - 448px),
+      rgba(0, 0, 0, 0.14) calc(50% - 392px),
+      rgba(0, 0, 0, 0.14) calc(50% + 392px),
+      #000 calc(50% + 448px)
     );
   mask-composite: intersect;
 }
@@ -1020,7 +1021,7 @@ button {
    all. Not worth a WebGL context: display:none keeps the observer from ever
    firing, so a phone never downloads three for this at all. */
 @media (max-width: 900px) {
-  .scene--traffic {
+  .scene--city {
     display: none;
   }
 }

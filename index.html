@@ -17,7 +17,7 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap"
     />
-    <link rel="stylesheet" href="css/site.css?v=7" />
+    <link rel="stylesheet" href="css/site.css?v=8" />
     <script>
       // Resolve language and theme before first paint so nothing flashes.
       ;(() => {
@@ -54,7 +54,7 @@
       The prompt at the bottom also answers PING, KEYS *, INFO, ls, uptime, :q and sudo.
       The console has something for you too.
     -->
-    <div class="scene scene--traffic" id="scene-traffic" aria-hidden="true"></div>
+    <div class="scene scene--city" id="scene-city" aria-hidden="true"></div>
 
     <header class="bar">
       <span>seok · portfolio</span>
@@ -482,7 +482,7 @@ master   +FULLRESYNC -&gt; fork -&gt; rdb
         }
       }
 
-      scene('./js/scene-traffic.js?v=1', 'scene-traffic')
+      scene('./js/scene-city.js?v=1', 'scene-city')
 
       // The figure only earns its space once its own scene is going to run.
       if (await scene('./js/scene-terrain.js?v=1', 'scene-terrain'))
