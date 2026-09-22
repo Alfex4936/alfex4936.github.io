@@ -105,6 +105,7 @@ const HOT_TAU = 0.3 // and should cross-fade rather than blink on
 // Half-width of the band the page masks out behind its transcript column. The page
 // sets --scene-clear to match its own mask; this is the standalone fallback.
 const CLEAR_FALLBACK = 404
+const FEATHER = 16 // width of that mask's opaque-to-transparent ramp
 const HOVER_TAU = 0.085 // hover stays exactly as responsive as the demo
 const SHIP_MIN = 18
 const SHIP_VAR = 14
@@ -526,9 +527,15 @@ export default function cluster({ THREE, canvas, width, height, tokens, still })
     _p.project(camera)
     const x = (_p.x * 0.5 + 0.5) * W
     const y = (-_p.y * 0.5 + 0.5) * H
+    const mid = W / 2
+
+    // A block feathered away by the mask would take a caption on empty space, so it
+    // gets none. Same ramp the stylesheet draws: transparent in to mid ∓ (clear -
+    // FEATHER), solid from mid ∓ clear out.
+    if (clamp01((Math.abs(x - mid) - (clear - FEATHER)) / FEATHER) < 1) return null
+
     const off = b.halfScreen / (fh / H) + 14
     const top = Math.max(10, Math.min(y, H - 10))
-    const mid = W / 2
     const outLeft = x < mid
     const pin = (cand) => Math.max(8, Math.min(cand, W - w - 8))
 
