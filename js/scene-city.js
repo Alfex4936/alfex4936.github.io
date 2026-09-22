@@ -439,6 +439,12 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   const keepOut = []
   const at = (u, v) => [(u + v) * ISQ2, (v - u) * ISQ2]
 
+  // What got built and where, so harness-building.html can walk the scene piece by
+  // piece instead of me hunting for one shop block in a corner of a screenshot.
+  // Recording only; nothing in the scene reads it.
+  const catalog = []
+  const note = (name, u, v, h = 1) => catalog.push({ name, u, v, h })
+
   // A wooded hill, a banded shaft out of it, the observation drum, a mast.
   // The real one is mostly mast: the antenna is about a third of everything above the
   // mountain, the deck is several floors flaring out over a slender shaft, and the
@@ -643,6 +649,16 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   sungnyemun(10.9, 2)
   bldg63(11.4, 13.6)
 
+  note('N서울타워 · Namsan Tower', -10.9, -3.5, 4.7)
+  note('경복궁 근정전 · Geunjeongjeon', -10.8, 5.1, 2.2)
+  note('한옥 · Hanok cluster', -11.2, 15.8, 1.2)
+  note('롯데월드타워 · Lotte World Tower', 10.7, -8, 4.4)
+  note('숭례문 · Sungnyemun', 10.9, 2, 2)
+  note('63빌딩 · 63 Building', 11.4, 13.6, 4)
+  note('한강 다리 · Han bridge', -10.6, RIVER_V, 1)
+  note('한강 · Han river', 0.8, RIVER_V, 1)
+  for (const s of STORES) note('데이터스토어 · Datastore', s.u, s.v, 1.6)
+
   // ---- the carpet --------------------------------------------------------
   const cellKey = (i, j) => i * 1000 + j
   const cleared = new Set()
@@ -722,12 +738,14 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
         for (let k = 0; k < n; k++)
           emitBox(x + (k - (n - 1) / 2) * sw * 1.85, 0, z, sw, sh, bd * 0.5)
         top(sh)
+        note('아파트 · Apartment slabs', u, v, sh)
       } else if (kind < 0.46) {
         // 기와 저층: a low hall under a tiled roof.
         const bh = Math.min(h, 0.62) * 0.8
         emitBox(x, 0, z, bw * 0.84, bh, bd * 0.84, RAMP.mark)
         emitRoof(x, bh, z, bw * 0.58, bd * 0.58, 0.26, 16, false)
         top(bh + 0.5)
+        note('기와 저층 · Tiled low-rise', u, v, bh + 0.6)
       } else if (kind < 0.68) {
         // 상가: a flat roof carrying the rooftop room and the water tank on legs that
         // every one of them has, plus the parapet round the edge.
@@ -737,6 +755,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
         emitBox(x + bw * 0.26, h + 0.06, z - bd * 0.16, bw * 0.07, 0.16, bd * 0.07, RAMP.stone)
         emitCyl(x + bw * 0.26, h + 0.22, z - bd * 0.16, bw * 0.16, 0.22, RAMP.store)
         top(h + 0.36)
+        note('상가 · Shop block with 옥탑', u, v, h + 0.5)
       } else if (kind < 0.86) {
         // 계단식: an office block that steps back twice on the way up.
         const h1 = h * 0.55
@@ -747,6 +766,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
         emitBox(x - bw * 0.09, h1 + h2, z + bd * 0.07, bw * 0.54, h3, bd * 0.54)
         emitBox(x - bw * 0.09, h1 + h2 + h3, z + bd * 0.07, 0.07, 0.34, 0.07, RAMP.stone)
         top(h1 + h2 + h3)
+        note('계단식 빌딩 · Stepped office', u, v, h1 + h2 + h3)
       } else {
         // 좁은 빌딩: narrow, tall, with a floor band every few storeys.
         const nh = Math.max(1.0, h * 1.5)
@@ -755,6 +775,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
         for (let k = 1; k < bands; k++)
           emitBox(x, (nh * k) / bands, z, bw * 0.58, 0.04, bd * 0.58, RAMP.stone)
         top(nh)
+        note('좁은 빌딩 · Narrow tower', u, v, nh)
       }
     }
   }
@@ -1384,5 +1405,5 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     paintAll()
   }
 
-  return { render, resize, retint }
+  return { render, resize, retint, world, camera, catalog }
 }
