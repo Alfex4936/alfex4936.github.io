@@ -128,7 +128,9 @@ const RAMP = {
   // Flat by design: the river is one surface seen from above, so every slot is the
   // same and it sits below the carpet's 0.105 to read as water rather than ground.
   water: { top: 0.042, pz: 0.042, px: 0.042, dark: 0.042 },
-  deck: { top: 0.115, pz: 0.07, px: 0.03, dark: 0.009 },
+  // The deck is the one horizontal surface meant to be read as a surface, so it sits
+  // clear of the carpet's 0.105 rather than alongside it.
+  deck: { top: 0.215, pz: 0.11, px: 0.05, dark: 0.012 },
   // An opening, not a surface. Isometric never sees through a gate, so the arch only
   // reads if what sits behind it is darker than the stone - which, like the water,
   // means the value has to flip with the theme.
@@ -495,20 +497,23 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   const lotte = (u, v) => {
     const [x, z] = at(u, v)
     emitBox(x, 0, z, 1.9, 0.3, 1.7, RAMP.stone)
-    const N = 10
-    const CH = 0.4
+    // Ten fat courses read as a stone pagoda, not a supertall. The profile has to be
+    // smooth, so it is many thin courses instead - the steps disappear and what is
+    // left is the slender concave taper the real one has, then the split crown.
+    const N = 30
+    const CH = 0.165
     let y = 0.3
     let b = 0
     for (let k = 0; k < N; k++) {
       const t = k / (N - 1)
-      const w = 1.4 - 0.88 * t
-      b = 0.26 * t * t
-      emitBox(x + b, y, z + b * 0.6, w, CH, w * 0.86, RAMP.mark)
+      const w = 1.12 - 0.72 * Math.pow(t, 0.86)
+      b = 0.2 * t * t
+      emitBox(x + b, y, z + b * 0.6, w, CH, w * 0.88, RAMP.mark)
       y += CH
     }
-    emitBox(x + b - 0.15, y, z + b * 0.6, 0.19, 0.48, 0.4, RAMP.mark)
-    emitBox(x + b + 0.15, y, z + b * 0.6, 0.19, 0.48, 0.4, RAMP.mark)
-    roofs.push({ u, v, y: y + 0.48 })
+    emitBox(x + b - 0.11, y, z + b * 0.6, 0.15, 0.62, 0.34, RAMP.mark)
+    emitBox(x + b + 0.11, y, z + b * 0.6, 0.15, 0.62, 0.34, RAMP.mark)
+    roofs.push({ u, v, y: y + 0.62 })
     keepOut.push([x, z, 1.15, 1.05])
   }
 
@@ -563,13 +568,21 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     const [x, z] = at(u, v)
     emitBox(x, 0, z, 2.0, 0.26, 1.3, RAMP.stone)
     emitBox(x, 0.26, z, 1.5, 2.85, 0.9, RAMP.mark)
-    let y = 3.11
-    for (let k = 1; k <= 8; k++) {
-      const w = 1.5 * (1 - k / 9)
-      emitBox(x - (1.5 - w) / 2, y, z, w, 0.1, 0.9, RAMP.mark)
-      y += 0.1
-    }
-    roofs.push({ u, v, y: 3.11 })
+    // The top is one clean diagonal, not a staircase. Boxes cannot cut a slope, so
+    // the wedge is quads: the sloped face and a triangle closing each end.
+    const hw = 0.75
+    const hd = 0.45
+    const y0 = 3.11
+    const y1 = 3.94
+    const P = (dx, yy, dz) => [x + dx, yy, z + dz]
+    emitQuad(P(-hw, y0, -hd), P(hw, y1, -hd), P(hw, y1, hd), P(-hw, y0, hd), RAMP.mark)
+    for (const sd of [-hd, hd])
+      emitQuad(P(-hw, y0, sd), P(hw, y1, sd), P(hw, y0, sd), P(hw, y0, sd), RAMP.mark)
+    line(x - hw, y0, z - hd, x + hw, y1, z - hd)
+    line(x - hw, y0, z + hd, x + hw, y1, z + hd)
+    line(x + hw, y0, z - hd, x + hw, y1, z - hd)
+    line(x + hw, y0, z + hd, x + hw, y1, z + hd)
+    roofs.push({ u, v, y: y0 })
     keepOut.push([x, z, 1.2, 0.85])
   }
 
@@ -605,32 +618,58 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
       const b = c(uEnd, vv)
       line(a[0], a[1], a[2], b[0], b[1], b[2])
     }
-  }
-
-  // A girder deck on piers, which is what most of the Han crossings actually are.
-  const bridge = (u0) => {
-    const hw = 0.44
-    const L = RIVER_HALF + 0.9
-    const y = 0.44
-    const c = (uu, vv) => {
-      const [xx, zz] = at(uu, vv)
-      return [xx, y, zz]
-    }
-    emitQuad(
-      c(u0 - hw, RIVER_V - L),
-      c(u0 + hw, RIVER_V - L),
-      c(u0 + hw, RIVER_V + L),
-      c(u0 - hw, RIVER_V + L),
-      RAMP.deck,
-    )
-    for (const s of [-1, 1]) {
-      const a = c(u0 + s * hw, RIVER_V - L)
-      const b = c(u0 + s * hw, RIVER_V + L)
+    // A few broken lines along the flow. Water with nothing on it reads as a gap;
+    // this is the cheapest thing that says the surface is moving, and it costs no
+    // colour - the river stays the same grey as everything else.
+    for (let k = 0; k < 26; k++) {
+      const vv = nearV + RIVER_HALF * 2 * (0.12 + 0.76 * ((k * 0.3719) % 1))
+      const u1 = -uEnd + (2 * uEnd * ((k * 0.6180) % 1))
+      const len = 1.4 + 2.6 * ((k * 0.2237) % 1)
+      const a = c(u1, vv)
+      const b = c(Math.min(u1 + len, uEnd), vv)
       line(a[0], a[1], a[2], b[0], b[1], b[2])
     }
-    for (const dv of [-RIVER_HALF * 0.6, 0, RIVER_HALF * 0.6]) {
+  }
+
+  // A girder deck on piers. The first try was a single flat quad, which in isometric
+  // is a strip with no thickness - it vanished and left the piers looking like cubes
+  // floating in the water. A deck needs a top, a fascia hanging under it on both
+  // sides, and a railing, before it reads as something you could drive across.
+  const bridge = (u0) => {
+    const hw = 0.5
+    const L = RIVER_HALF + 1.05
+    const y = 0.5
+    const drop = 0.17
+    const c = (uu, vv, yy) => {
+      const [xx, zz] = at(uu, vv)
+      return [xx, yy, zz]
+    }
+    const v0 = RIVER_V - L
+    const v1 = RIVER_V + L
+
+    emitQuad(c(u0 - hw, v0, y), c(u0 + hw, v0, y), c(u0 + hw, v1, y), c(u0 - hw, v1, y), RAMP.deck)
+    for (const sd of [-1, 1]) {
+      const uu = u0 + sd * hw
+      emitQuad(c(uu, v0, y), c(uu, v1, y), c(uu, v1, y - drop), c(uu, v0, y - drop), RAMP.stone)
+      const a = c(uu, v0, y)
+      const b = c(uu, v1, y)
+      line(a[0], a[1], a[2], b[0], b[1], b[2])
+      const a2 = c(uu, v0, y - drop)
+      const b2 = c(uu, v1, y - drop)
+      line(a2[0], a2[1], a2[2], b2[0], b2[1], b2[2])
+      // railing: posts and a rail, so the edge has something above the deck
+      for (let k = 0; k <= 8; k++) {
+        const vv = v0 + ((v1 - v0) * k) / 8
+        const [px, pz] = at(uu, vv)
+        emitBox(px, y, pz, 0.05, 0.16, 0.05, RAMP.stone)
+      }
+      const r1 = c(uu, v0, y + 0.16)
+      const r2 = c(uu, v1, y + 0.16)
+      line(r1[0], r1[1], r1[2], r2[0], r2[1], r2[2])
+    }
+    for (const dv of [-RIVER_HALF * 0.66, 0, RIVER_HALF * 0.66]) {
       const [px, pz] = at(u0, RIVER_V + dv)
-      emitBox(px, -0.05, pz, 0.26, y + 0.05, 0.26, RAMP.stone)
+      emitBox(px, -0.05, pz, 0.32, y - drop + 0.05, 0.32, RAMP.stone)
     }
   }
 
