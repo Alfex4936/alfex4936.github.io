@@ -988,6 +988,9 @@ button {
       #000 calc(50% + 448px)
     );
   mask-composite: intersect;
+  /* Set back another notch: the city is weather behind the transcript, and at full
+     ink its edge lines competed with the text for the eye. */
+  opacity: 0.66;
 }
 
 /* The figure ships with [hidden]; the module clears it once its imports

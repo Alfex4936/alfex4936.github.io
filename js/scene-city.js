@@ -164,11 +164,16 @@ const SEND_MIN = 0.95
 const SEND_VAR = 0.9
 const PHONE_EVERY = 8.5 // the tapper sends on his own clock
 
-const FIG_BODY = [0.15, 0.36, 0.15]
-const FIG_HEAD = [0.13, 0.15, 0.13]
-const FIG_NECK = 0.045 // the head clears the shoulders, or the pair reads as one post
-const FIG_HAND = [0.08, 0.07, 0.08]
-const FIG_BOXES = 3
+// Narrow legs, wide shoulders, small head: at 21px tall the step in and out at the
+// waist is the whole difference between a person and a stack of blocks.
+const FIG_LEG = [0.1, 0.22, 0.1]
+const FIG_TORSO = [0.18, 0.175, 0.12]
+const FIG_HEAD = [0.095, 0.135, 0.095]
+const FIG_NECK = 0.02 // the head clears the shoulders, or the pair reads as one post
+const FIG_ARM = [0.045, 0.2, 0.045] // raised to the chin: the one silhouette that says sending
+const ARM_U = 0.115 // offset in screen-u; an equal +x+z is pure screen-down and hides behind the torso
+const ARM_V = 0.04
+const FIG_BOXES = 4
 const WALK = 1.15 // half the walker's beat, in world x; keeps him inside his gutter
 
 // One datastore per gutter, sat outboard of the landmarks so the inner ring is set
@@ -986,8 +991,10 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
       paintDisc(s, k)
     }
 
+  const PARK = -900 // a slot with nothing in it collapses below the frustum
+
   // ---- figures -----------------------------------------------------------
-  // Three boxes each and no face: a shape at street level, not a character anyone owns.
+  // Four boxes each and no face: a shape at street level, not a character anyone owns.
   const NFB = FIGS.length * FIG_BOXES
   const figPos = new Float32Array(NFB * BOXV * 3)
   const figEdgePos = new Float32Array(NFB * BOXE * 3)
@@ -1044,41 +1051,35 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
 
   const stepFig = (f, t) => {
     if (f.kind === 1) {
-      f.dx = Math.sin(t * 0.26 + f.phase) * WALK
-      f.bob = Math.abs(Math.sin(t * 1.5 + f.phase)) * 0.022
+      const p = t * 0.5 + f.phase
+      f.dx = Math.sin(p) * WALK
+      f.bob = Math.abs(Math.sin(p * 3)) * 0.018 // three steps per half-lap, near a real stride
     } else if (f.kind === 2) {
       f.bob = Math.sin(t * 0.9 + f.phase) * 0.012
-      f.tap = Math.sin(t * 5.4 + f.phase) * 0.02
+      f.tap = Math.sin(t * 5.4 + f.phase) * 0.025
     } else {
       f.bob = Math.sin(t * 0.7 + f.phase) * 0.014
     }
   }
 
-  const hand = new Float64Array(3) // held, not returned: nothing in the frame allocates
-  const handPos = (f) => {
-    hand[0] = f.x + f.dx + 0.12
-    hand[1] = FIG_BODY[1] * 0.78 + f.bob + f.tap
-    hand[2] = f.z + 0.12 // out in front, so the arm is not swallowed by the body
+  const arm = new Float64Array(3) // held, not returned: nothing in the frame allocates
+  const armPos = (f) => {
+    const s = Math.sign(f.u) || 1 // raised on the outboard side, away from the transcript
+    arm[0] = f.x + f.dx + (ARM_U * s + ARM_V) * ISQ2
+    arm[1] = FIG_LEG[1] + FIG_TORSO[1] * 0.28 + f.bob + f.tap
+    arm[2] = f.z + (ARM_V - ARM_U * s) * ISQ2
   }
 
   const writeFig = (f) => {
     const x = f.x + f.dx
-    writeBox(figPos, figEdgePos, f.slot, x, f.bob, f.z, FIG_BODY[0], FIG_BODY[1], FIG_BODY[2])
-    const y = FIG_BODY[1] + FIG_NECK + f.bob
-    writeBox(figPos, figEdgePos, f.slot + 1, x, y, f.z, FIG_HEAD[0], FIG_HEAD[1], FIG_HEAD[2])
-    handPos(f)
-    const s = f.kind === 2 ? 1 : 0.85 // only the tapper is holding anything
-    writeBox(
-      figPos,
-      figEdgePos,
-      f.slot + 2,
-      hand[0],
-      hand[1],
-      hand[2],
-      FIG_HAND[0] * s,
-      FIG_HAND[1] * s,
-      FIG_HAND[2] * s,
-    )
+    writeBox(figPos, figEdgePos, f.slot, x, f.bob, f.z, FIG_LEG[0], FIG_LEG[1], FIG_LEG[2])
+    const ty = FIG_LEG[1] + f.bob
+    writeBox(figPos, figEdgePos, f.slot + 1, x, ty, f.z, FIG_TORSO[0], FIG_TORSO[1], FIG_TORSO[2])
+    const hy = ty + FIG_TORSO[1] + FIG_NECK
+    writeBox(figPos, figEdgePos, f.slot + 2, x, hy, f.z, FIG_HEAD[0], FIG_HEAD[1], FIG_HEAD[2])
+    armPos(f)
+    const y = f.kind === 2 ? arm[1] : PARK // everyone else has their hands down and unbuilt
+    writeBox(figPos, figEdgePos, f.slot + 3, arm[0], y, arm[2], FIG_ARM[0], FIG_ARM[1], FIG_ARM[2])
   }
 
   // ---- bubbles -----------------------------------------------------------
@@ -1141,7 +1142,6 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   bRimMesh.frustumCulled = false
   world.add(bFillMesh, bRimMesh)
 
-  const PARK = -900 // a slot with nothing in it collapses below the frustum
   const park = (slot) => {
     let o = slot * FILLV * 3
     for (let i = 0; i < FILLV * 3; i += 3) {
@@ -1457,10 +1457,10 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
         stepFig(f, age)
         if (f.kind === 2 && age > f.sendAt) {
           f.sendAt = age + PHONE_EVERY * (0.7 + Math.random() * 0.6)
-          handPos(f)
-          from.u = (hand[0] - hand[2]) * ISQ2
-          from.v = (hand[0] + hand[2]) * ISQ2
-          from.y = hand[1]
+          armPos(f)
+          from.u = (arm[0] - arm[2]) * ISQ2
+          from.v = (arm[0] + arm[2]) * ISQ2
+          from.y = arm[1] + FIG_ARM[1] // out of the phone at the top of the arm
           launch(from, false)
         }
       }
