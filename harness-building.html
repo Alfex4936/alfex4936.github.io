@@ -11,7 +11,7 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap"
     />
-    <link rel="stylesheet" href="css/site.css?v=11" />
+    <link rel="stylesheet" href="css/site.css?v=12" />
     <style>
       /* A development tool, not a page of the site. It mounts the real
          js/scene-city.js, so whatever it shows is what ships. */
@@ -271,10 +271,20 @@
       let last = performance.now()
       let acc = 0
       let n = 0
+      // A message has no fixed place to stand and look at, so while that entry is
+      // selected the harness keeps asking the scene for another one.
+      let pokeIn = 0
       const tick = (t) => {
         const dt = Math.min((t - last) / 1000, 0.1)
         last = t
         acc += dt
+        if (active && active.name.includes('말풍선')) {
+          pokeIn -= dt
+          if (pokeIn <= 0) {
+            pokeIn = 1.3
+            scene.poke?.()
+          }
+        }
         if (++n % 30 === 0) {
           read.textContent = `${Math.round(30 / acc)} fps · ${entries.length} kinds · ${scene.catalog.length} pieces`
           acc = 0

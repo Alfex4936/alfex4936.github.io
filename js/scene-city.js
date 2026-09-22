@@ -631,45 +631,68 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     }
   }
 
-  // A girder deck on piers. The first try was a single flat quad, which in isometric
-  // is a strip with no thickness - it vanished and left the piers looking like cubes
-  // floating in the water. A deck needs a top, a fascia hanging under it on both
-  // sides, and a railing, before it reads as something you could drive across.
+  // A bridge the isometric can actually show. The span runs along v, and in this
+  // projection v and world-up are both screen-down, so anything shaped in the v-Y
+  // plane - a suspension cable's sag, a fan of stays - collapses onto the deck line
+  // and reads as nothing. An arch across the deck's *width* is shaped in u and Y,
+  // which are different screen axes, so it curves. 한강철교 is a through-arch anyway.
   const bridge = (u0) => {
     const hw = 0.5
-    const L = RIVER_HALF + 1.05
+    const L = RIVER_HALF + 1.15
     const y = 0.5
     const drop = 0.17
+    const railY = y + 0.16
+    const archH = 0.78
     const c = (uu, vv, yy) => {
       const [xx, zz] = at(uu, vv)
       return [xx, yy, zz]
     }
+    const seg = (a, b) => line(a[0], a[1], a[2], b[0], b[1], b[2])
     const v0 = RIVER_V - L
     const v1 = RIVER_V + L
 
     emitQuad(c(u0 - hw, v0, y), c(u0 + hw, v0, y), c(u0 + hw, v1, y), c(u0 - hw, v1, y), RAMP.deck)
+
     for (const sd of [-1, 1]) {
       const uu = u0 + sd * hw
       emitQuad(c(uu, v0, y), c(uu, v1, y), c(uu, v1, y - drop), c(uu, v0, y - drop), RAMP.stone)
-      const a = c(uu, v0, y)
-      const b = c(uu, v1, y)
-      line(a[0], a[1], a[2], b[0], b[1], b[2])
-      const a2 = c(uu, v0, y - drop)
-      const b2 = c(uu, v1, y - drop)
-      line(a2[0], a2[1], a2[2], b2[0], b2[1], b2[2])
-      // railing: posts and a rail, so the edge has something above the deck
-      for (let k = 0; k <= 8; k++) {
-        const vv = v0 + ((v1 - v0) * k) / 8
-        const [px, pz] = at(uu, vv)
-        emitBox(px, y, pz, 0.05, 0.16, 0.05, RAMP.stone)
+      seg(c(uu, v0, y), c(uu, v1, y))
+      seg(c(uu, v0, y - drop), c(uu, v1, y - drop))
+      seg(c(uu, v0, railY), c(uu, v1, railY))
+      for (let k = 0; k <= 22; k++) {
+        const [px, pz] = at(uu, v0 + ((v1 - v0) * k) / 22)
+        emitBox(px, y, pz, 0.04, 0.16, 0.04, RAMP.stone)
       }
-      const r1 = c(uu, v0, y + 0.16)
-      const r2 = c(uu, v1, y + 0.16)
-      line(r1[0], r1[1], r1[2], r2[0], r2[1], r2[2])
     }
-    for (const dv of [-RIVER_HALF * 0.66, 0, RIVER_HALF * 0.66]) {
-      const [px, pz] = at(u0, RIVER_V + dv)
-      emitBox(px, -0.05, pz, 0.32, y - drop + 0.05, 0.32, RAMP.stone)
+
+    // Three through-arches over the water, each with its hangers down to the deck.
+    for (const av of [RIVER_V - RIVER_HALF * 0.72, RIVER_V, RIVER_V + RIVER_HALF * 0.72]) {
+      const N = 18
+      const arc = (t) => {
+        const uu = u0 - hw + 2 * hw * t
+        return c(uu, av, y + archH * Math.sin(Math.PI * t))
+      }
+      let prev = arc(0)
+      for (let k = 1; k <= N; k++) {
+        const next = arc(k / N)
+        seg(prev, next)
+        prev = next
+      }
+      for (let k = 1; k < 6; k++) {
+        const t = k / 6
+        const top = arc(t)
+        if (top[1] - railY > 0.08) seg([top[0], railY, top[2]], top)
+      }
+      // the arch springs off a small pedestal on each side
+      for (const sd of [-1, 1]) {
+        const [px, pz] = at(u0 + sd * hw, av)
+        emitBox(px, y, pz, 0.1, 0.16, 0.1, RAMP.mark)
+      }
+    }
+
+    for (const tv of [RIVER_V - RIVER_HALF * 0.72, RIVER_V + RIVER_HALF * 0.72]) {
+      const [px, pz] = at(u0, tv)
+      emitBox(px, -0.05, pz, 0.34, y - drop + 0.05, 0.34, RAMP.stone)
     }
   }
 
@@ -992,6 +1015,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   figLines.frustumCulled = false
   world.add(figMesh, figLines)
 
+  const FIG_NAME = ['사람 · Figure, idling', '사람 · Figure, walking', '사람 · Figure, sending']
   FIGS.forEach((f, n) => {
     f.slot = n * FIG_BOXES
     f.phase = n * 1.31
@@ -999,7 +1023,9 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     f.bob = 0
     f.tap = 0
     f.sendAt = PHONE_EVERY * 0.45 + n
+    note(FIG_NAME[f.kind], f.u, f.v, 0.75)
   })
+  for (const f of FIGS) if (f.kind === 2) note('말풍선 · Message bubble', f.u, f.v, 1.9)
 
   const writeBox = (pos, edge, slot, x, y, z, w, h, d) => {
     let o = slot * BOXV * 3
@@ -1459,5 +1485,16 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     paintAll()
   }
 
-  return { render, resize, retint, world, camera, catalog }
+  // The harness needs to be able to make a message happen on demand: bubbles are
+  // pooled and in flight, so unlike a building there is nothing at a fixed spot to
+  // look at. Nothing in the scene calls this.
+  const poke = () => {
+    const f = FIGS.find((q) => q.kind === 2 && visible(q.u, q.v)) ?? FIGS[0]
+    from.u = f.u
+    from.v = f.v
+    from.y = 0.5
+    return !!launch(from, false)
+  }
+
+  return { render, resize, retint, world, camera, catalog, poke }
 }
