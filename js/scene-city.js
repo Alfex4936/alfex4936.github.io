@@ -1,7 +1,9 @@
-// Page backdrop: an isometric city behind the whole page. Messages leave rooftops as
-// speech bubbles, arc over the streets and drop into a datastore, where one disc lights
-// and settles. Figures stand at street level; one taps a phone and sends. Scrolling
-// flies the view along the city.
+// Page backdrop: an isometric Seoul behind the whole page. The mask holds the scene at
+// full ink in the two gutters the transcript leaves and drops it to 14% behind the
+// column, so everything built to be looked at — the landmarks, the figures, the
+// messages — lives out in those gutters and the middle of the frame is left as ground.
+// Messages leave a rooftop, arc over their own gutter and drop into a datastore, where
+// one disc lights and settles. Scrolling flies the view along the city.
 
 import { dpr } from './scene-core.js'
 
@@ -91,19 +93,31 @@ const PAN_PX = 170 // total screen travel from scroll top to bottom
 const PAN_TAU = 0.32 // so a flicked wheel arrives as a glide
 
 const CELL = 2.4 // one plot; a block fills a third to two thirds of it, rest is street
-const U_HALF = 29 // built half-width in u: covers a 2670px frame at SCALE
-const V_BACK = 32 // 850px of city above centre
-const V_FWD = 40 // and enough below it to outlast the pan
+const U_HALF = 26 // built half-width in u: covers a 2390px frame at SCALE
+const V_BACK = 26 // 690px of city above centre
+const V_FWD = 30 // and enough below it to outlast the pan
 
 const AVE_I = 5 // every fifth plot one way and every seventh the other is an avenue
 const AVE_J = 7
-const GAP = 0.22 // and a fifth of what is left is a yard
-const LOW = 0.52 // over half of the rest never leaves the low-rise carpet
+const LOW = 0.62 // most of what is left never leaves the low-rise carpet
+
+// The mask runs the scene at 14% inside 392px of the frame centre and back to full ink
+// by 448px. That boundary is INK_U out in u, and nothing meant to be looked at is
+// built inside it; GUTTER_U adds the room a bubble needs for its own width.
+const INK_U = 448 / SCALE
+const GUTTER_U = INK_U + 0.85
+const GUT_KEEP = 0.46 // of the plots the avenues leave, out where the ink is full
+const MID_KEEP = 0.18 // and a sparse ankle-high floor behind the column
+const MID_H = 0.2
 
 const FACE = { px: 0, nx: 4, py: 8, ny: 12, pz: 16, nz: 20 }
 // Faces are cut from the page, not lit: the darkest side sits a hair above --bg-2.
+// Slots run [top, +x, +z, away] for every primitive, boxes, drums and roofs alike.
 const RAMP = {
   city: { top: 0.105, pz: 0.058, px: 0.024, dark: 0.008 },
+  mark: { top: 0.128, pz: 0.073, px: 0.032, dark: 0.009 }, // a landmark's own walls
+  stone: { top: 0.082, pz: 0.048, px: 0.021, dark: 0.008 }, // platforms and gate bases
+  roof: { top: 0.17, pz: 0.152, px: 0.086, dark: 0.016 }, // tile, and nothing else
   store: { top: 0.135, pz: 0.075, px: 0.032, dark: 0.01 },
   fig: { top: 0.2, pz: 0.14, px: 0.085, dark: 0.045 },
 }
@@ -119,12 +133,20 @@ const DISC_Y = (k) => k * (DISC_H + DISC_GAP)
 const STACK_TOP = DISCS * DISC_H + (DISCS - 1) * DISC_GAP
 const DISC_SCALE = (k) => (k === 0 ? 1.15 : 1 - k * 0.04) // a wider base, a slight taper
 
+// A tiled roof is the one shape here that cannot be a prism: the eave ring lofts up to
+// a short ridge, the section is shallow at the eave and steep at the ridge, and the
+// four corners sweep up and out. That sweep is the whole recognition.
+const ROOF_R = 3 // rings from eave to ridge
+const ROOF_FLARE = 0.17 // how far the corners push out in plan
+const ROOF_TURN = 0.36 // and how far they lift, as a share of the ridge height
+const ROOF_RIDGE = 0.44 // ridge length as a share of the roof's own length
+
 const BW = 0.27 // the bubble, in screen units: 25px across, 17 tall
 const BH = 0.19
 const BR = 0.085
-const MAXB = 6 // a handful in flight, never a stream
-const SEND_MIN = 0.85
-const SEND_VAR = 0.85
+const MAXB = 5 // a handful in flight, never a stream
+const SEND_MIN = 0.95
+const SEND_VAR = 0.9
 const PHONE_EVERY = 8.5 // the tapper sends on his own clock
 
 const FIG_BODY = [0.15, 0.36, 0.15]
@@ -132,22 +154,20 @@ const FIG_HEAD = [0.13, 0.15, 0.13]
 const FIG_NECK = 0.045 // the head clears the shoulders, or the pair reads as one post
 const FIG_HAND = [0.08, 0.07, 0.08]
 const FIG_BOXES = 3
+const WALK = 1.15 // half the walker's beat, in world x; keeps him inside his gutter
 
-// Spread in u so the gutters have something at any width and a phone still has a
-// neighbour at 390px, and in v so three of the four are on screen at any scroll.
+// One datastore per gutter, and three figures each, all of them clear of INK_U.
 const STORES = [
-  { u: -11.5, v: -13.5 },
-  { u: 2.6, v: -1.5 },
-  { u: -3.8, v: 11 },
-  { u: 12.5, v: 21.5 },
+  { u: -11.5, v: -12 },
+  { u: 11.5, v: 15 },
 ]
 const FIGS = [
-  { u: -9, v: -11.6, kind: 1 },
-  { u: -12.8, v: -15.4, kind: 0 },
-  { u: 3.4, v: -3.8, kind: 2 }, // taps a phone beside the second store
-  { u: -5.8, v: 9.2, kind: 0 },
-  { u: 11, v: 19.2, kind: 1 },
-  { u: 0.4, v: 3.6, kind: 0 },
+  { u: -11.7, v: -10, kind: 2 }, // taps a phone up the street from the left-hand store
+  { u: -13.5, v: 1.7, kind: 1 },
+  { u: -11.5, v: 11, kind: 0 },
+  { u: 13.5, v: -3.5, kind: 0 },
+  { u: 11.9, v: 6.8, kind: 1 },
+  { u: 11.5, v: 18.5, kind: 0 },
 ]
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v))
@@ -161,7 +181,7 @@ const rnd = (i, j, k) => {
   return (h >>> 0) / 4294967296
 }
 
-// Low-frequency, so the tall blocks arrive in districts rather than as noise.
+// Low-frequency, so the taller blocks arrive in districts rather than as noise.
 const district = (u, v) =>
   0.5 + 0.28 * Math.sin(u * 0.19 + v * 0.07) + 0.22 * Math.sin(v * 0.23 - u * 0.05 + 2.1)
 
@@ -228,8 +248,19 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   })()
   const CYLV = cylT.pos.length / 3
   const CYLE = cylT.edge.length / 3
-  // A disc gets the same three-face treatment as a box: the split runs down the corner
-  // nearest the camera, and the half facing away is never drawn.
+
+  // Which of the four ramp slots each template vertex takes. A drum gets the same
+  // three-face treatment as a box: the split runs down the corner nearest the camera,
+  // and the half facing away is never drawn.
+  const boxFace = (() => {
+    const f = new Uint8Array(BOXV).fill(3)
+    for (let i = 0; i < 4; i++) {
+      f[FACE.py + i] = 0
+      f[FACE.px + i] = 1
+      f[FACE.pz + i] = 2
+    }
+    return f
+  })()
   const cylFace = (() => {
     const f = new Uint8Array(CYLV)
     for (let i = 0; i < CYLV; i++) {
@@ -242,6 +273,17 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   })()
 
   // ---- painting ----------------------------------------------------------
+  const tone = new Float32Array(12)
+  const tones = (r, lit = 0) => {
+    const steps = [r.top + lit * LIT_INK, r.px + lit * LIT_INK * 0.4, r.pz, r.dark]
+    for (let f = 0; f < 4; f++) {
+      ink(steps[f], _c1)
+      tone[f * 3] = _c1.r
+      tone[f * 3 + 1] = _c1.g
+      tone[f * 3 + 2] = _c1.b
+    }
+  }
+
   const boxRamp = (r) => {
     const out = new Float32Array(BOXV * 3)
     const face = (start, t) => {
@@ -267,36 +309,246 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   }
 
   // ---- the city ----------------------------------------------------------
-  // Room for every plot twice over, filled once and then trimmed: growing three plain
-  // arrays past a hundred thousand entries is most of the mount cost.
-  const IMAX = Math.ceil(((U_HALF + V_FWD) * ISQ2) / CELL) + 1
-  const CAP = (2 * IMAX + 1) ** 2 * 2
-  const cityPos = new Float32Array(CAP * BOXV * 3)
-  const cityEdge = new Float32Array(CAP * BOXE * 3)
-  const cityIdx = new Uint32Array(CAP * boxT.idx.length)
-  let boxes = 0
+  // Boxes, drums and roof surfaces all land in these arrays and leave as one mesh and
+  // one line pass. A quarter of the buildings that used to be here, so the build is a
+  // few thousand pushes and the typed-array preallocation it needed is gone.
+  const cPos = []
+  const cIdx = []
+  const cEdge = []
+  const parts = [] // { v0, n, ramp, face } — what a theme change walks
 
-  const emit = (x, y, z, w, h, d) => {
-    const base = boxes * BOXV
-    let o = boxes * BOXV * 3
-    for (let i = 0; i < BOXV * 3; i += 3) {
-      cityPos[o + i] = boxT.pos[i] * w + x
-      cityPos[o + i + 1] = boxT.pos[i + 1] * h + y
-      cityPos[o + i + 2] = boxT.pos[i + 2] * d + z
-    }
-    o = boxes * BOXE * 3
-    for (let i = 0; i < BOXE * 3; i += 3) {
-      cityEdge[o + i] = boxT.edge[i] * w + x
-      cityEdge[o + i + 1] = boxT.edge[i + 1] * h + y
-      cityEdge[o + i + 2] = boxT.edge[i + 2] * d + z
-    }
-    o = boxes * boxT.idx.length
-    for (let i = 0; i < boxT.idx.length; i++) cityIdx[o + i] = boxT.idx[i] + base
-    boxes++
+  const emitBox = (x, y, z, w, h, d, ramp = RAMP.city) => {
+    const v0 = cPos.length / 3
+    for (let i = 0; i < BOXV * 3; i += 3)
+      cPos.push(boxT.pos[i] * w + x, boxT.pos[i + 1] * h + y, boxT.pos[i + 2] * d + z)
+    for (let i = 0; i < boxT.idx.length; i++) cIdx.push(boxT.idx[i] + v0)
+    for (let i = 0; i < BOXE * 3; i += 3)
+      cEdge.push(boxT.edge[i] * w + x, boxT.edge[i + 1] * h + y, boxT.edge[i + 2] * d + z)
+    parts.push({ v0, n: BOXV, ramp, face: boxFace })
   }
 
-  const cleared = new Set()
+  const emitCyl = (x, y, z, r, h, ramp) => {
+    const v0 = cPos.length / 3
+    for (let i = 0; i < CYLV * 3; i += 3)
+      cPos.push(cylT.pos[i] * r + x, cylT.pos[i + 1] * h + y, cylT.pos[i + 2] * r + z)
+    for (let i = 0; i < cylT.idx.length; i++) cIdx.push(cylT.idx[i] + v0)
+    for (let i = 0; i < CYLE * 3; i += 3)
+      cEdge.push(cylT.edge[i] * r + x, cylT.edge[i + 1] * h + y, cylT.edge[i + 2] * r + z)
+    parts.push({ v0, n: CYLV, ramp, face: cylFace })
+  }
+
+  const line = (a, b, c, d, e, f) => cEdge.push(a, b, c, d, e, f)
+
+  // hx, hz are the eave half-extents before the corners flare; rise is ridge over eave.
+  // n perimeter samples, a multiple of four so the corners land on samples.
+  const emitRoof = (cx, y, cz, hx, hz, rise, n, ribs) => {
+    const seg = n / 4
+    const rx = hx * ROOF_RIDGE
+    const ring = new Float64Array((ROOF_R + 1) * n * 3)
+    const slope = new Uint8Array(n)
+    for (let e = 0; e < 4; e++) {
+      for (let s = 0; s < seg; s++) {
+        const t = s / seg
+        const ex = e === 1 ? hx : e === 3 ? -hx : e === 0 ? -hx + 2 * hx * t : hx - 2 * hx * t
+        const ez = e === 0 ? -hz : e === 2 ? hz : e === 1 ? -hz + 2 * hz * t : hz - 2 * hz * t
+        const k = Math.min(Math.abs(ex) / hx, Math.abs(ez) / hz)
+        const out = 1 + ROOF_FLARE * k ** 3
+        const fx = ex * out
+        const fz = ez * out
+        const ey = rise * ROOF_TURN * k ** 2.4 // the corner turns up
+        const tx = Math.max(-rx, Math.min(rx, fx)) // and folds back onto the ridge
+        const i = e * seg + s
+        slope[i] = e === 2 ? 2 : e === 1 ? 1 : 3
+        for (let r = 0; r <= ROOF_R; r++) {
+          const p = r / ROOF_R
+          const o = (r * n + i) * 3
+          ring[o] = cx + fx + (tx - fx) * p
+          ring[o + 1] = y + ey + (rise - ey) * p ** 1.5 // shallow at the eave, steep at the ridge
+          ring[o + 2] = cz + fz * (1 - p)
+        }
+      }
+    }
+
+    // Non-indexed quads: a fold between two slopes has to stay a fold, and a shared
+    // corner vertex would smear one ramp step into the next.
+    const v0 = cPos.length / 3
+    const face = new Uint8Array(n * ROOF_R * 4)
+    let fi = 0
+    for (let r = 0; r < ROOF_R; r++) {
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n
+        const q = [(r * n + i) * 3, (r * n + j) * 3, ((r + 1) * n + j) * 3, ((r + 1) * n + i) * 3]
+        const b = cPos.length / 3
+        for (const o of q) cPos.push(ring[o], ring[o + 1], ring[o + 2])
+        cIdx.push(b, b + 2, b + 1, b, b + 3, b + 2)
+        face[fi++] = slope[i]
+        face[fi++] = slope[i]
+        face[fi++] = slope[i]
+        face[fi++] = slope[i]
+      }
+    }
+    parts.push({ v0, n: n * ROOF_R * 4, ramp: RAMP.roof, face })
+
+    for (let i = 0; i < n; i++) {
+      const a = i * 3
+      const b = ((i + 1) % n) * 3
+      line(ring[a], ring[a + 1], ring[a + 2], ring[b], ring[b + 1], ring[b + 2])
+    }
+    const up = (i) => {
+      for (let r = 0; r < ROOF_R; r++) {
+        const a = (r * n + i) * 3
+        const b = ((r + 1) * n + i) * 3
+        line(ring[a], ring[a + 1], ring[a + 2], ring[b], ring[b + 1], ring[b + 2])
+      }
+    }
+    for (let e = 0; e < 4; e++) up(e * seg) // the four hips
+    if (ribs) for (const e of [1, 2]) for (let s = 1; s < seg; s++) up(e * seg + s)
+    emitBox(cx, y + rise, cz, 2 * rx + 0.16, 0.085 + 0.09 * rise, 0.17, RAMP.stone) // 용마루
+  }
+
+  // ---- landmarks ---------------------------------------------------------
+  // Each is placed by the (u, v) it should read at and built in world x/z around that
+  // point, so a gutter position stays a gutter position. `keep` is the plan half-extent
+  // the carpet has to leave alone.
+  const roofs = []
+  const keepOut = []
+  const at = (u, v) => [(u + v) * ISQ2, (v - u) * ISQ2]
+
+  // A wooded hill, a banded shaft out of it, the observation drum, a mast.
+  const namsan = (u, v) => {
+    const [x, z] = at(u, v)
+    emitBox(x, 0, z, 3.4, 0.44, 2.9, RAMP.stone)
+    emitBox(x + 0.12, 0.44, z - 0.06, 2.5, 0.4, 2.1, RAMP.stone)
+    emitBox(x + 0.18, 0.84, z - 0.1, 1.6, 0.38, 1.35, RAMP.stone)
+    const trees = [
+      [-1.3, -0.95, 0.52],
+      [1.25, 0.95, 0.44],
+      [-0.25, 1.3, 0.48],
+      [1.4, -1.05, 0.38],
+      [-1.5, 0.6, 0.35],
+    ]
+    for (const [dx, dz, th] of trees) emitBox(x + dx, 0.4, z + dz, 0.46, th, 0.46, RAMP.mark)
+    emitBox(x + 0.18, 1.22, z - 0.1, 1.0, 0.3, 0.85, RAMP.mark)
+    emitBox(x + 0.18, 1.52, z - 0.1, 0.44, 0.55, 0.44, RAMP.mark)
+    emitBox(x + 0.18, 2.07, z - 0.1, 0.36, 0.5, 0.36, RAMP.mark)
+    emitBox(x + 0.18, 2.57, z - 0.1, 0.3, 0.44, 0.3, RAMP.mark)
+    emitCyl(x + 0.18, 3.01, z - 0.1, 0.56, 0.34, RAMP.store)
+    emitCyl(x + 0.18, 3.35, z - 0.1, 0.44, 0.22, RAMP.store)
+    emitBox(x + 0.18, 3.57, z - 0.1, 0.1, 0.78, 0.1, RAMP.mark)
+    roofs.push({ u, v, y: 3.57 })
+    keepOut.push([x, z, 1.9, 1.65])
+  }
+
+  // Ten courses that narrow and lean, then a crown with a notch cut out of it.
+  const lotte = (u, v) => {
+    const [x, z] = at(u, v)
+    emitBox(x, 0, z, 1.9, 0.3, 1.7, RAMP.stone)
+    const N = 10
+    const CH = 0.4
+    let y = 0.3
+    let b = 0
+    for (let k = 0; k < N; k++) {
+      const t = k / (N - 1)
+      const w = 1.4 - 0.88 * t
+      b = 0.26 * t * t
+      emitBox(x + b, y, z + b * 0.6, w, CH, w * 0.86, RAMP.mark)
+      y += CH
+    }
+    emitBox(x + b - 0.15, y, z + b * 0.6, 0.19, 0.48, 0.4, RAMP.mark)
+    emitBox(x + b + 0.15, y, z + b * 0.6, 0.19, 0.48, 0.4, RAMP.mark)
+    roofs.push({ u, v, y: y + 0.48 })
+    keepOut.push([x, z, 1.15, 1.05])
+  }
+
+  // 근정전: stone platform, a colonnade standing off a recessed wall, two tiers of tile.
+  const geunjeongjeon = (u, v) => {
+    const [x, z] = at(u, v)
+    emitBox(x, 0, z, 3.3, 0.24, 2.8, RAMP.stone)
+    emitBox(x, 0.24, z, 2.7, 0.22, 2.25, RAMP.stone)
+    const fy = 0.46
+    emitBox(x, fy, z, 1.9, 0.58, 1.55, RAMP.mark)
+    for (let k = -2; k <= 2; k++) emitBox(x + k * 0.56, fy, z + 0.88, 0.14, 0.66, 0.14, RAMP.mark)
+    for (let k = -1; k <= 1; k++) emitBox(x + 1.12, fy, z + k * 0.56, 0.14, 0.66, 0.14, RAMP.mark)
+    emitRoof(x, fy + 0.66, z, 1.55, 1.24, 0.62, 32, true)
+    const uy = fy + 0.66 + 0.58
+    emitBox(x, uy, z, 1.35, 0.42, 1.1, RAMP.mark)
+    emitRoof(x, uy + 0.42, z, 1.18, 0.95, 0.56, 32, true)
+    roofs.push({ u, v, y: uy + 0.42 + 0.56 })
+    keepOut.push([x, z, 2.0, 1.7])
+  }
+
+  // 숭례문: two piers with a corbelled arch between them, then the two-tier gatehouse.
+  const sungnyemun = (u, v) => {
+    const [x, z] = at(u, v)
+    const bw = 2.5
+    const bd = 1.8
+    const bh = 0.92
+    const pier = 0.78
+    const half = bw / 2 - pier / 2
+    emitBox(x - half, 0, z, pier, bh, bd, RAMP.stone)
+    emitBox(x + half, 0, z, pier, bh, bd, RAMP.stone)
+    const lip = bw / 2 - pier
+    for (let s = 1; s <= 3; s++) {
+      const inset = 0.17 * s
+      const ys = 0.48 + (s - 1) * 0.1
+      emitBox(x - lip + inset / 2, ys, z, inset, 0.1, bd, RAMP.stone)
+      emitBox(x + lip - inset / 2, ys, z, inset, 0.1, bd, RAMP.stone)
+    }
+    emitBox(x, 0.78, z, bw, bh - 0.78, bd, RAMP.stone)
+    emitBox(x, bh, z, bw + 0.22, 0.16, bd + 0.18, RAMP.stone) // 여장
+    emitBox(x, bh + 0.16, z, 1.7, 0.42, 1.15, RAMP.mark)
+    emitRoof(x, bh + 0.58, z, 1.42, 0.98, 0.5, 32, true)
+    const uy = bh + 0.58 + 0.46
+    emitBox(x, uy, z, 1.2, 0.32, 0.82, RAMP.mark)
+    emitRoof(x, uy + 0.32, z, 1.16, 0.8, 0.44, 32, true)
+    roofs.push({ u, v, y: uy + 0.32 + 0.44 })
+    keepOut.push([x, z, 1.75, 1.3])
+  }
+
+  // A slab with the top edge cut on the diagonal, stepped fine enough to read as one.
+  const bldg63 = (u, v) => {
+    const [x, z] = at(u, v)
+    emitBox(x, 0, z, 2.0, 0.26, 1.3, RAMP.stone)
+    emitBox(x, 0.26, z, 1.5, 2.85, 0.9, RAMP.mark)
+    let y = 3.11
+    for (let k = 1; k <= 8; k++) {
+      const w = 1.5 * (1 - k / 9)
+      emitBox(x - (1.5 - w) / 2, y, z, w, 0.1, 0.9, RAMP.mark)
+      y += 0.1
+    }
+    roofs.push({ u, v, y: 3.11 })
+    keepOut.push([x, z, 1.2, 0.85])
+  }
+
+  // 한옥: four small tiled roofs around a yard. Texture near the ground, not a focus.
+  const hanok = (u, v) => {
+    const [x, z] = at(u, v)
+    const house = (dx, dz, w, d) => {
+      emitBox(x + dx, 0, z + dz, w * 0.78, 0.36, d * 0.78, RAMP.mark)
+      emitRoof(x + dx, 0.36, z + dz, w * 0.6, d * 0.6, 0.28, 16, false)
+      roofs.push({ u: u + (dx - dz) * ISQ2, v: v + (dx + dz) * ISQ2, y: 0.64 })
+    }
+    house(-0.72, -0.6, 1.4, 0.9)
+    house(0.78, -0.5, 1.1, 0.85)
+    house(-0.55, 0.82, 1.0, 0.95)
+    house(0.85, 0.9, 0.9, 1.05)
+    keepOut.push([x, z, 1.7, 1.7])
+  }
+
+  // Three set pieces a gutter and a datastore, staggered against the other side so no
+  // two big shapes sit at the same height, and spaced so the scroll retires one and
+  // brings in the next. The masked band is about 25 units of v tall, which is what
+  // caps this at four objects a side.
+  namsan(-12.7, -3.5)
+  geunjeongjeon(-12.6, 6.5)
+  hanok(-13, 15.5)
+  lotte(12.2, -8)
+  sungnyemun(12.7, 2)
+  bldg63(13.5, 11.5)
+
+  // ---- the carpet --------------------------------------------------------
   const cellKey = (i, j) => i * 1000 + j
+  const cleared = new Set()
   const snap = (a) => {
     const i = Math.round(((a.u + a.v) * ISQ2) / CELL)
     const j = Math.round(((a.v - a.u) * ISQ2) / CELL)
@@ -315,7 +567,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     for (let di = -1; di <= 1; di++) cleared.add(cellKey(f.i + di, f.j)) // room to pace
   }
 
-  const roofs = []
+  const IMAX = Math.ceil(((U_HALF + V_FWD) * ISQ2) / CELL) + 1
   for (let i = -IMAX; i <= IMAX; i++) {
     for (let j = -IMAX; j <= IMAX; j++) {
       if (i % AVE_I === 0 || j % AVE_J === 0) continue
@@ -325,48 +577,63 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
       const u = (x - z) * ISQ2
       const v = (x + z) * ISQ2
       if (Math.abs(u) > U_HALF || v < -V_BACK || v > V_FWD) continue
-      if (rnd(i, j, 0) < GAP) continue
+      let blocked = false
+      for (const [kx, kz, ka, kb] of keepOut)
+        if (Math.abs(x - kx) < ka + CELL * 0.4 && Math.abs(z - kz) < kb + CELL * 0.4) {
+          blocked = true
+          break
+        }
+      if (blocked) continue
 
-      const d = clamp01(district(u, v))
+      const gut = Math.abs(u) > INK_U
+      if (rnd(i, j, 0) > (gut ? GUT_KEEP : MID_KEEP)) continue
       const r1 = rnd(i, j, 1)
       const r2 = rnd(i, j, 2)
       const r3 = rnd(i, j, 3)
-      const r4 = rnd(i, j, 4)
-      // A low-rise carpet with towers standing out of it, rather than one mean height.
-      let h = 0.3 + (0.25 + 2.2 * d ** 2) * (0.5 + 0.85 * r1)
-      if (rnd(i, j, 5) < LOW) h = Math.min(h, 0.5 + 0.7 * r1)
-      h = Math.min(3.7, h)
-      const w = CELL * (0.34 + 0.26 * r2)
-      const dp = CELL * (0.34 + 0.26 * r3)
-      emit(x, 0, z, w, h, dp)
-      let top = h
-      if (r4 > 0.7 && h > 1.3) {
-        const h2 = h * (0.14 + 0.26 * r4)
-        emit(x + (r2 - 0.5) * w * 0.18, h, z + (r3 - 0.5) * dp * 0.18, w * 0.58, h2, dp * 0.58)
-        top = h + h2
+      let h = MID_H + 0.22 * r1 // behind the column it is a floor, not a skyline
+      if (gut) {
+        const d = clamp01(district(u, v))
+        h = 0.34 + (0.25 + 1.5 * d * d) * (0.4 + 0.9 * r1)
+        if (rnd(i, j, 5) < LOW) h = Math.min(h, 0.5 + 0.45 * r1)
+        h = Math.min(1.9, h) // less than half a landmark: the set pieces stay the skyline
       }
-      if (top > 0.95) roofs.push({ u, v, y: top })
+      emitBox(x, 0, z, CELL * (0.36 + 0.26 * r2), h, CELL * (0.36 + 0.26 * r3))
+      if (h > 0.95 && Math.abs(u) > GUTTER_U) roofs.push({ u, v, y: h })
     }
   }
 
   const cityGeo = new THREE.BufferGeometry()
-  cityGeo.setAttribute(
-    'position',
-    new THREE.BufferAttribute(cityPos.subarray(0, boxes * BOXV * 3), 3),
-  )
-  cityGeo.setIndex(new THREE.BufferAttribute(cityIdx.subarray(0, boxes * boxT.idx.length), 1))
-  const cityCol = new THREE.Float32BufferAttribute(new Float32Array(boxes * BOXV * 3), 3)
+  const CITYV = cPos.length / 3
+  cityGeo.setAttribute('position', new THREE.Float32BufferAttribute(cPos, 3))
+  cityGeo.setIndex(new THREE.BufferAttribute(Uint32Array.from(cIdx), 1))
+  const cityCol = new THREE.Float32BufferAttribute(new Float32Array(CITYV * 3), 3)
   cityGeo.setAttribute('color', cityCol)
   const cityEdgeGeo = new THREE.BufferGeometry()
-  cityEdgeGeo.setAttribute(
-    'position',
-    new THREE.BufferAttribute(cityEdge.subarray(0, boxes * BOXE * 3), 3),
-  )
+  cityEdgeGeo.setAttribute('position', new THREE.Float32BufferAttribute(cEdge, 3))
   const cityEdgeMat = new THREE.LineBasicMaterial()
   world.add(
     new THREE.Mesh(cityGeo, new THREE.MeshBasicMaterial({ vertexColors: true })),
     new THREE.LineSegments(cityEdgeGeo, cityEdgeMat),
   )
+
+  const paintCity = () => {
+    const a = cityCol.array
+    let ramp = null
+    for (const p of parts) {
+      if (p.ramp !== ramp) {
+        ramp = p.ramp
+        tones(ramp)
+      }
+      for (let i = 0; i < p.n; i++) {
+        const f = p.face[i] * 3
+        const o = (p.v0 + i) * 3
+        a[o] = tone[f]
+        a[o + 1] = tone[f + 1]
+        a[o + 2] = tone[f + 2]
+      }
+    }
+    cityCol.needsUpdate = true
+  }
 
   // ---- the datastores ----------------------------------------------------
   // One buffer for every disc in the city: a landing rewrites one disc's slice, so the
@@ -427,17 +694,9 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     }
   }
 
-  const tone = new Float32Array(12)
   const paintDisc = (s, k) => {
     const d = s.discs[k]
-    const r = RAMP.store
-    const steps = [r.top + d.lit * LIT_INK, r.px + d.lit * LIT_INK * 0.4, r.pz, r.dark]
-    for (let f = 0; f < 4; f++) {
-      ink(steps[f], _c1)
-      tone[f * 3] = _c1.r
-      tone[f * 3 + 1] = _c1.g
-      tone[f * 3 + 2] = _c1.b
-    }
+    tones(RAMP.store, d.lit)
     const a = discCol.array
     let o = (s.base + k) * CYLV * 3
     for (let i = 0; i < CYLV; i++) {
@@ -520,7 +779,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
 
   const stepFig = (f, t) => {
     if (f.kind === 1) {
-      f.dx = Math.sin(t * 0.26 + f.phase) * 1.35
+      f.dx = Math.sin(t * 0.26 + f.phase) * WALK
       f.bob = Math.abs(Math.sin(t * 1.5 + f.phase)) * 0.022
     } else if (f.kind === 2) {
       f.bob = Math.sin(t * 0.9 + f.phase) * 0.012
@@ -668,26 +927,29 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
 
   const visible = (u, v) => Math.abs(u) < uVis + 1.5 && Math.abs(v - panV) < vVis + 2
 
-  const pick = (list) => {
+  const pick = (list, side) => {
     let n = 0
     let hit = null
     for (const c of list) {
-      if (!visible(c.u, c.v)) continue
+      if (Math.sign(c.u) !== side || !visible(c.u, c.v)) continue
       n++
       if (Math.random() * n < 1) hit = c // reservoir: one pass, no array built
     }
     return hit
   }
 
-  // Most messages go to a store, because that is the beat worth reading; the rest go
-  // roof to roof so the city is not four pilgrimages.
+  // Both ends of an arc are on the same side of the frame, and u is interpolated, so a
+  // message never crosses the column it is meant to stay out of. Most go to a store,
+  // because that is the beat worth reading; the rest go roof to roof.
   const launch = (src, near) => {
     const p = pool.pop()
     if (!p) return null
+    const side = Math.sign(src.u) || 1
     let got = false
     if (Math.random() < 0.72) {
       let best = Infinity
       for (const s of STORES) {
+        if (Math.sign(s.u) !== side) continue
         if (near && !visible(s.u, s.v)) continue
         const d = Math.hypot(s.u - src.u, s.v - src.v)
         if (d < best && d > 1.5) {
@@ -701,7 +963,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
       }
     }
     if (!got) {
-      const r = pick(roofs)
+      const r = pick(roofs, side)
       if (!r || Math.hypot(r.u - src.u, r.v - src.v) < 2) {
         pool.push(p)
         return null
@@ -740,7 +1002,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     sendAt -= dt
     if (sendAt <= 0) {
       sendAt = SEND_MIN + Math.random() * SEND_VAR
-      const r = pick(roofs)
+      const r = pick(roofs, Math.random() < 0.5 ? -1 : 1)
       if (r) launch(r, true)
     }
     for (let i = live.length - 1; i >= 0; i--) {
@@ -783,7 +1045,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
 
   // ---- paint -------------------------------------------------------------
   const paintAll = () => {
-    spread(cityCol, boxRamp(RAMP.city), boxes)
+    paintCity()
     spread(figCol, boxRamp(RAMP.fig), NFB)
     put(cityEdgeMat.color, P.edge)
     put(figEdgeMat.color, P.fig)
@@ -869,10 +1131,11 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     let held = 0
     for (const s of STORES) {
       if (held >= 2 || !visible(s.u, s.v)) continue
+      const side = Math.sign(s.u)
       let best = null
       let bd = Infinity
       for (const r of roofs) {
-        if (!visible(r.u, r.v)) continue
+        if (Math.sign(r.u) !== side || !visible(r.u, r.v)) continue
         const d = Math.hypot(r.u - s.u, r.v - s.v)
         if (d > 4 && d < bd) {
           bd = d

@@ -968,7 +968,7 @@ button {
 }
 
 /* One city across the full width, not two strips: rather than cutting a hole
-   for the transcript the mask only drops its ink to 14% behind the column, so
+   for the transcript the mask only drops its ink to 8% behind the column, so
    it still reads as a single place. The vertical pair keeps it off the sticky
    bar and the composer. */
 .scene--city canvas {
@@ -983,8 +983,8 @@ button {
       to right,
       #000 0,
       #000 calc(50% - 448px),
-      rgba(0, 0, 0, 0.14) calc(50% - 392px),
-      rgba(0, 0, 0, 0.14) calc(50% + 392px),
+      rgba(0, 0, 0, 0.08) calc(50% - 392px),
+      rgba(0, 0, 0, 0.08) calc(50% + 392px),
       #000 calc(50% + 448px)
     );
   mask-composite: intersect;
