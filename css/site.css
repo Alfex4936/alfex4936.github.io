@@ -963,7 +963,6 @@ button {
 /* Fixed, so the traffic runs the whole way down rather than only behind the
    hero. The transcript's own z-index puts it in front. */
 .scene--traffic {
-  --scene-clear: 404px; /* read by scene-traffic.js so the lanes match the mask */
   position: fixed;
   inset: 0;
 }

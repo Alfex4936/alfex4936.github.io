@@ -84,15 +84,17 @@ const PLATE_V = 4.6
 const JOINT = 0.38
 const PLATES = 46 // 229 v units of rail: more than the tallest viewport plus the pan
 
-const CUBE = 0.3
+// A packet is small against its rail on purpose: the rail is the structure and the
+// packets are only the movement. 18px of cube on a 34px rail.
+const CUBE = 0.24
 const NODE_W = 0.58
 const NODE_H = 0.42
 const NODE_HALF = NODE_W * ISQ2 // the node's own half-length along v
-const QGAP = 0.92 // queued cubes just clear of each other on screen
+const QGAP = 0.82 // queued cubes a few px clear of each other: bunched, still countable
 const HEAD_REL = -(NODE_HALF + QGAP * 0.5) // where the head of the queue waits
 const EXIT_REL = NODE_HALF + CUBE * ISQ2 + 0.04 // clear of the node's downstream face
-const SPD = 8 // v per second in free flight; SPD/QGAP is the conveyor's own ceiling
-const MAXP = 56 // packet slots per lane
+const SPD = 7 // v per second in free flight; SPD/QGAP is the conveyor's own ceiling
+const MAXP = 64 // packet slots per lane
 
 const FACE = { px: 0, nx: 4, py: 8, ny: 12, pz: 16, nz: 20 }
 // Faces are cut from the page, not lit: the darkest side sits a hair above --bg-2.
@@ -100,38 +102,37 @@ const FACE = { px: 0, nx: 4, py: 8, ny: 12, pz: 16, nz: 20 }
 const RAMP = {
   rail: { top: 0.075, pz: 0.05, px: 0.006, dark: 0.006 },
   node: { top: 0.17, pz: 0.08, px: 0.028, dark: 0.008 },
-  packet: { top: 0.44, pz: 0.27, px: 0.18, dark: 0.1 },
+  packet: { top: 0.3, pz: 0.19, px: 0.13, dark: 0.07 }, // its --dim edge carries it
 }
 const PULSE_INK = 0.12
 const PULSE_TAU = 0.34
 
 // Packets a second at baseline, cycled one per burst so no two cycles read the same.
-// Picked by eye for a gutter this narrow: 8-13 cubes in view, 70-110px apart.
-const RATES = [3.4, 2.6, 3, 2.2]
+// Picked by eye to read quietly behind prose: 4-6 cubes in view, 145-210px apart.
+const RATES = [1.45, 1, 1.25, 1.15]
 
 // Capacity is HEADROOM over the lane's baseline and never moves inside a cycle, so the
-// drain always wins: it takes (BURST_MULT - HEADROOM) * BURST_DUR / (HEADROOM - 1) =
-// 2.6s at any rate, and only the queue's depth scales with it. It cannot run away.
-const HEADROOM = 1.9
-const BURST_MULT = 2.8 // arrival during a burst, so the queue has to form
-const BURST_DUR = 2.6
+// drain always wins. Doubled capacity against a 3.4x arrival leaves 1.4x accumulating:
+// the queue peaks at 2.8 times the baseline rate in cubes, three or four of them, a
+// queue you can count rather than a column, and drains in 2.8s at any rate.
+const HEADROOM = 2
+const BURST_MULT = 3.4 // arrival during a burst, so the queue has to form
+const BURST_DUR = 2
 const BURST_MIN = 9
 const BURST_VAR = 6 // a burst every 9-15s
 const STAGGER = 3.5 // and never within this of the other lane's
 const CALM = 1 // the queue has to have been empty this long before the rate steps on
 const NODE_AT = [0.38, 0.6] // screen fraction each node parks at, unpanned
 
-const SCALE_MAX = 52 // px per world unit: the drawing does not zoom, it fits
-const SCALE_MIN = 30
+const SCALE = 52 // px per world unit: the drawing does not zoom, it fits
 const PAN_PX = 190 // total screen travel from scroll top to bottom
 const PAN_TAU = 0.32 // so a flicked wheel arrives as a glide
 
-// Half-width of the band the page masks out behind its transcript. Only the lanes' own
-// placement needs it — outside the gutters there is nothing to see — and the page sets
-// --scene-clear to match its own mask. This is the standalone fallback.
-const CLEAR_FALLBACK = 404
-const GAP_IN = 16 // px between the mask band and the lane's inner edge
-const EDGE_PAD = 8
+// The page's mask keeps a strip either side of its transcript and feathers away the
+// middle, so the visible strips are always the ones against the window edges. Each
+// lane is anchored to its own edge, which lands it in the strip at any width and means
+// the scene needs to know nothing about where that band sits.
+const EDGE_PAD = 24 // enough that a lane reads as placed at the margin, not clipped by it
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v))
 const approach = (cur, target, dt, tau) => cur + (target - cur) * (1 - Math.exp(-dt / tau))
@@ -146,7 +147,6 @@ export default function traffic({ THREE, canvas, width, height, tokens, still })
   const put = (out, c) => out.setRGB(c[0] / 255, c[1] / 255, c[2] / 255, SRGB)
   const ink = (t, out) => put(out, blend(P.bg2, P.fg, clamp01(Math.min(t, 0.95))))
 
-  const mount = canvas.parentNode
   canvas.style.display = 'block'
   canvas.style.width = '100%'
   canvas.style.height = '100%'
@@ -164,18 +164,10 @@ export default function traffic({ THREE, canvas, width, height, tokens, still })
 
   let W = Math.max(1, width)
   let H = Math.max(1, height)
-  let scale = SCALE_MAX
-  let fh = H / scale
-  let clear = CLEAR_FALLBACK
+  let fh = H / SCALE
   let panV = 0 // v units the camera has travelled down the lanes
   let panMax = 0
   let panTarget = 0
-
-  // inherited, so the page can set this on :root or on the mount itself
-  const readPx = (name, fallback) => {
-    const v = parseFloat(getComputedStyle(mount).getPropertyValue(name))
-    return Number.isFinite(v) ? v : fallback
-  }
 
   // ---- geometry ----------------------------------------------------------
   // One template, tiled: every packet in the scene is two draw calls, not two per
@@ -548,13 +540,8 @@ export default function traffic({ THREE, canvas, width, height, tokens, still })
   const resize = (w, h) => {
     W = Math.max(1, w)
     H = Math.max(1, h)
-    clear = readPx('--scene-clear', CLEAR_FALLBACK)
-
-    // the drawing holds its pixel size; a tight gutter is the only thing that shrinks it
-    const gutter = W / 2 - clear - EDGE_PAD
-    scale = Math.max(SCALE_MIN, Math.min(SCALE_MAX, (gutter - GAP_IN) / (2 * NODE_HALF)))
-    fh = H / scale
-    const fw = W / scale
+    fh = H / SCALE
+    const fw = W / SCALE
     camera.left = -fw / 2
     camera.right = fw / 2
     camera.top = fh / 2
@@ -563,11 +550,10 @@ export default function traffic({ THREE, canvas, width, height, tokens, still })
     renderer.setPixelRatio(dpr())
     renderer.setSize(W, H, false)
 
-    panMax = PAN_PX / (DOWN_V * scale)
+    panMax = PAN_PX / (DOWN_V * SCALE)
     const S = fh / (2 * DOWN_V) // half the viewport, in v
     for (const L of lanes) {
-      const uMax = (W / 2 - EDGE_PAD) / scale - NODE_HALF
-      L.u = L.side * Math.min((clear + GAP_IN) / scale + NODE_HALF, Math.max(0, uMax))
+      L.u = L.side * Math.max(0, (W / 2 - EDGE_PAD) / SCALE - NODE_HALF)
       L.nodeV = (fh * (L.at - 0.5)) / DOWN_V
       L.node.position.set((L.u + L.nodeV) * ISQ2, 0, (L.nodeV - L.u) * ISQ2)
       L.rail.position.set(L.u * ISQ2, 0, -L.u * ISQ2)
