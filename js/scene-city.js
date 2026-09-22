@@ -57,6 +57,7 @@ const FIG_MIN = 3.8 // 17px of figure has to survive on paper
 const FIG_FLOOR = 0.66
 const OK_MIN = 3.4 // the bubble rim, solved on --ok instead of on the ink ramp
 const OK_FLOOR = 0.4
+const WARM_MIN = 4.6 // a heart is an outline with no body behind it, unlike the bubble rim
 const BODY_T = 0.36 // and the body is that rim pulled back toward the page
 
 const palette = (tokens) => {
@@ -73,6 +74,7 @@ const palette = (tokens) => {
     fig: blend(rule, dim, solve(rule, dim, bg, FIG_MIN, FIG_FLOOR)),
     okRim: blend(bg, bytes(tokens.ok), rimT),
     okBody: blend(bg, bytes(tokens.ok), rimT * BODY_T),
+    warm: blend(bg, bytes(tokens.claude), solve(bg, bytes(tokens.claude), bg, WARM_MIN, OK_FLOOR)),
     rimT,
   }
 }
@@ -139,6 +141,24 @@ const RAMP = {
 const LIT_INK = 0.14 // how far a landed disc lifts its top face
 const LIT_TAU = 0.44
 const BREATHE = 0.055 // the stack is never quite still, so it reads as in use
+
+// What a delivery does to the thing it lands on. Every target owns a slice of `parts`,
+// and the kind decides how that slice lights: a settle, a beacon, a band running up.
+const FX_LIFE = 1.6 // after this the slice is painted back to rest and forgotten
+const FX_INK = 0.22 // a delivery is an event; it moves further than the stack's idle breath
+const BLIP_LIFE = 1.15
+const NFX = 8 // rings and hearts alive at once
+const FXSEG = 26 // segments in one closed loop
+const RING_LIFE = 1.15
+const RING_R0 = 0.16
+const RING_R1 = 0.95 // any wider and the ripple climbs out of the river onto the bank
+const HEART_LIFE = 1.7
+const FX = {
+  glow: (age) => Math.exp(-age / 0.6),
+  ripple: (age) => Math.exp(-age / 0.6),
+  blink: (age) => Math.max(0, Math.cos(age * 17)) * Math.max(0, 1 - age / 1.05),
+  climb: (age, i, n) => Math.exp(-(((i + 0.5) / n - age / 0.85) ** 2) * 90),
+}
 
 const DISCS = 5
 const DISC_R = 0.8
@@ -299,8 +319,11 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
 
   // ---- painting ----------------------------------------------------------
   const tone = new Float32Array(12)
-  const tones = (r, lit = 0) => {
-    const steps = [r.top + lit * LIT_INK, r.px + lit * LIT_INK * 0.4, r.pz, r.dark]
+  // A disc shows its top face and little else; a mast shows two narrow sides and no
+  // top at all, so a reaction that only lifts `top` is invisible on half the city.
+  const tones = (r, lit = 0, k = LIT_INK) => {
+    const s = lit * k
+    const steps = [r.top + s, r.px + s * 0.62, r.pz + s * 0.62, r.dark + s * 0.3]
     for (let f = 0; f < 4; f++) {
       ink(steps[f], _c1)
       tone[f * 3] = _c1.r
@@ -492,9 +515,10 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     emitCyl(cx, 3.3, cz, 0.43, 0.11, RAMP.store)
     emitCyl(cx, 3.41, cz, 0.24, 0.1, RAMP.mark)
     // And then the mast, which is the part that makes it Namsan from a long way off.
+    const mast = parts.length
     emitBox(cx, 3.51, cz, 0.11, 0.62, 0.11, RAMP.mark)
     emitBox(cx, 4.13, cz, 0.07, 0.52, 0.07, RAMP.mark)
-    roofs.push({ u, v, y: 3.41 })
+    roofs.push({ u, v, y: 3.41, kind: 'blink', a: mast, b: parts.length, ax: cx, ay: 4.7, az: cz })
     keepOut.push([x, z, 1.9, 1.65])
   }
 
@@ -509,6 +533,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     const CH = 0.165
     let y = 0.3
     let b = 0
+    const shaft = parts.length
     for (let k = 0; k < N; k++) {
       const t = k / (N - 1)
       const w = 1.12 - 0.72 * Math.pow(t, 0.86)
@@ -518,7 +543,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     }
     emitBox(x + b - 0.11, y, z + b * 0.6, 0.15, 0.62, 0.34, RAMP.mark)
     emitBox(x + b + 0.11, y, z + b * 0.6, 0.15, 0.62, 0.34, RAMP.mark)
-    roofs.push({ u, v, y: y + 0.62 })
+    roofs.push({ u, v, y: y + 0.62, kind: 'climb', a: shaft, b: parts.length })
     keepOut.push([x, z, 1.15, 1.05])
   }
 
@@ -531,11 +556,12 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     emitBox(x, fy, z, 1.9, 0.58, 1.55, RAMP.mark)
     for (let k = -2; k <= 2; k++) emitBox(x + k * 0.56, fy, z + 0.88, 0.14, 0.66, 0.14, RAMP.mark)
     for (let k = -1; k <= 1; k++) emitBox(x + 1.12, fy, z + k * 0.56, 0.14, 0.66, 0.14, RAMP.mark)
+    const tile = parts.length
     emitRoof(x, fy + 0.66, z, 1.55, 1.24, 0.62, 32, true)
     const uy = fy + 0.66 + 0.58
     emitBox(x, uy, z, 1.35, 0.42, 1.1, RAMP.mark)
     emitRoof(x, uy + 0.42, z, 1.18, 0.95, 0.56, 32, true)
-    roofs.push({ u, v, y: uy + 0.42 + 0.56 })
+    roofs.push({ u, v, y: uy + 0.42 + 0.56, kind: 'glow', a: tile, b: parts.length })
     keepOut.push([x, z, 2.0, 1.7])
   }
 
@@ -547,9 +573,11 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     const bh = 0.92
     const pier = 0.78
     const half = bw / 2 - pier / 2
+    const gate = parts.length
     emitBox(x - half, 0, z, pier, bh, bd, RAMP.stone)
     emitBox(x + half, 0, z, pier, bh, bd, RAMP.stone)
     emitBox(x, 0, z, bw - 2 * pier + 0.06, bh * 0.86, bd * 0.86, RAMP.gate) // the opening
+    const gateEnd = parts.length
     const lip = bw / 2 - pier
     for (let s = 1; s <= 3; s++) {
       const inset = 0.17 * s
@@ -564,7 +592,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     const uy = bh + 0.58 + 0.46
     emitBox(x, uy, z, 1.2, 0.32, 0.82, RAMP.mark)
     emitRoof(x, uy + 0.32, z, 1.16, 0.8, 0.44, 32, true)
-    roofs.push({ u, v, y: uy + 0.32 + 0.44 })
+    roofs.push({ u, v, y: uy + 0.32 + 0.44, kind: 'glow', a: gate, b: gateEnd })
     keepOut.push([x, z, 1.75, 1.3])
   }
 
@@ -580,6 +608,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     const y0 = 3.11
     const y1 = 3.94
     const P = (dx, yy, dz) => [x + dx, yy, z + dz]
+    const crown = parts.length
     emitQuad(P(-hw, y0, -hd), P(hw, y1, -hd), P(hw, y1, hd), P(-hw, y0, hd), RAMP.mark)
     for (const sd of [-hd, hd])
       emitQuad(P(-hw, y0, sd), P(hw, y1, sd), P(hw, y0, sd), P(hw, y0, sd), RAMP.mark)
@@ -587,7 +616,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     line(x - hw, y0, z + hd, x + hw, y1, z + hd)
     line(x + hw, y0, z - hd, x + hw, y1, z - hd)
     line(x + hw, y0, z + hd, x + hw, y1, z + hd)
-    roofs.push({ u, v, y: y0 })
+    roofs.push({ u, v, y: y0, kind: 'blink', a: crown, b: parts.length, ax: x + hw, ay: y1, az: z })
     keepOut.push([x, z, 1.2, 0.85])
   }
 
@@ -595,9 +624,11 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   const hanok = (u, v) => {
     const [x, z] = at(u, v)
     const house = (dx, dz, w, d) => {
+      const a = parts.length
       emitBox(x + dx, 0, z + dz, w * 0.78, 0.36, d * 0.78, RAMP.mark)
       emitRoof(x + dx, 0.36, z + dz, w * 0.6, d * 0.6, 0.28, 16, false)
-      roofs.push({ u: u + (dx - dz) * ISQ2, v: v + (dx + dz) * ISQ2, y: 0.64 })
+      const ru = u + (dx - dz) * ISQ2
+      roofs.push({ u: ru, v: v + (dx + dz) * ISQ2, y: 0.64, kind: 'glow', a, b: parts.length })
     }
     house(-0.72, -0.6, 1.4, 0.9)
     house(0.78, -0.5, 1.1, 0.85)
@@ -617,7 +648,10 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
       const [xx, zz] = at(uu, vv)
       return [xx, -0.05, zz]
     }
+    const surface = parts.length
     emitQuad(c(-uEnd, nearV), c(uEnd, nearV), c(uEnd, farV), c(-uEnd, farV), RAMP.water)
+    const wet = { y: 0.02, wet: 1, kind: 'ripple', a: surface, b: parts.length }
+    for (const uu of [-9.6, 0.6, 9.9]) roofs.push({ ...wet, u: uu, v: RIVER_V })
     for (const vv of [nearV, farV]) {
       const a = c(-uEnd, vv)
       const b = c(uEnd, vv)
@@ -1033,6 +1067,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     note(FIG_NAME[f.kind], f.u, f.v, 0.75)
   })
   for (const f of FIGS) if (f.kind === 2) note('말풍선 · Message bubble', f.u, f.v, 1.9)
+  for (const f of FIGS) roofs.push({ u: f.u, v: f.v, y: 0.6, kind: 'heart', fig: f })
 
   const writeBox = (pos, edge, slot, x, y, z, w, h, d) => {
     let o = slot * BOXV * 3
@@ -1187,16 +1222,19 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   for (let k = 0; k < MAXB; k++) pool.push({ slot: k })
   const live = []
   const from = { u: 0, v: 0, y: 0 } // the phone's launch point, reused
-  const to = { u: 0, v: 0, y: 0, store: null }
+  const to = { u: 0, v: 0, y: 0, store: null, rec: null }
   let sendAt = 0.6
 
   const visible = (u, v) => Math.abs(u) < uVis + 1.5 && Math.abs(v - panV) < vVis + 2
 
   // side 0 means either side, which is what a message crossing the frame wants.
-  const pick = (list, side) => {
+  // A message leaves any roof, but it only lands where something can answer it:
+  // ninety anonymous plots would swallow all of it and nothing would ever light.
+  const pick = (side, asSrc) => {
     let n = 0
     let hit = null
-    for (const c of list) {
+    for (const c of roofs) {
+      if (asSrc ? c.wet || c.kind === 'heart' : !c.kind) continue
       if (side !== 0 && Math.sign(c.u) !== side) continue
       if (!visible(c.u, c.v)) continue
       n++
@@ -1210,13 +1248,20 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   // so they read as something passing behind the text rather than over it, and the
   // city stops looking like two unrelated halves.
   const CROSS = 0.32
-  const launch = (src, near) => {
+  const launch = (src, near, dst) => {
     const p = pool.pop()
     if (!p) return null
     const home = Math.sign(src.u) || 1
     const side = Math.random() < CROSS ? -home : home
     let got = false
-    if (Math.random() < 0.72) {
+    if (dst) {
+      to.u = dst.u
+      to.v = dst.v
+      to.y = dst.y
+      to.store = null
+      to.rec = dst
+      got = true
+    } else if (Math.random() < 0.3) {
       let best = Infinity
       for (const s of STORES) {
         if (Math.sign(s.u) !== side) continue
@@ -1228,12 +1273,13 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
           to.v = s.v
           to.y = STACK_TOP
           to.store = s
+          to.rec = null
           got = true
         }
       }
     }
     if (!got) {
-      const r = pick(roofs, side)
+      const r = pick(side, false) ?? pick(0, false)
       if (!r || Math.hypot(r.u - src.u, r.v - src.v) < 2) {
         pool.push(p)
         return null
@@ -1242,6 +1288,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
       to.v = r.v
       to.y = r.y
       to.store = null
+      to.rec = r
     }
     const dist = Math.hypot(to.u - src.u, to.v - src.v)
     p.u0 = src.u
@@ -1251,6 +1298,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     p.v1 = to.v
     p.y1 = to.y
     p.store = to.store
+    p.rec = to.rec
     p.lift = Math.min(3.2, 1.3 + dist * 0.22)
     p.dur = Math.min(3.6, 1.6 + dist * 0.1)
     p.t = 0
@@ -1261,18 +1309,36 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
 
   const land = (p) => {
     const s = p.store
-    if (!s) return
-    const d = s.discs[s.next]
-    s.next = (s.next + 1) % DISCS
-    d.lit = 1
-    d.age = 0
+    if (s) {
+      const d = s.discs[s.next]
+      s.next = (s.next + 1) % DISCS
+      d.lit = 1
+      d.age = 0
+      return
+    }
+    const r = p.rec
+    if (!r) return
+    if (r.a !== undefined) {
+      const e = lit.find((q) => q.r === r)
+      if (e) e.t = 0
+      else lit.push({ r, t: 0 })
+    }
+    if (r.kind === 'ripple') {
+      const [rx, rz] = at(r.u, r.v)
+      spawn('ring', rx, -0.03, rz)
+      spawn('ring', rx, -0.03, rz, -0.24) // a second ring behind the first, so it reads as water
+    } else if (r.kind === 'blink') {
+      spawn('blip', r.ax, r.ay, r.az)
+    } else if (r.kind === 'heart') {
+      spawn('heart', r.fig.x + r.fig.dx, 0.78, r.fig.z)
+    }
   }
 
   const stepBubbles = (dt) => {
     sendAt -= dt
     if (sendAt <= 0) {
       sendAt = SEND_MIN + Math.random() * SEND_VAR
-      const r = pick(roofs, Math.random() < 0.5 ? -1 : 1)
+      const r = pick(Math.random() < 0.5 ? -1 : 1, true)
       if (r) launch(r, true)
     }
     for (let i = live.length - 1; i >= 0; i--) {
@@ -1313,6 +1379,157 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     bRimAttr.needsUpdate = true
   }
 
+  // ---- reactions ---------------------------------------------------------
+  // What the city does when a message actually arrives. Landing lights the slice of
+  // `parts` the target owns; two kinds draw a line of their own on top of that, a ring
+  // spreading on the water and a heart over someone's head.
+  const paintSlice = (r, age) => {
+    const f = FX[r.kind] ?? FX.glow
+    const span = r.b - r.a
+    const arr = cityCol.array
+    for (let pi = r.a; pi < r.b; pi++) {
+      const q = parts[pi]
+      tones(q.ramp, age < 0 ? 0 : f(age, pi - r.a, span), FX_INK)
+      for (let i = 0; i < q.n; i++) {
+        const fc = q.face[i] * 3
+        const o = (q.v0 + i) * 3
+        arr[o] = tone[fc]
+        arr[o + 1] = tone[fc + 1]
+        arr[o + 2] = tone[fc + 2]
+      }
+    }
+    const last = parts[r.b - 1]
+    cityCol.addUpdateRange(parts[r.a].v0 * 3, (last.v0 + last.n - parts[r.a].v0) * 3)
+    cityCol.needsUpdate = true
+  }
+
+  const lit = []
+  const stepLit = (dt) => {
+    for (let i = lit.length - 1; i >= 0; i--) {
+      const e = lit[i]
+      e.t += dt
+      if (e.t < FX_LIFE) paintSlice(e.r, e.t)
+      else {
+        paintSlice(e.r, -1)
+        lit.splice(i, 1)
+      }
+    }
+  }
+
+  // 16 sin³t against the four-cosine curve: the one closed form that reads as a heart
+  // rather than as two circles over a triangle.
+  const heartPts = (() => {
+    const out = []
+    for (let i = 0; i < FXSEG; i++) {
+      const a = (i / FXSEG) * Math.PI * 2 + Math.PI
+      const c = Math.cos(a)
+      out.push(
+        16 * Math.sin(a) ** 3 * 0.0094,
+        (13 * c - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) * 0.0094,
+      )
+    }
+    return out
+  })()
+
+  const FXV = FXSEG * 2
+  const fxPos = new Float32Array(NFX * FXV * 3)
+  const fxCol = new Float32Array(NFX * FXV * 4) // rgba: these fade out rather than to the page
+  const fxPosAttr = new THREE.BufferAttribute(fxPos, 3)
+  const fxColAttr = new THREE.BufferAttribute(fxCol, 4)
+  fxPosAttr.setUsage(THREE.DynamicDrawUsage)
+  fxColAttr.setUsage(THREE.DynamicDrawUsage)
+  const fxGeo = new THREE.BufferGeometry()
+  fxGeo.setAttribute('position', fxPosAttr)
+  fxGeo.setAttribute('color', fxColAttr)
+  const fxMesh = new THREE.LineSegments(
+    fxGeo,
+    new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthTest: false }),
+  )
+  fxMesh.renderOrder = 12
+  fxMesh.frustumCulled = false
+  world.add(fxMesh)
+
+  let fxDirty = false
+  const fxFree = []
+  for (let k = 0; k < NFX; k++) fxFree.push(k)
+  const fxLive = []
+  const fxPark = (slot) => {
+    const o = slot * FXV * 3
+    for (let i = 1; i < FXV * 3; i += 3) fxPos[o + i] = PARK
+  }
+  for (let k = 0; k < NFX; k++) fxPark(k)
+
+  const LIFE = { ring: RING_LIFE, heart: HEART_LIFE, blip: BLIP_LIFE }
+  const spawn = (kind, x, y, z, t = 0) => {
+    const slot = fxFree.pop()
+    if (slot !== undefined) fxLive.push({ slot, kind, x, y, z, t })
+  }
+
+  const stepFx = (dt) => {
+    for (let i = fxLive.length - 1; i >= 0; i--) {
+      const e = fxLive[i]
+      e.t += dt
+      if (e.t < LIFE[e.kind]) continue
+      fxPark(e.slot)
+      fxFree.push(e.slot)
+      fxLive.splice(i, 1)
+    }
+  }
+
+  const writeFx = () => {
+    if (!fxLive.length && !fxDirty) return
+    fxDirty = fxLive.length > 0
+    for (const e of fxLive) {
+      const ring = e.kind === 'ring'
+      const blip = e.kind === 'blip'
+      const k = clamp01(e.t / LIFE[e.kind])
+      put(_c1, ring ? P.okRim : blip ? P.dim : P.warm)
+      const a = e.t < 0
+        ? 0
+        : ring
+        ? (1 - k) ** 2
+        : blip
+          ? Math.max(0, Math.cos(k * 15)) * (1 - k)
+          : Math.min(1, k * 7) * (1 - k) ** 1.5
+      const r = ring
+        ? RING_R0 + (RING_R1 - RING_R0) * Math.sqrt(k)
+        : 0.06 + 0.3 * ((k * 3) % 1) // the halo re-opens on each flash
+      const grow = 0.72 + 0.46 * Math.min(1, k * 4) // it pops, then holds its size
+      const rise = 0.6 * k
+      let o = e.slot * FXV * 3
+      let c = e.slot * FXV * 4
+      for (let i = 0; i < FXSEG; i++) {
+        for (const q of [i, (i + 1) % FXSEG]) {
+          const ang = (q / FXSEG) * Math.PI * 2
+          if (ring) {
+            fxPos[o] = e.x + Math.cos(ang) * r
+            fxPos[o + 1] = e.y
+            fxPos[o + 2] = e.z + Math.sin(ang) * r
+          } else if (blip) {
+            const pa = Math.cos(ang) * r
+            const pb = Math.sin(ang) * r
+            fxPos[o] = e.x + RX * pa + UX * pb
+            fxPos[o + 1] = e.y + UP_Y * pb
+            fxPos[o + 2] = e.z - RX * pa + UX * pb
+          } else {
+            const pa = heartPts[q * 2] * grow
+            const pb = heartPts[q * 2 + 1] * grow
+            fxPos[o] = e.x + RX * pa + UX * pb
+            fxPos[o + 1] = e.y + rise + UP_Y * pb
+            fxPos[o + 2] = e.z - RX * pa + UX * pb
+          }
+          fxCol[c] = _c1.r
+          fxCol[c + 1] = _c1.g
+          fxCol[c + 2] = _c1.b
+          fxCol[c + 3] = a
+          o += 3
+          c += 4
+        }
+      }
+    }
+    fxPosAttr.needsUpdate = true
+    fxColAttr.needsUpdate = true
+  }
   // ---- paint -------------------------------------------------------------
   const paintAll = () => {
     paintCity()
@@ -1405,6 +1622,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
       let best = null
       let bd = Infinity
       for (const r of roofs) {
+        if (r.wet || r.kind === 'heart') continue
         if (Math.sign(r.u) !== side || !visible(r.u, r.v)) continue
         const d = Math.hypot(r.u - s.u, r.v - s.v)
         if (d > 4 && d < bd) {
@@ -1421,6 +1639,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
       p.v1 = s.v
       p.y1 = STACK_TOP
       p.store = s
+      p.rec = null
       p.lift = Math.min(3.2, 1.3 + bd * 0.22)
       p.dur = Math.min(3.6, 1.6 + bd * 0.1)
       p.flip = s.u >= best.u ? 1 : -1
@@ -1453,6 +1672,8 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
       panV = approach(panV, panTarget * panMax, dt, PAN_TAU)
       stepBubbles(dt)
       stepStores(age, dt)
+      stepLit(dt)
+      stepFx(dt)
       for (const f of FIGS) {
         stepFig(f, age)
         if (f.kind === 2 && age > f.sendAt) {
@@ -1471,6 +1692,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     figPosAttr.needsUpdate = true
     figEdgeAttr.needsUpdate = true
     writeBubbles()
+    writeFx()
     if (discMoved) {
       discPosAttr.needsUpdate = true
       discEdgeAttr.needsUpdate = true
@@ -1485,15 +1707,30 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     paintAll()
   }
 
-  // The harness needs to be able to make a message happen on demand: bubbles are
-  // pooled and in flight, so unlike a building there is nothing at a fixed spot to
-  // look at. Nothing in the scene calls this.
-  const poke = () => {
-    const f = FIGS.find((q) => q.kind === 2 && visible(q.u, q.v)) ?? FIGS[0]
-    from.u = f.u
-    from.v = f.v
-    from.y = 0.5
-    return !!launch(from, false)
+  // The harness needs to make a message happen on demand and to aim it: a bubble is
+  // in flight rather than at a fixed spot, and a landmark's reaction only exists while
+  // one is landing on it. Nothing in the scene calls this.
+  const poke = (u, v) => {
+    let dst = null
+    if (u !== undefined) {
+      let best = 2.5
+      for (const r of roofs) {
+        if (!r.kind) continue
+        const d = Math.hypot(r.u - u, r.v - v)
+        if (d < best) {
+          best = d
+          dst = r
+        }
+      }
+      if (!dst) return false
+    }
+    const src = dst
+      ? { u: dst.u - 3.6, v: dst.v - 2.4, y: 1.1 }
+      : (FIGS.find((q) => q.kind === 2 && visible(q.u, q.v)) ?? FIGS[0])
+    from.u = src.u
+    from.v = src.v
+    from.y = src.y ?? 0.5
+    return !!launch(from, false, dst)
   }
 
   return { render, resize, retint, world, camera, catalog, poke }

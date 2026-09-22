@@ -151,7 +151,7 @@
     </main>
 
     <script type="module">
-      import city from './js/scene-city.js?v=3'
+      import city from './js/scene-city.js?v=6'
 
       const root = document.documentElement
       const TOKENS = ['bg', 'bg-2', 'fg', 'dim', 'faint', 'rule', 'claude', 'ok']
@@ -174,6 +174,8 @@
         tokens: readTokens(),
         still: false,
       })
+
+      globalThis.scene = scene // so the console can poke a reaction and time a capture
 
       // The scene writes to `world` every frame for its own pan, so the harness never
       // touches it. Two groups go in above it instead: `offset` slides the piece being
@@ -271,18 +273,21 @@
       let last = performance.now()
       let acc = 0
       let n = 0
-      // A message has no fixed place to stand and look at, so while that entry is
-      // selected the harness keeps asking the scene for another one.
+      // A message has no fixed place to stand and look at, and a landmark's reaction
+      // only exists while one is landing on it, so the harness keeps sending one at
+      // whatever is framed. poke returns false when that piece has no reaction.
       let pokeIn = 0
       const tick = (t) => {
         const dt = Math.min((t - last) / 1000, 0.1)
         last = t
         acc += dt
-        if (active && active.name.includes('말풍선')) {
+        if (active) {
           pokeIn -= dt
           if (pokeIn <= 0) {
-            pokeIn = 1.3
-            scene.poke?.()
+            const c = active.at[idx]
+            pokeIn = active.name.includes('말풍선') ? 1.3 : 2.4
+            if (active.name.includes('말풍선')) scene.poke?.()
+            else scene.poke?.(c.u, c.v)
           }
         }
         if (++n % 30 === 0) {
