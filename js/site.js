@@ -76,8 +76,25 @@ const go = (id) => {
   return T(`#${id} 로 이동`, `Jumped to #${id}`)
 }
 
+// Stash the click point so the next page's view transition opens from it.
+const openFrom = (x, y) => sessionStorage.setItem('portfolio:from', `${Math.round(x)},${Math.round(y)}`)
+
+addEventListener(
+  'click',
+  (event) => {
+    const link = event.target.closest?.('a[href]')
+    if (!link || link.target === '_blank') return
+    const url = new URL(link.href, location.href)
+    if (url.origin !== location.origin || url.pathname === location.pathname) return
+    openFrom(event.clientX, event.clientY)
+  },
+  true,
+)
+
 // The same thirteen entries, as the space you fly through. Unlisted in /help.
 const walk = () => {
+  const box = input.getBoundingClientRect()
+  openFrom(box.left + 2 * 16, box.top + box.height / 2)
   location.href = 'timeline.html'
   return T('타임라인을 공간으로 엽니다…', 'Opening the timeline as a space…')
 }

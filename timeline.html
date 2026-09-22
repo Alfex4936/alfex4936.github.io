@@ -17,7 +17,7 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap"
     />
-    <link rel="stylesheet" href="css/site.css?v=4" />
+    <link rel="stylesheet" href="css/site.css?v=6" />
     <script>
       // Resolve language and theme before first paint so nothing flashes.
       ;(() => {
@@ -35,6 +35,15 @@
         document.documentElement.lang = lang
         const theme = localStorage.getItem('portfolio:theme')
         if (theme === 'dark' || theme === 'light') document.documentElement.dataset.theme = theme
+
+        // Where the last click landed, so the view transition opens from there.
+        const from = sessionStorage.getItem('portfolio:from')
+        if (from) {
+          const [x, y] = from.split(',')
+          document.documentElement.style.setProperty('--vt-x', x + 'px')
+          document.documentElement.style.setProperty('--vt-y', y + 'px')
+          sessionStorage.removeItem('portfolio:from')
+        }
       })()
     </script>
     <style>
@@ -485,6 +494,19 @@ in order</span></span
         // leave a button claiming to be pressed.
         new MutationObserver(reflect).observe(root, { attributeFilter: ['data-theme', 'data-lang'] })
         reflect()
+
+        // Going back closes the circle from wherever you clicked, same as coming in.
+        addEventListener(
+          'click',
+          (event) => {
+            const link = event.target.closest?.('a[href]')
+            if (!link || link.target === '_blank') return
+            const url = new URL(link.href, location.href)
+            if (url.origin !== location.origin || url.pathname === location.pathname) return
+            sessionStorage.setItem('portfolio:from', `${Math.round(event.clientX)},${Math.round(event.clientY)}`)
+          },
+          true,
+        )
       })()
     </script>
 

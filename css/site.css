@@ -960,18 +960,25 @@ button {
   height: 100%;
 }
 
-.scene--cluster {
-  --scene-clear: 404px; /* read by scene-cluster.js so labels dodge the band */
-  position: absolute;
-  inset: 0 0 auto;
-  height: min(86vh, 800px);
+/* Fixed, so the traffic runs the whole way down rather than only behind the
+   hero. The transcript's own z-index puts it in front. */
+.scene--traffic {
+  --scene-clear: 404px; /* read by scene-traffic.js so the lanes match the mask */
+  position: fixed;
+  inset: 0;
 }
 
-/* The city shows only in the gutters either side of the transcript, so it never
-   sits behind prose; under ~1100px there are no gutters and it fades out. The
-   mask is on the canvas, not the mount, or it slices the label layer too. */
-.scene--cluster canvas {
-  mask-image: linear-gradient(to bottom, #000 54%, transparent),
+/* It shows only in the gutters either side of the transcript, so it never sits
+   behind prose; under ~1100px there are no gutters and it fades out. The
+   vertical pair keeps it off the sticky bar and the composer. */
+.scene--traffic canvas {
+  mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 88px,
+      #000 calc(100% - 150px),
+      transparent 100%
+    ),
     linear-gradient(
       to right,
       #000 0,
@@ -1010,12 +1017,60 @@ button {
   color: var(--dim);
 }
 
-@media (max-width: 720px) {
-  .scene--cluster {
-    height: min(70vh, 560px);
+/* At 900px the mask leaves 46px of gutter each side and below 808px none at
+   all. Not worth a WebGL context: display:none keeps the observer from ever
+   firing, so a phone never downloads three for this at all. */
+@media (max-width: 900px) {
+  .scene--traffic {
+    display: none;
   }
+}
 
+@media (max-width: 720px) {
   .scene--terrain {
     height: clamp(260px, 42vh, 340px);
+  }
+}
+
+/* --------------------------------------------- leaving for the scene */
+
+/* Clicking through to the timeline opens a circle from the point you clicked,
+   onto a corridor that is already flying in. Not a loading screen: the page is
+   fast, and a spinner would be a lie. --vt-x/--vt-y are stashed on click and
+   read back by the destination before its first paint. */
+@view-transition {
+  navigation: auto;
+}
+
+@keyframes scene-open {
+  from {
+    clip-path: circle(0 at var(--vt-x, 50%) var(--vt-y, 50%));
+  }
+  to {
+    clip-path: circle(150vmax at var(--vt-x, 50%) var(--vt-y, 50%));
+  }
+}
+
+@keyframes page-recede {
+  to {
+    opacity: 0.3;
+    transform: scale(0.988);
+  }
+}
+
+::view-transition-old(root) {
+  z-index: 0;
+  animation: page-recede 540ms cubic-bezier(0.33, 1, 0.68, 1) forwards;
+}
+
+::view-transition-new(root) {
+  z-index: 1;
+  animation: scene-open 640ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
   }
 }

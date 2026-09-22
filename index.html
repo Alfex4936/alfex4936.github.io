@@ -17,7 +17,7 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap"
     />
-    <link rel="stylesheet" href="css/site.css?v=4" />
+    <link rel="stylesheet" href="css/site.css?v=6" />
     <script>
       // Resolve language and theme before first paint so nothing flashes.
       ;(() => {
@@ -35,6 +35,15 @@
         document.documentElement.lang = lang
         const theme = localStorage.getItem('portfolio:theme')
         if (theme === 'dark' || theme === 'light') document.documentElement.dataset.theme = theme
+
+        // Where the last click landed, so the view transition opens from there.
+        const from = sessionStorage.getItem('portfolio:from')
+        if (from) {
+          const [x, y] = from.split(',')
+          document.documentElement.style.setProperty('--vt-x', x + 'px')
+          document.documentElement.style.setProperty('--vt-y', y + 'px')
+          sessionStorage.removeItem('portfolio:from')
+        }
       })()
     </script>
   </head>
@@ -45,7 +54,7 @@
       The prompt at the bottom also answers PING, KEYS *, INFO, ls, uptime, :q and sudo.
       The console has something for you too.
     -->
-    <div class="scene scene--cluster" id="scene-cluster" aria-hidden="true"></div>
+    <div class="scene scene--traffic" id="scene-traffic" aria-hidden="true"></div>
 
     <header class="bar">
       <span>seok · portfolio</span>
@@ -460,19 +469,28 @@ master   +FULLRESYNC -&gt; fork -&gt; rdb
       </div>
     </form>
 
-    <script src="js/site.js?v=4"></script>
+    <script src="js/site.js?v=6"></script>
     <script type="module">
-      // three itself is not fetched until a mount comes near the viewport.
+      // three itself is not fetched until a mount comes near the viewport, and
+      // the two scenes load independently so one failing cannot take the other.
       import { mount } from './js/scene-core.js?v=1'
-      import cluster from './js/scene-cluster.js?v=1'
-      import terrain from './js/scene-terrain.js?v=1'
 
-      // Reaching this line means every import resolved, which is the only point
-      // at which the figure is worth showing.
-      for (const fig of document.querySelectorAll('.fig')) fig.hidden = false
+      const scene = async (path, id) => {
+        const el = document.getElementById(id)
+        if (!el) return false
+        try {
+          mount(el, (await import(path)).default)
+          return true
+        } catch {
+          return false
+        }
+      }
 
-      mount(document.getElementById('scene-cluster'), cluster)
-      mount(document.getElementById('scene-terrain'), terrain)
+      scene('./js/scene-traffic.js?v=1', 'scene-traffic')
+
+      // The figure only earns its space once its own scene is going to run.
+      if (await scene('./js/scene-terrain.js?v=1', 'scene-terrain'))
+        for (const fig of document.querySelectorAll('.fig')) fig.hidden = false
     </script>
   </body>
 </html>
