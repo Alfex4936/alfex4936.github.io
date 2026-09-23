@@ -287,7 +287,7 @@
     </main>
 
     <script type="module">
-      import city from './js/scene-city.js?v=10'
+      import city from './js/scene-city.js?v=11'
 
       const root = document.documentElement
       const TOKENS = ['bg', 'bg-2', 'fg', 'dim', 'faint', 'rule', 'claude', 'ok']
@@ -350,7 +350,7 @@
         롯데월드타워: '빛의 띠가 서른 개 단을 타고 올라간다',
         숭례문: '석축과 그 사이 홍예가 밝아진다 — 지붕이 아니라 문이 답한다',
         '63빌딩': '잘린 크라운이 항공장애등처럼 깜빡인다',
-        '한강 다리': '없음 — 강에 떨어진 링이 지나간다',
+        '한강 다리': '빛이 상판을 따라 강을 건너간다',
         한강: '수면에 링 두 개가 번진다',
         데이터스토어: '디스크가 하나 튀어 오르며 밝아진다',
         사람: '머리 위로 하트가 떠오른다',
@@ -413,8 +413,9 @@
         box.makeEmpty()
         if (c.layer || !c.iN) {
           const [x, z] = at(c.u, c.v)
-          const r = c.r ?? 0.5
-          box.set(vec.clone().set(x - r, 0, z - r), vec.clone().set(x + r, c.h, z + r))
+          const hop = c.layer === 'bubble' // framed on its whole hop, not the bubble alone
+          const r = hop ? 0.9 : (c.r ?? 0.5)
+          box.set(vec.clone().set(x - r, 0, z - r), vec.clone().set(x + r, hop ? 2.2 : c.h, z + r))
           return box
         }
         for (let i = c.i0; i < c.i0 + c.iN; i++) {
@@ -524,7 +525,7 @@
 
       const fire = () => {
         const c = works[w].at[k]
-        return c.layer === 'bubble' ? scene.poke() : scene.poke(c.u, c.v)
+        return scene.poke(c.u, c.v, c.layer === 'bubble')
       }
 
       const press = (id, fn) => document.getElementById(id).addEventListener('click', fn)
@@ -580,6 +581,8 @@
         if (spinning && !drag) turn += dt * 0.22
         pivot.rotation.y = turn
         scene.face(turn) // the flat symbols are built on the camera axes, so turn those too
+        const on = works[w].at[k]
+        if (on.fig) offset.position.x = -mid.x - on.fig.dx // the walker walks in place on the plinth
         // A reaction only exists while a message is landing, so the gallery keeps
         // sending one at whatever is on the plinth.
         pokeIn -= dt

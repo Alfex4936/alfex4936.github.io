@@ -108,10 +108,12 @@ const LOW = 0.62 // most of what is left never leaves the low-rise carpet
 // built inside it; GUTTER_U adds the room a bubble needs for its own width.
 const INK_U = 448 / SCALE
 const GUTTER_U = INK_U + 0.85
-// The river's own band, in v. Placed in the gap between the Gyeongbokgung and 63
-// clusters so no set piece has to stand in the water.
-const RIVER_V = 9.2
-const RIVER_HALF = 1.75
+// The river runs along world x on the j = 0 avenue, so it lies with the street grid and
+// crosses the frame corner to corner: top-left gutter, behind the column, bottom-right.
+const RZ = 1.4 // half-width in z; 91px across on screen
+const WATER_Y = -0.14 // below the street, so the far bank shows a lit wall
+const RIVER_X = 44 // long enough to leave the frame at both ends of the pan
+const BRIDGE_X = [-26.4, -19.2, 19.2, 26.4] // two per gutter; the outer pair only on a wide screen
 
 const GUT_KEEP = 0.46 // of the plots the avenues leave, out where the ink is full
 const MID_KEEP = 0.18 // and a sparse ankle-high floor behind the column
@@ -146,6 +148,9 @@ const BREATHE = 0.055 // the stack is never quite still, so it reads as in use
 // and the kind decides how that slice lights: a settle, a beacon, a band running up.
 const FX_LIFE = 1.6 // after this the slice is painted back to rest and forgotten
 const FX_INK = 0.22 // a delivery is an event; it moves further than the stack's idle breath
+// Tile and a band running up a tower cover a large area at low contrast, and under the
+// canvas's 0.66 they lost to a heart or a ring. They get more ink; point events do not.
+const FX_GAIN = { glow: 0.32, climb: 0.34 }
 const BLIP_LIFE = 1.15
 const NFX = 8 // rings and hearts alive at once
 const FXSEG = 26 // segments in one closed loop
@@ -192,28 +197,27 @@ const FIG_HEAD = [0.095, 0.135, 0.095]
 const FIG_NECK = 0.02 // the head clears the shoulders, or the pair reads as one post
 const FIG_H = 0.55 // legs, torso, neck gap and head, which is 21px on the page
 const FIG_ARM = [0.045, 0.2, 0.045] // raised to the chin: the one silhouette that says sending
-const ARM_U = 0.115 // offset in screen-u; an equal +x+z is pure screen-down and hides behind the torso
-const ARM_V = 0.04
 const FIG_BOXES = 4
 const WALK = 1.15 // half the walker's beat, in world x; keeps him inside his gutter
 
-// One datastore per gutter, sat outboard of the landmarks so the inner ring is set
-// pieces. Ten figures, spread down both sides, all of them clear of INK_U.
+// One datastore per gutter, outboard of the landmarks so the inner ring is set pieces.
+// Both snap to plot centres, as the figures do; every one of these lands clear of the
+// water and of the set pieces' keep-outs, which the carpet pass then leaves empty.
 const STORES = [
-  { u: -13.4, v: -12 },
-  { u: 13.6, v: 15 },
+  { u: -13.8, v: 1 },
+  { u: 13.6, v: 19 },
 ]
 const FIGS = [
-  { u: -11.9, v: -10, kind: 2 }, // taps a phone up the street from the left-hand store
-  { u: -13.9, v: 1.7, kind: 1 },
-  { u: -11.5, v: 11, kind: 0 },
-  { u: -12.8, v: -5.4, kind: 0 },
-  { u: -10.6, v: 19.2, kind: 1 },
+  { u: -12.4, v: -2.6, kind: 2 }, // taps a phone up the street from the left-hand store
+  { u: -13.5, v: -10.4, kind: 0 }, // on the south bank, by the bridge
+  { u: -13.6, v: 5.6, kind: 1 },
+  { u: -12.8, v: 14.5, kind: 0 },
+  { u: -14.2, v: 17.5, kind: 1 },
+  { u: 12.6, v: -8.3, kind: 2 }, // and one sending from between the palace and the gate
   { u: 13.9, v: -3.5, kind: 0 },
-  { u: 11.9, v: 6.8, kind: 1 },
-  { u: 11.5, v: 18.5, kind: 0 },
-  { u: 12.7, v: -12.6, kind: 2 }, // and one sending from the right-hand side
-  { u: 10.8, v: 22.4, kind: 0 },
+  { u: 12.9, v: 0.6, kind: 1 },
+  { u: 13.9, v: 5.5, kind: 0 },
+  { u: 13.6, v: 17, kind: 0 },
 ]
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v))
@@ -388,43 +392,112 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
 
   const line = (a, b, c, d, e, f) => cEdge.push(a, b, c, d, e, f)
 
-  // A flat quad in any orientation, which a box cannot give: boxes are axis-aligned
-  // in x/z, and anything running along u is diagonal there, so a strip of boxes would
-  // come out as a staircase. Four verts, two triangles, every slot the top face.
-  const QUAD_FACE = [0, 0, 0, 0]
-  const emitQuad = (p0, p1, p2, p3, ramp) => {
-    const v0 = cPos.length / 3
-    for (const p of [p0, p1, p2, p3]) cPos.push(p[0], p[1], p[2])
-    cIdx.push(v0, v0 + 1, v0 + 2, v0, v0 + 2, v0 + 3)
-    parts.push({ v0, n: 4, ramp, face: QUAD_FACE })
+  const seg = (p, q) => line(p[0], p[1], p[2], q[0], q[1], q[2])
+  // (b - a) × (c - a), accumulated into n
+  const crossAdd = (n, a, b, c) => {
+    const ax = b[0] - a[0], ay = b[1] - a[1], az = b[2] - a[2]
+    const bx = c[0] - a[0], by = c[1] - a[1], bz = c[2] - a[2]
+    n[0] += ay * bz - az * by
+    n[1] += az * bx - ax * bz
+    n[2] += ax * by - ay * bx
   }
+
+  // Flat quads in any orientation, one part for the lot: [p0, p1, p2, p3, slot, out].
+  // Each is wound so its normal agrees with `out`, or with the camera when there is none.
+  const emitQuads = (list, ramp) => {
+    const v0 = cPos.length / 3
+    const face = []
+    const n = [0, 0, 0]
+    for (const [p0, p1, p2, p3, slot, out = [1, 1, 1]] of list) {
+      const b = cPos.length / 3
+      for (const p of [p0, p1, p2, p3]) cPos.push(p[0], p[1], p[2])
+      n[0] = n[1] = n[2] = 0
+      crossAdd(n, p0, p1, p2)
+      if (n[0] * out[0] + n[1] * out[1] + n[2] * out[2] >= 0) cIdx.push(b, b + 1, b + 2, b, b + 2, b + 3)
+      else cIdx.push(b, b + 2, b + 1, b, b + 3, b + 2)
+      face.push(slot, slot, slot, slot)
+    }
+    parts.push({ v0, n: cPos.length / 3 - v0, ramp, face })
+    return parts.length - 1
+  }
+
+  // A plan outline (CCW from +x toward +z) swept through profile rings [y, sx, sz, ox, oz].
+  // One part per band, so a reaction can walk it bottom to top; each facet takes the slot
+  // its own normal asks for, which is what lets a taper or a flare shade like one.
+  const emitLoft = (cx, cz, plan, prof, ramp, o = {}) => {
+    const n = plan.length
+    const R = prof.map(([y, sx, sz = sx, ox = 0, oz = 0]) =>
+      plan.map(([px, pz]) => [cx + ox + px * sx, y, cz + oz + pz * sz]))
+    const a = parts.length
+    const nm = [0, 0, 0]
+    for (let r = 0; r + 1 < R.length; r++) {
+      const v0 = cPos.length / 3
+      const face = []
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n
+        const q = [R[r][i], R[r][j], R[r + 1][j], R[r + 1][i]]
+        const b = cPos.length / 3
+        for (const p of q) cPos.push(p[0], p[1], p[2])
+        cIdx.push(b, b + 2, b + 1, b, b + 3, b + 2)
+        nm[0] = nm[1] = nm[2] = 0
+        crossAdd(nm, q[0], q[2], q[1])
+        crossAdd(nm, q[0], q[3], q[2])
+        const ny = nm[1] / (Math.hypot(nm[0], nm[1], nm[2]) || 1)
+        const s = ny > 0.72 ? 0 : ny < -0.5 ? 3 : nm[0] >= nm[2] ? 1 : 2
+        face.push(s, s, s, s)
+      }
+      parts.push({ v0, n: cPos.length / 3 - v0, ramp, face })
+    }
+    if (o.cap) {
+      const top = R[R.length - 1]
+      const [y, , , ox = 0, oz = 0] = prof[prof.length - 1]
+      const c = [cx + ox, y, cz + oz]
+      const v0 = cPos.length / 3
+      for (let i = 0; i < n; i++) {
+        const b = cPos.length / 3
+        const pj = top[(i + 1) % n]
+        for (const p of [c, top[i], pj, pj]) cPos.push(p[0], p[1], p[2])
+        cIdx.push(b, b + 2, b + 1)
+      }
+      parts.push({ v0, n: n * 4, ramp, face: new Array(n * 4).fill(0) })
+    }
+    for (const r of o.rings ?? [0, R.length - 1]) for (let i = 0; i < n; i++) seg(R[r][i], R[r][(i + 1) % n])
+    for (const i of o.verts ?? []) for (let r = 0; r + 1 < R.length; r++) seg(R[r][i], R[r + 1][i])
+    return { a, b: parts.length }
+  }
+  const circle = (n) => Array.from({ length: n }, (_, i) => [Math.cos((i / n) * 2 * Math.PI), Math.sin((i / n) * 2 * Math.PI)])
+  const SQUARE = [[1, 1], [-1, 1], [-1, -1], [1, -1]] // 0 faces the camera, 1 and 3 are the silhouette
 
   // hx, hz are the eave half-extents before the corners flare; rise is ridge over eave.
   // n perimeter samples, a multiple of four so the corners land on samples.
-  const emitRoof = (cx, y, cz, hx, hz, rise, n, ribs) => {
-    const seg = n / 4
+  // opt.alongZ turns the ridge onto world z; opt.fascia hangs a board of that depth
+  // under the two eaves the camera sees, which is what gives the tile a thickness.
+  const emitRoof = (cx, y, cz, hx, hz, rise, n, ribs, opt = {}) => {
+    const Z = !!opt.alongZ
+    const toW = (lx, ly, lz) => (Z ? [cx + lz, ly, cz + lx] : [cx + lx, ly, cz + lz])
+    const slot = (s) => (Z && (s === 1 || s === 2) ? 3 - s : s)
+    const seg4 = n / 4
     const rx = hx * ROOF_RIDGE
-    const ring = new Float64Array((ROOF_R + 1) * n * 3)
+    const sm = Math.min(1, hz / 0.5) // a narrow roof cannot carry a palace's flare
+    const ring = []
     const slope = new Uint8Array(n)
     for (let e = 0; e < 4; e++) {
-      for (let s = 0; s < seg; s++) {
-        const t = s / seg
+      for (let s = 0; s < seg4; s++) {
+        const t = s / seg4
         const ex = e === 1 ? hx : e === 3 ? -hx : e === 0 ? -hx + 2 * hx * t : hx - 2 * hx * t
         const ez = e === 0 ? -hz : e === 2 ? hz : e === 1 ? -hz + 2 * hz * t : hz - 2 * hz * t
         const k = Math.min(Math.abs(ex) / hx, Math.abs(ez) / hz)
-        const out = 1 + ROOF_FLARE * k ** 3
+        const back = ex < 0 && ez < 0 ? 0.3 : 1 // the far corner projects up past the ridge
+        const out = 1 + ROOF_FLARE * sm * back * k ** 3
         const fx = ex * out
         const fz = ez * out
-        const ey = rise * ROOF_TURN * k ** 2.4 // the corner turns up
+        const ey = rise * ROOF_TURN * sm * back * k ** 2.4 // the corner turns up
         const tx = Math.max(-rx, Math.min(rx, fx)) // and folds back onto the ridge
-        const i = e * seg + s
-        slope[i] = e === 2 ? 2 : e === 1 ? 1 : 3
+        const i = e * seg4 + s
+        slope[i] = slot(e === 2 ? 2 : e === 1 ? 1 : 3)
         for (let r = 0; r <= ROOF_R; r++) {
           const p = r / ROOF_R
-          const o = (r * n + i) * 3
-          ring[o] = cx + fx + (tx - fx) * p
-          ring[o + 1] = y + ey + (rise - ey) * p ** 1.5 // shallow at the eave, steep at the ridge
-          ring[o + 2] = cz + fz * (1 - p)
+          ring[r * n + i] = toW(fx + (tx - fx) * p, y + ey + (rise - ey) * p ** 1.5, fz * (1 - p))
         }
       }
     }
@@ -432,38 +505,47 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     // Non-indexed quads: a fold between two slopes has to stay a fold, and a shared
     // corner vertex would smear one ramp step into the next.
     const v0 = cPos.length / 3
-    const face = new Uint8Array(n * ROOF_R * 4)
-    let fi = 0
+    const face = []
     for (let r = 0; r < ROOF_R; r++) {
       for (let i = 0; i < n; i++) {
         const j = (i + 1) % n
-        const q = [(r * n + i) * 3, (r * n + j) * 3, ((r + 1) * n + j) * 3, ((r + 1) * n + i) * 3]
         const b = cPos.length / 3
-        for (const o of q) cPos.push(ring[o], ring[o + 1], ring[o + 2])
-        cIdx.push(b, b + 2, b + 1, b, b + 3, b + 2)
-        face[fi++] = slope[i]
-        face[fi++] = slope[i]
-        face[fi++] = slope[i]
-        face[fi++] = slope[i]
+        for (const p of [ring[r * n + i], ring[r * n + j], ring[(r + 1) * n + j], ring[(r + 1) * n + i]])
+          cPos.push(p[0], p[1], p[2])
+        if (Z) cIdx.push(b, b + 1, b + 2, b, b + 2, b + 3) // mirrored, so the winding flips
+        else cIdx.push(b, b + 2, b + 1, b, b + 3, b + 2)
+        face.push(slope[i], slope[i], slope[i], slope[i])
       }
     }
     parts.push({ v0, n: n * ROOF_R * 4, ramp: RAMP.roof, face })
 
-    for (let i = 0; i < n; i++) {
-      const a = i * 3
-      const b = ((i + 1) % n) * 3
-      line(ring[a], ring[a + 1], ring[a + 2], ring[b], ring[b + 1], ring[b + 2])
-    }
+    for (let i = 0; i < n; i++) seg(ring[i], ring[(i + 1) % n])
     const up = (i) => {
-      for (let r = 0; r < ROOF_R; r++) {
-        const a = (r * n + i) * 3
-        const b = ((r + 1) * n + i) * 3
-        line(ring[a], ring[a + 1], ring[a + 2], ring[b], ring[b + 1], ring[b + 2])
-      }
+      for (let r = 0; r < ROOF_R; r++) seg(ring[r * n + i], ring[(r + 1) * n + i])
     }
-    for (let e = 0; e < 4; e++) up(e * seg) // the four hips
-    if (ribs) for (const e of [1, 2]) for (let s = 1; s < seg; s++) up(e * seg + s)
-    emitBox(cx, y + rise, cz, 2 * rx + 0.16, 0.085 + 0.09 * rise, 0.17, RAMP.stone) // 용마루
+    for (let e = 0; e < 4; e++) up(e * seg4) // the four hips
+    if (ribs) for (const e of [1, 2]) for (let s = 1; s < seg4; s++) up(e * seg4 + s)
+    const cap = Math.min(1, hz / 0.9) // a house-sized roof gets a house-sized 용마루
+    const rh = (0.085 + 0.09 * rise) * cap
+    const rw = 0.17 * cap
+    if (Z) emitBox(cx, y + rise, cz, rw, rh, 2 * rx + rw, RAMP.stone) // 용마루
+    else emitBox(cx, y + rise, cz, 2 * rx + rw, rh, rw, RAMP.stone) // 용마루
+    if (opt.fascia) {
+      const d = opt.fascia
+      const q = []
+      for (const e of [1, 2]) {
+        const out = toW(e === 1 ? 1 : 0, 0, e === 2 ? 1 : 0).map((c, k) => c - [cx, 0, cz][k])
+        for (let s = 0; s < seg4; s++) {
+          const i = e * seg4 + s
+          const p = ring[i]
+          const pj = ring[(i + 1) % n]
+          const lo = (w) => [w[0], w[1] - d, w[2]]
+          q.push([p, pj, lo(pj), lo(p), slope[i], out])
+          seg(lo(p), lo(pj))
+        }
+      }
+      emitQuads(q, RAMP.mark)
+    }
   }
 
   // ---- landmarks ---------------------------------------------------------
@@ -492,299 +574,342 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
       ...more,
     })
 
-  // A wooded hill, a banded shaft out of it, the observation drum, a mast.
-  // The real one is mostly mast: the antenna is about a third of everything above the
-  // mountain, the deck is several floors flaring out over a slender shaft, and the
-  // hill it stands on is half the silhouette. Getting those three proportions right is
-  // the whole recognition; the previous drum-on-a-stick had none of them.
+  // A wooded hill, a slender shaft, the flared deck, and a mast a third of the height:
+  // those three proportions are the whole recognition. Every piece is turned, not boxed.
   const namsan = (u, v) => {
     const [x, z] = at(u, v)
-    emitBox(x, 0, z, 3.4, 0.44, 2.9, RAMP.stone)
-    emitBox(x + 0.12, 0.44, z - 0.06, 2.5, 0.4, 2.1, RAMP.stone)
-    emitBox(x + 0.18, 0.84, z - 0.1, 1.6, 0.38, 1.35, RAMP.stone)
-    const trees = [
-      [-1.3, -0.95, 0.52],
-      [1.25, 0.95, 0.44],
-      [-0.25, 1.3, 0.48],
-      [1.4, -1.05, 0.38],
-      [-1.5, 0.6, 0.35],
-      [0.95, -1.35, 0.42],
-      [-0.9, -1.25, 0.34],
-    ]
-    for (const [dx, dz, th] of trees) emitBox(x + dx, 0.4, z + dz, 0.46, th, 0.46, RAMP.mark)
+    const hill = Array.from({ length: 24 }, (_, i) => {
+      const t = (i / 24) * 2 * Math.PI
+      const r = 1 + 0.06 * Math.sin(2 * t + 1) + 0.04 * Math.sin(3 * t + 2.3)
+      return [r * Math.cos(t), r * Math.sin(t)]
+    })
+    const HF = [1, 0.9, 0.75, 0.56, 0.36, 0.16]
+    const HY = [0, 0.3, 0.62, 0.84, 0.98, 1.06]
+    emitLoft(x, z, hill, HF.map((f, k) => [HY[k], 1.9 * f, 1.65 * f]), RAMP.stone, { cap: true, rings: [0] })
+    const hillY = (q) => {
+      for (let k = 1; k < HF.length; k++)
+        if (q >= HF[k]) return HY[k - 1] + ((HF[k - 1] - q) / (HF[k - 1] - HF[k])) * (HY[k] - HY[k - 1])
+      return HY[HY.length - 1]
+    }
+    const C8 = circle(8)
+    // Packed crowns that overlap each other and sink into the slope read as one canopy;
+    // spaced out, each one reads as a part bolted on.
+    let seed = 0
+    for (const [q, m] of [[0.42, 9], [0.58, 12], [0.73, 15], [0.87, 18]]) {
+      for (let k = 0; k < m; k++) {
+        const j = (seed++ * 0.618) % 1
+        const t = ((k + 0.5 * j) / m) * 2 * Math.PI + q * 3
+        if (Math.cos(t) > 0.55 && Math.sin(t) > -0.2 && q < 0.6) continue // the plaza at the tower foot
+        const qq = q + 0.06 * (j - 0.5)
+        const r = 1 + 0.06 * Math.sin(2 * t + 1) + 0.04 * Math.sin(3 * t + 2.3)
+        const s = 0.85 + 0.3 * j
+        const ty = hillY(qq) - 0.08 * s
+        emitLoft(x + 1.9 * qq * r * Math.cos(t), z + 1.65 * qq * r * Math.sin(t), C8,
+          [[ty, 0.1 * s], [ty + 0.1 * s, 0.2 * s], [ty + 0.2 * s, 0.18 * s], [ty + 0.27 * s, 0.1 * s], [ty + 0.3 * s, 0]], RAMP.mark, { rings: [1] })
+      }
+    }
 
-    const cx = x + 0.18
-    const cz = z - 0.1
-    emitBox(cx, 1.22, cz, 0.92, 0.26, 0.78, RAMP.mark) // the base building on the summit
-    // A slender shaft, tapering, so the deck above it reads as overhanging.
-    emitBox(cx, 1.48, cz, 0.36, 0.46, 0.36, RAMP.mark)
-    emitBox(cx, 1.94, cz, 0.31, 0.44, 0.31, RAMP.mark)
-    emitBox(cx, 2.38, cz, 0.27, 0.42, 0.27, RAMP.mark)
-    // The deck flares out over it and is several floors, not one drum.
-    emitCyl(cx, 2.8, cz, 0.34, 0.08, RAMP.store)
-    emitCyl(cx, 2.88, cz, 0.52, 0.09, RAMP.store)
-    emitCyl(cx, 2.97, cz, 0.6, 0.2, RAMP.store)
-    emitCyl(cx, 3.17, cz, 0.55, 0.13, RAMP.store)
-    emitCyl(cx, 3.3, cz, 0.43, 0.11, RAMP.store)
-    emitCyl(cx, 3.41, cz, 0.24, 0.1, RAMP.mark)
-    // And then the mast, which is the part that makes it Namsan from a long way off.
-    const mast = parts.length
-    emitBox(cx, 3.51, cz, 0.11, 0.62, 0.11, RAMP.mark)
-    emitBox(cx, 4.13, cz, 0.07, 0.52, 0.07, RAMP.mark)
-    roofs.push({ u, v, y: 3.41, kind: 'blink', a: mast, b: parts.length, ax: cx, ay: 4.7, az: cz })
-    keepOut.push([x, z, 1.9, 1.65])
+    const C16 = circle(16)
+    emitBox(x, 1.0, z, 0.7, 0.22, 0.6, RAMP.mark) // the base building on the summit
+    emitLoft(x, z, C16, [[1.22, 0.2], [2.6, 0.14]], RAMP.mark, { verts: [2, 6, 14] })
+    const DY = [0, 0.12, 0.24, 0.38, 0.48, 0.56]
+    const DR = [0.16, 0.5, 0.58, 0.56, 0.4, 0.2]
+    emitLoft(x, z, C16, DY.map((d, k) => [2.6 + d, DR[k]]), RAMP.store, { cap: true, rings: [1, 2, 3], verts: [6, 14] })
+    const m0 = 3.16
+    const MS = [[0, 0.075], [0.35, 0.07], [0.35, 0.055], [0.75, 0.05], [0.75, 0.04], [1.2, 0.03], [1.3, 0]]
+    const mast = emitLoft(x, z, C8, MS.map(([d, r]) => [m0 + d, r]), RAMP.mark, { rings: [0, 2, 4], verts: [3, 7] })
+    roofs.push({ u, v, y: m0, kind: 'blink', ...mast, ax: x, ay: m0 + 1.3, az: z })
+    keepOut.push([x, z, 2.1, 1.9])
   }
 
-  // Ten courses that narrow and lean, then a crown with a notch cut out of it.
+  // A rounded square that narrows on a concave curve, the seam down each face, and the
+  // top split into four petals leaning in. One loft band per step, so the climb reads.
   const lotte = (u, v) => {
     const [x, z] = at(u, v)
-    emitBox(x, 0, z, 1.9, 0.3, 1.7, RAMP.stone)
-    // Ten fat courses read as a stone pagoda, not a supertall. The profile has to be
-    // smooth, so it is many thin courses instead - the steps disappear and what is
-    // left is the slender concave taper the real one has, then the split crown.
-    const N = 30
-    const CH = 0.165
-    let y = 0.3
-    let b = 0
-    const shaft = parts.length
-    for (let k = 0; k < N; k++) {
-      const t = k / (N - 1)
-      const w = 1.12 - 0.72 * Math.pow(t, 0.86)
-      b = 0.2 * t * t
-      emitBox(x + b, y, z + b * 0.6, w, CH, w * 0.88, RAMP.mark)
-      y += CH
+    emitBox(x, 0, z, 2.2, 0.32, 1.9, RAMP.stone)
+    const RC = 0.28
+    const plan = []
+    for (let q = 0; q < 4; q++) {
+      const a0 = (q * Math.PI) / 2
+      const rot = ([px, pz]) => [px * Math.cos(a0) - pz * Math.sin(a0), px * Math.sin(a0) + pz * Math.cos(a0)]
+      plan.push(rot([1 - 0.035, 0])) // the seam, a hair inside the face
+      for (let k = 0; k < 3; k++) {
+        const t = (k / 2) * (Math.PI / 2)
+        plan.push(rot([1 - RC + RC * Math.cos(t), 1 - RC + RC * Math.sin(t)]))
+      }
     }
-    emitBox(x + b - 0.11, y, z + b * 0.6, 0.15, 0.62, 0.34, RAMP.mark)
-    emitBox(x + b + 0.11, y, z + b * 0.6, 0.15, 0.62, 0.34, RAMP.mark)
-    roofs.push({ u, v, y: y + 0.62, kind: 'climb', a: shaft, b: parts.length })
-    keepOut.push([x, z, 1.15, 1.05])
+    const N = 26
+    const y0 = 0.32
+    const y1 = 5.22
+    const sOf = (t) => 0.56 * (1 - 0.55 * t ** 1.7)
+    const prof = Array.from({ length: N + 1 }, (_, k) => [y0 + ((y1 - y0) * k) / N, sOf(k / N)])
+    const tower = emitLoft(x, z, plan, prof, RAMP.mark, { cap: true, verts: [0, 2, 4, 6, 8, 10, 12, 14] })
+    const s = sOf(1)
+    for (const [dx, dz] of SQUARE)
+      emitLoft(x, z, SQUARE, [[y1, 0.44 * s, 0.44 * s, dx * 0.54 * s, dz * 0.54 * s], [y1 + 0.58, 0.03, 0.03, dx * 0.42 * s, dz * 0.42 * s]], RAMP.mark, { verts: [0, 1, 3] })
+    roofs.push({ u, v, y: y1 + 0.58, kind: 'climb', a: tower.a, b: parts.length })
+    keepOut.push([x, z, 1.2, 1.1])
   }
 
-  // 근정전: stone platform, a colonnade standing off a recessed wall, two tiers of tile.
+  // 근정전: the two-tier 월대 with its balustrade and front stair, a colonnade standing
+  // off a recessed wall, then two tiers of tile, the lower one wider and deeper.
   const geunjeongjeon = (u, v) => {
     const [x, z] = at(u, v)
     emitBox(x, 0, z, 3.3, 0.24, 2.8, RAMP.stone)
     emitBox(x, 0.24, z, 2.7, 0.22, 2.25, RAMP.stone)
+    // A rail and its posts, inset from each tier's edge; the front run breaks for the stair.
+    const rail = (hx, hz, y0, y1) => {
+      const run = (ax, az, bx, bz) => {
+        seg([x + ax, y1, z + az], [x + bx, y1, z + bz])
+        const L = Math.hypot(bx - ax, bz - az)
+        for (let k = 0, m = Math.round(L / 0.3); k <= m; k++) {
+          const px = x + ax + ((bx - ax) * k) / m
+          const pz = z + az + ((bz - az) * k) / m
+          seg([px, y0, pz], [px, y1, pz])
+        }
+      }
+      run(-hx, -hz, hx, -hz)
+      run(hx, -hz, hx, hz)
+      run(-hx, -hz, -hx, hz)
+      run(-hx, hz, -0.3, hz)
+      run(0.3, hz, hx, hz)
+    }
+    rail(1.65 - 0.08, 1.4 - 0.08, 0.24, 0.31)
+    rail(1.35 - 0.08, 1.125 - 0.08, 0.46, 0.53)
+    for (let k = 0; k < 3; k++) {
+      emitBox(x, 0, z + 1.4 + 0.12 * k + 0.06, 0.5, 0.24 - 0.06 * (k + 1), 0.12, RAMP.stone)
+      emitBox(x, 0.24, z + 1.125 + 0.09 * k + 0.045, 0.5, 0.22 - 0.055 * (k + 1), 0.09, RAMP.stone)
+    }
     const fy = 0.46
     emitBox(x, fy, z, 1.9, 0.58, 1.55, RAMP.mark)
     for (let k = -2; k <= 2; k++) emitBox(x + k * 0.56, fy, z + 0.88, 0.14, 0.66, 0.14, RAMP.mark)
     for (let k = -1; k <= 1; k++) emitBox(x + 1.12, fy, z + k * 0.56, 0.14, 0.66, 0.14, RAMP.mark)
     const tile = parts.length
-    emitRoof(x, fy + 0.66, z, 1.55, 1.24, 0.62, 32, true)
-    const uy = fy + 0.66 + 0.58
-    emitBox(x, uy, z, 1.35, 0.42, 1.1, RAMP.mark)
-    emitRoof(x, uy + 0.42, z, 1.18, 0.95, 0.56, 32, true)
-    roofs.push({ u, v, y: uy + 0.42 + 0.56, kind: 'glow', a: tile, b: parts.length })
-    keepOut.push([x, z, 2.0, 1.7])
+    emitRoof(x, 1.12, z, 1.55, 1.24, 0.7, 32, true, { fascia: 0.08 })
+    emitBox(x, 1.7, z, 1.35, 0.54, 1.1, RAMP.mark)
+    emitRoof(x, 2.24, z, 1.18, 0.95, 0.62, 32, true, { fascia: 0.07 })
+    roofs.push({ u, v, y: 2.86, kind: 'glow', a: tile, b: parts.length })
+    keepOut.push([x, z, 2.0, 1.8])
   }
 
-  // 숭례문: two piers with a corbelled arch between them, then the two-tier gatehouse.
+  // 숭례문: a battered granite base pierced by one 홍예 arch, the city wall running off
+  // both sides, 여장 around the top, then the two-tier 문루.
   const sungnyemun = (u, v) => {
     const [x, z] = at(u, v)
-    const bw = 2.5
-    const bd = 1.8
-    const bh = 0.92
-    const pier = 0.78
-    const half = bw / 2 - pier / 2
     const gate = parts.length
-    emitBox(x - half, 0, z, pier, bh, bd, RAMP.stone)
-    emitBox(x + half, 0, z, pier, bh, bd, RAMP.stone)
-    emitBox(x, 0, z, bw - 2 * pier + 0.06, bh * 0.86, bd * 0.86, RAMP.gate) // the opening
-    const gateEnd = parts.length
-    const lip = bw / 2 - pier
-    for (let s = 1; s <= 3; s++) {
-      const inset = 0.17 * s
-      const ys = 0.48 + (s - 1) * 0.1
-      emitBox(x - lip + inset / 2, ys, z, inset, 0.1, bd, RAMP.stone)
-      emitBox(x + lip - inset / 2, ys, z, inset, 0.1, bd, RAMP.stone)
+    emitLoft(x, z, SQUARE, [[0, 1.35, 0.75], [1, 1.25, 0.65]], RAMP.stone, { cap: true, verts: [0, 1, 2, 3] })
+    const fz = (y) => z + 0.75 - 0.1 * y + 0.004 // the +z face, which leans in as it rises
+    const AR = 0.31
+    const AS = 0.42
+    const U = [[-AR, 0], [-AR, AS]]
+    for (let k = 1; k < 12; k++) {
+      const t = Math.PI - (k / 12) * Math.PI
+      U.push([AR * Math.cos(t), AS + AR * Math.sin(t)])
     }
-    emitBox(x, 0.78, z, bw, bh - 0.78, bd, RAMP.stone)
-    emitBox(x, bh, z, bw + 0.22, 0.16, bd + 0.18, RAMP.stone) // 여장
-    emitBox(x, bh + 0.16, z, 1.7, 0.42, 1.15, RAMP.mark)
-    emitRoof(x, bh + 0.58, z, 1.42, 0.98, 0.5, 32, true)
-    const uy = bh + 0.58 + 0.46
-    emitBox(x, uy, z, 1.2, 0.32, 0.82, RAMP.mark)
-    emitRoof(x, uy + 0.32, z, 1.16, 0.8, 0.44, 32, true)
-    roofs.push({ u, v, y: uy + 0.32 + 0.44, kind: 'glow', a: gate, b: gateEnd })
-    keepOut.push([x, z, 1.75, 1.3])
+    U.push([AR, AS], [AR, 0])
+    const P = ([dx, y]) => [x + dx, y, fz(y)]
+    const c = P([0, 0.35])
+    const fan = []
+    for (let k = 0; k < U.length; k++) {
+      const p = P(U[k])
+      const q = P(U[(k + 1) % U.length])
+      fan.push([c, p, q, q, 2, [0, 0.1, 1]])
+    }
+    emitQuads(fan, RAMP.gate)
+    const glowEnd = parts.length
+    for (let k = 0; k + 1 < U.length; k++) seg(P(U[k]), P(U[k + 1]))
+    const VR = 0.38
+    let prev = null
+    for (let k = 0; k <= 16; k++) {
+      const t = Math.PI - (k / 16) * Math.PI
+      const o = P([VR * Math.cos(t), AS + VR * Math.sin(t)])
+      if (prev) seg(prev, o)
+      prev = o
+      if (k % 2 === 0 && k > 0 && k < 16) seg(P([AR * Math.cos(t), AS + AR * Math.sin(t)]), o) // voussoir joints
+    }
+    for (const y of [0.3, 0.62]) {
+      const fx = x + 1.35 - 0.1 * y
+      const hz = 0.75 - 0.1 * y
+      const hx = 1.35 - 0.1 * y
+      seg([fx, y, z - hz], [fx, y, z + hz])
+      const gap = y < AS ? AR : Math.sqrt(VR * VR - (y - AS) ** 2)
+      seg(P([-hx, y]), P([-gap, y]))
+      seg(P([gap, y]), P([hx, y]))
+    }
+    for (const sd of [-1, 1]) {
+      emitBox(x + sd * 1.6, 0, z, 0.6, 0.62, 0.9, RAMP.stone) // the city wall, cut short
+      for (let k = -1; k <= 1; k++) emitBox(x + sd * 1.6 + k * 0.2, 0.62, z + 0.39, 0.12, 0.1, 0.1, RAMP.stone)
+    }
+    for (let k = -4; k <= 4; k++)
+      for (const sd of [-1, 1]) emitBox(x + k * 0.3, 1, z + sd * 0.6, 0.14, 0.1, 0.1, RAMP.stone) // 여장
+    for (let k = -1.5; k <= 1.5; k++)
+      for (const sd of [-1, 1]) emitBox(x + sd * 1.2, 1, z + k * 0.3, 0.1, 0.1, 0.14, RAMP.stone)
+    emitBox(x, 1, z, 1.5, 0.42, 0.95, RAMP.mark)
+    for (let k = -2; k <= 2; k++) emitBox(x + k * 0.36, 1, z + 0.515, 0.08, 0.42, 0.08, RAMP.mark)
+    for (let k = -1; k <= 1; k++) emitBox(x + 0.79, 1, z + k * 0.3, 0.08, 0.42, 0.08, RAMP.mark)
+    emitRoof(x, 1.42, z, 1.42, 0.98, 0.5, 32, true, { fascia: 0.07 })
+    emitBox(x, 1.88, z, 1.2, 0.32, 0.82, RAMP.mark)
+    emitRoof(x, 2.2, z, 1.16, 0.8, 0.44, 32, true, { fascia: 0.06 })
+    roofs.push({ u, v, y: 2.64, kind: 'glow', a: gate, b: glowEnd })
+    keepOut.push([x, z, 1.95, 1.1])
   }
 
-  // A slab with the top edge cut on the diagonal, stepped fine enough to read as one.
+  // 63: a thin slab whose roof is one slope falling toward the river, long side on z so
+  // the camera gets the slope in profile. Quads, because a box cannot cut a diagonal.
   const bldg63 = (u, v) => {
     const [x, z] = at(u, v)
-    emitBox(x, 0, z, 2.0, 0.26, 1.3, RAMP.stone)
-    emitBox(x, 0.26, z, 1.5, 2.85, 0.9, RAMP.mark)
-    // The top is one clean diagonal, not a staircase. Boxes cannot cut a slope, so
-    // the wedge is quads: the sloped face and a triangle closing each end.
-    const hw = 0.75
-    const hd = 0.45
-    const y0 = 3.11
-    const y1 = 3.94
-    const P = (dx, yy, dz) => [x + dx, yy, z + dz]
-    const crown = parts.length
-    emitQuad(P(-hw, y0, -hd), P(hw, y1, -hd), P(hw, y1, hd), P(-hw, y0, hd), RAMP.mark)
-    for (const sd of [-hd, hd])
-      emitQuad(P(-hw, y0, sd), P(hw, y1, sd), P(hw, y0, sd), P(hw, y0, sd), RAMP.mark)
-    line(x - hw, y0, z - hd, x + hw, y1, z - hd)
-    line(x - hw, y0, z + hd, x + hw, y1, z + hd)
-    line(x + hw, y0, z - hd, x + hw, y1, z - hd)
-    line(x + hw, y0, z + hd, x + hw, y1, z + hd)
-    roofs.push({ u, v, y: y0, kind: 'blink', a: crown, b: parts.length, ax: x + hw, ay: y1, az: z })
-    keepOut.push([x, z, 1.2, 0.85])
+    emitBox(x, 0, z, 1.4, 0.26, 2.0, RAMP.stone)
+    const hw = 0.31
+    const hd = 0.675
+    const y0 = 0.26
+    const yN = 3.9 // at -z
+    const yS = 2.6 // at +z
+    const top = (dz) => yN + ((yS - yN) * (dz + hd)) / (2 * hd)
+    const P = (dx, y, dz) => [x + dx, y, z + dz]
+    emitQuads([
+      [P(hw, y0, -hd), P(hw, y0, hd), P(hw, yS, hd), P(hw, yN, -hd), 1, [1, 0, 0]],
+      [P(-hw, y0, hd), P(hw, y0, hd), P(hw, yS, hd), P(-hw, yS, hd), 2, [0, 0, 1]],
+      [P(-hw, y0, -hd), P(-hw, y0, hd), P(-hw, yS, hd), P(-hw, yN, -hd), 3, [-1, 0, 0]],
+      [P(-hw, y0, -hd), P(hw, y0, -hd), P(hw, yN, -hd), P(-hw, yN, -hd), 3, [0, 0, -1]],
+    ], RAMP.mark)
+    const crown = emitQuads([[P(-hw, yN, -hd), P(hw, yN, -hd), P(hw, yS, hd), P(-hw, yS, hd), 0, [0, 1, 1]]], RAMP.mark)
+    for (const [dx, dz] of [[hw, hd], [hw, -hd], [-hw, hd], [-hw, -hd]]) seg(P(dx, y0, dz), P(dx, top(dz), dz))
+    for (const dx of [hw, -hw]) seg(P(dx, yN, -hd), P(dx, yS, hd))
+    for (const dz of [hd, -hd]) seg(P(-hw, top(dz), dz), P(hw, top(dz), dz))
+    for (let k = 1; k <= 8; k++) {
+      const dz = -hd + k * 0.15
+      seg(P(hw, y0, dz), P(hw, top(dz), dz))
+    }
+    for (let k = 1; k <= 3; k++) seg(P(-hw + k * 0.155, y0, hd), P(-hw + k * 0.155, yS, hd))
+    roofs.push({ u, v, y: yS, kind: 'blink', a: crown, b: crown + 1, ax: x, ay: yN, az: z - hd })
+    keepOut.push([x, z, 0.9, 1.1])
   }
 
-  // 한옥: four small tiled roofs around a yard. Texture near the ground, not a focus.
+  // 한옥: a ㄷ-shaped house opening toward the camera, its yard walled in 담장 with a
+  // tiled cap, and a small roofed 대문 in the front run.
   const hanok = (u, v) => {
     const [x, z] = at(u, v)
-    const house = (dx, dz, w, d) => {
-      const a = parts.length
-      emitBox(x + dx, 0, z + dz, w * 0.78, 0.36, d * 0.78, RAMP.mark)
-      emitRoof(x + dx, 0.36, z + dz, w * 0.6, d * 0.6, 0.28, 16, false)
-      const ru = u + (dx - dz) * ISQ2
-      roofs.push({ u: ru, v: v + (dx + dz) * ISQ2, y: 0.64, kind: 'glow', a, b: parts.length })
-    }
-    house(-0.72, -0.6, 1.4, 0.9)
-    house(0.78, -0.5, 1.1, 0.85)
-    house(-0.55, 0.82, 1.0, 0.95)
-    house(0.85, 0.9, 0.9, 1.05)
-    keepOut.push([x, z, 1.7, 1.7])
-  }
-
-  // 한강. The one thing that crosses the whole frame. It runs along u, so it projects
-  // screen-horizontal, and behind the column the mask leaves it at 8% - enough to read
-  // as continuing, which is what stops the two gutters looking like two cities.
-  const river = () => {
-    const nearV = RIVER_V - RIVER_HALF
-    const farV = RIVER_V + RIVER_HALF
-    const uEnd = U_HALF + 4
-    const c = (uu, vv) => {
-      const [xx, zz] = at(uu, vv)
-      return [xx, -0.05, zz]
-    }
-    const surface = parts.length
-    emitQuad(c(-uEnd, nearV), c(uEnd, nearV), c(uEnd, farV), c(-uEnd, farV), RAMP.water)
-    const wet = { y: 0.02, wet: 1, kind: 'ripple', a: surface, b: parts.length }
-    for (const uu of [-9.6, 0.6, 9.9]) roofs.push({ ...wet, u: uu, v: RIVER_V })
-    for (const vv of [nearV, farV]) {
-      const a = c(-uEnd, vv)
-      const b = c(uEnd, vv)
-      line(a[0], a[1], a[2], b[0], b[1], b[2])
-    }
-    // A few broken lines along the flow. Water with nothing on it reads as a gap;
-    // this is the cheapest thing that says the surface is moving, and it costs no
-    // colour - the river stays the same grey as everything else.
-    for (let k = 0; k < 26; k++) {
-      const vv = nearV + RIVER_HALF * 2 * (0.12 + 0.76 * ((k * 0.3719) % 1))
-      const u1 = -uEnd + (2 * uEnd * ((k * 0.6180) % 1))
-      const len = 1.4 + 2.6 * ((k * 0.2237) % 1)
-      const a = c(u1, vv)
-      const b = c(Math.min(u1 + len, uEnd), vv)
-      line(a[0], a[1], a[2], b[0], b[1], b[2])
-    }
-  }
-
-  // A bridge the isometric can actually show. The span runs along v, and in this
-  // projection v and world-up are both screen-down, so anything shaped in the v-Y
-  // plane - a suspension cable's sag, a fan of stays - collapses onto the deck line
-  // and reads as nothing. An arch across the deck's *width* is shaped in u and Y,
-  // which are different screen axes, so it curves. 한강철교 is a through-arch anyway.
-  const bridge = (u0) => {
-    const hw = 0.5
-    const L = RIVER_HALF + 1.15
-    const y = 0.5
-    const drop = 0.17
-    const railY = y + 0.16
-    const archH = 0.78
-    const c = (uu, vv, yy) => {
-      const [xx, zz] = at(uu, vv)
-      return [xx, yy, zz]
-    }
-    const seg = (a, b) => line(a[0], a[1], a[2], b[0], b[1], b[2])
-    const v0 = RIVER_V - L
-    const v1 = RIVER_V + L
-
-    emitQuad(c(u0 - hw, v0, y), c(u0 + hw, v0, y), c(u0 + hw, v1, y), c(u0 - hw, v1, y), RAMP.deck)
-
+    const glow = (dx, dz, y, a) =>
+      roofs.push({ u: u + (dx - dz) * ISQ2, v: v + (dx + dz) * ISQ2, y, kind: 'glow', a, b: parts.length })
+    let a = parts.length
+    emitBox(x, 0, z - 0.6, 1.76, 0.34, 0.64, RAMP.mark) // 안채
+    emitRoof(x, 0.34, z - 0.6, 1.056, 0.384, 0.34, 40, false, { fascia: 0.05 })
+    glow(0, -0.6, 0.68, a)
     for (const sd of [-1, 1]) {
-      const uu = u0 + sd * hw
-      emitQuad(c(uu, v0, y), c(uu, v1, y), c(uu, v1, y - drop), c(uu, v0, y - drop), RAMP.stone)
-      seg(c(uu, v0, y), c(uu, v1, y))
-      seg(c(uu, v0, y - drop), c(uu, v1, y - drop))
-      seg(c(uu, v0, railY), c(uu, v1, railY))
-      for (let k = 0; k <= 22; k++) {
-        const [px, pz] = at(uu, v0 + ((v1 - v0) * k) / 22)
-        emitBox(px, y, pz, 0.04, 0.16, 0.04, RAMP.stone)
-      }
+      a = parts.length
+      emitBox(x + sd * 0.75, 0, z + 0.26, 0.56, 0.34, 0.78, RAMP.mark)
+      emitRoof(x + sd * 0.75, 0.34, z + 0.26, 0.47, 0.336, 0.28, 32, false, { alongZ: true, fascia: 0.05 })
+      glow(sd * 0.75, 0.26, 0.62, a)
     }
-
-    // Three through-arches over the water, each with its hangers down to the deck.
-    for (const av of [RIVER_V - RIVER_HALF * 0.72, RIVER_V, RIVER_V + RIVER_HALF * 0.72]) {
-      const N = 18
-      const arc = (t) => {
-        const uu = u0 - hw + 2 * hw * t
-        return c(uu, av, y + archH * Math.sin(Math.PI * t))
-      }
-      let prev = arc(0)
-      for (let k = 1; k <= N; k++) {
-        const next = arc(k / N)
-        seg(prev, next)
-        prev = next
-      }
-      for (let k = 1; k < 6; k++) {
-        const t = k / 6
-        const top = arc(t)
-        if (top[1] - railY > 0.08) seg([top[0], railY, top[2]], top)
-      }
-      // the arch springs off a small pedestal on each side
-      for (const sd of [-1, 1]) {
-        const [px, pz] = at(u0 + sd * hw, av)
-        emitBox(px, y, pz, 0.1, 0.16, 0.1, RAMP.mark)
-      }
+    const wall = (cx, cz, w, d) => {
+      emitBox(x + cx, 0, z + cz, w, 0.22, d, RAMP.stone)
+      emitBox(x + cx, 0.22, z + cz, w + 0.06, 0.04, d + 0.06, RAMP.roof)
     }
-
-    for (const tv of [RIVER_V - RIVER_HALF * 0.72, RIVER_V + RIVER_HALF * 0.72]) {
-      const [px, pz] = at(u0, tv)
-      emitBox(px, -0.05, pz, 0.34, y - drop + 0.05, 0.34, RAMP.stone)
-    }
+    wall(0, -1.2, 2.98, 0.08)
+    for (const sd of [-1, 1]) wall(sd * 1.45, 0.025, 0.08, 2.45)
+    for (const sd of [-1, 1]) wall(sd * 0.825, 1.25, 1.25, 0.08)
+    for (const sd of [-1, 1]) emitBox(x + sd * 0.2, 0, z + 1.25, 0.06, 0.3, 0.06, RAMP.mark)
+    emitRoof(x, 0.3, z + 1.25, 0.3, 0.16, 0.12, 24, false)
+    keepOut.push([x, z, 1.6, 1.4])
   }
 
-  mark()
+  // 한강 runs along world x, so it crosses the frame on the diagonal and its banks are
+  // z-Y planes, which this camera can see. The water sits below grade behind a stone
+  // embankment; its far edge stops where it meets the south bank's line on screen.
+  const river = () => {
+    const X = RIVER_X
+    const zs = RZ + 2 * WATER_Y
+    // Broken lines along the flow: water with nothing on it reads as a gap in the city.
+    const flow = Array.from({ length: 34 }, (_, k) => {
+      const x1 = -X + 2 * X * ((k * 0.618) % 1)
+      return [x1, Math.min(x1 + 1.4 + 2.6 * ((k * 0.2237) % 1), X), -RZ + 0.25 + (zs + RZ - 0.45) * ((k * 0.3719) % 1)]
+    })
+    // Built in three reaches so the gallery can show the middle one without the whole river.
+    const cut = [-X, -19.2, -12, X]
+    const surf = parts.length
+    for (let k = 0; k < 3; k++) {
+      const a = cut[k]
+      const b = cut[k + 1]
+      if (k === 1) mark()
+      emitQuads([[[a, WATER_Y, -RZ], [b, WATER_Y, -RZ], [b, WATER_Y, zs], [a, WATER_Y, zs], 0, [0, 1, 0]]], RAMP.water)
+      emitQuads([[[a, WATER_Y, -RZ], [b, WATER_Y, -RZ], [b, 0, -RZ], [a, 0, -RZ], 2, [0, 0, 1]]], RAMP.stone)
+      parts[parts.length - 1].still = true // the embankment stays put when the water answers
+      seg([a, 0, -RZ], [b, 0, -RZ])
+      seg([a, WATER_Y, -RZ], [b, WATER_Y, -RZ])
+      seg([a, 0, RZ], [b, 0, RZ])
+      for (const [x1, x2, dz] of flow)
+        if (Math.min(x2, b) > Math.max(x1, a)) seg([Math.max(x1, a), WATER_Y + 0.002, dz], [Math.min(x2, b), WATER_Y + 0.002, dz])
+      if (k === 1) note('한강 · Han river', -15.6 * ISQ2, -15.6 * ISQ2, 0.3)
+    }
+    for (const rx of [-22.8, -15.6, 15.6, 22.8])
+      roofs.push({ u: rx * ISQ2, v: rx * ISQ2, y: WATER_Y + 0.02, wet: 1, kind: 'ripple', a: surf, b: parts.length })
+  }
+
+  // A deck on piers with two bowstring trusses over the water, 한강철교 style. The span
+  // runs along z, so the arches are z-Y shapes and curve on screen instead of collapsing.
+  const bridge = (xb) => {
+    const hw = 0.5
+    const DY = 0.34
+    const deckY = (z) => (Math.abs(z) <= 1.7 ? DY : DY * Math.max(0, (2.7 - Math.abs(z)) / 1.0))
+    const Z = [-2.7, -2.2, -1.7]
+    for (let k = 1; k <= 8; k++) Z.push(-1.7 + (3.4 * k) / 8)
+    Z.push(2.2, 2.7)
+    const a = parts.length
+    for (let k = 0; k + 1 < Z.length; k++) {
+      const z0 = Z[k]
+      const z1 = Z[k + 1]
+      const y0 = deckY(z0)
+      const y1 = deckY(z1)
+      const f0 = Math.max(0, y0 - 0.1)
+      const f1 = Math.max(0, y1 - 0.1)
+      emitQuads([
+        [[xb - hw, y0, z0], [xb + hw, y0, z0], [xb + hw, y1, z1], [xb - hw, y1, z1], 0, [0, 1, 0]],
+        [[xb + hw, y0, z0], [xb + hw, y1, z1], [xb + hw, f1, z1], [xb + hw, f0, z0], 1, [1, 0, 0]],
+      ], RAMP.deck)
+      for (const sd of [-1, 1]) seg([xb + sd * hw, y0, z0], [xb + sd * hw, y1, z1])
+      seg([xb + hw, f0, z0], [xb + hw, f1, z1])
+    }
+    roofs.push({ u: xb * ISQ2, v: xb * ISQ2, y: DY, kind: 'climb', a, b: parts.length })
+    for (const [pz, py] of [[-RZ + 0.1, WATER_Y], [0, WATER_Y], [RZ - 0.1, 0]])
+      emitBox(xb, py, pz, 0.9, DY - 0.1 - py, 0.2, RAMP.stone)
+
+    const RISE = 0.5
+    for (const [za, zb] of [[-RZ, 0], [0, RZ]]) {
+      const arch = (sx, t) => [xb + sx * hw, DY + RISE * Math.sin(Math.PI * t), za + (zb - za) * t]
+      const deck = (sx, t) => [xb + sx * hw, DY, za + (zb - za) * t]
+      for (const sx of [-1, 1]) {
+        for (let k = 0; k < 12; k++) seg(arch(sx, k / 12), arch(sx, (k + 1) / 12))
+        for (let k = 1; k < 6; k++) seg(deck(sx, k / 6), arch(sx, k / 6)) // hangers
+        for (let k = 0; k < 6; k++) seg(k % 2 ? arch(sx, k / 6) : deck(sx, k / 6), k % 2 ? deck(sx, (k + 1) / 6) : arch(sx, (k + 1) / 6))
+      }
+      for (const t of [1 / 3, 1 / 2, 2 / 3]) seg(arch(-1, t), arch(1, t))
+    }
+    keepOut.push([xb, 0, 0.7, RZ + 1.6])
+  }
+
   river()
-  note('한강 · Han river', 0.8, RIVER_V, 1)
-  for (const bu of [-10.6, 0.8, 10.8]) {
+  for (const xb of BRIDGE_X) {
     mark()
-    bridge(bu) // the middle one is mostly behind the column, but the crossing continues
-    note('한강 다리 · Han bridge', bu, RIVER_V, 1)
+    bridge(xb)
+    note('한강 다리 · Han bridge', xb * ISQ2, xb * ISQ2, 0.84)
   }
 
-  // Three set pieces a gutter and a datastore, staggered against the other side so no
-  // two big shapes sit at the same height, and spaced so the scroll retires one and
-  // brings in the next. The masked band is about 25 units of v tall, which is what
-  // caps this at four objects a side.
-  // Hugging the ink boundary rather than sitting out by the frame edge: the first
-  // thing outside the column should be a landmark, and the plain carpet fills
-  // outward from behind it. On a wide screen the old spacing put anonymous boxes
-  // next to the text and the set pieces off at the margin, which is backwards.
-  // Built and recorded in one step: a gallery has to be able to draw any one of these
-  // on its own, and the slice it needs only exists while the piece is being built.
+  // The set pieces sit just outside the ink boundary, staggered side to side so no two
+  // big shapes share a height; the plain carpet fills outward from behind them.
+  // Built and recorded in one step: the gallery draws any one of these from its slice.
   const set = [
-    ['N서울타워 · Namsan Tower', namsan, -10.9, -3.5, 4.7],
-    ['경복궁 근정전 · Geunjeongjeon', geunjeongjeon, -10.8, 5.1, 2.2],
-    ['한옥 · Hanok cluster', hanok, -11.2, 15.8, 1.2],
-    ['롯데월드타워 · Lotte World Tower', lotte, 10.7, -8, 4.4],
-    ['숭례문 · Sungnyemun', sungnyemun, 10.9, 2, 2],
-    ['63빌딩 · 63 Building', bldg63, 11.4, 13.6, 4],
+    ['N서울타워 · Namsan Tower', namsan, 11.5, 4.5, 4.5],
+    ['경복궁 근정전 · Geunjeongjeon', geunjeongjeon, 11, -12.5, 2.8],
+    ['숭례문 · Sungnyemun', sungnyemun, 10.9, -4, 2.7],
+    ['롯데월드타워 · Lotte World Tower', lotte, -11, 10, 5.8],
+    ['63빌딩 · 63 Building', bldg63, -11.2, -7, 3.9],
+    ['한옥 · Hanok cluster', hanok, -11, 19.5, 0.9],
   ]
   for (const [name, build, bu, bv, bh] of set) {
     mark()
     build(bu, bv)
     note(name, bu, bv, bh)
   }
-  STORES.forEach((st, k) => {
-    mark()
-    const box = { layer: 'disc', slot: k, r: DISC_R * 1.2 }
-    note('데이터스토어 · Datastore', st.u, st.v, STACK_TOP, box)
-  })
 
   // ---- the carpet --------------------------------------------------------
   const cellKey = (i, j) => i * 1000 + j
@@ -806,6 +931,11 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     Object.assign(f, snap(f))
     for (let di = -1; di <= 1; di++) cleared.add(cellKey(f.i + di, f.j)) // room to pace
   }
+  STORES.forEach((st, k) => {
+    mark()
+    const box = { layer: 'disc', slot: k, r: DISC_R * 1.2 }
+    note('데이터스토어 · Datastore', st.u, st.v, STACK_TOP, box)
+  })
 
   const IMAX = Math.ceil(((U_HALF + V_FWD) * ISQ2) / CELL) + 1
   for (let i = -IMAX; i <= IMAX; i++) {
@@ -817,7 +947,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
       const u = (x - z) * ISQ2
       const v = (x + z) * ISQ2
       if (Math.abs(u) > U_HALF || v < -V_BACK || v > V_FWD) continue
-      if (Math.abs(v - RIVER_V) < RIVER_HALF + 0.55) continue // nothing stands in the water
+      if (Math.abs(z) < RZ + 0.3) continue // nothing stands in the water
       let blocked = false
       for (const [kx, kz, ka, kb] of keepOut)
         if (Math.abs(x - kx) < ka + CELL * 0.4 && Math.abs(z - kz) < kb + CELL * 0.4) {
@@ -863,8 +993,11 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
         const n = 3 + (r4 > 0.5 ? 1 : 0)
         const sw = bw / (n * 1.85)
         const sh = Math.max(1.15, h * 1.45)
-        for (let k = 0; k < n; k++)
-          emitBox(x + (k - (n - 1) / 2) * sw * 1.85, 0, z, sw, sh, bd * 0.5)
+        for (let k = 0; k < n; k++) {
+          const sx = x + (k - (n - 1) / 2) * sw * 1.85
+          emitBox(sx, 0, z, sw, sh, bd * 0.5)
+          emitBox(sx, sh, z - bd * 0.1, sw * 0.7, 0.16, bd * 0.13, RAMP.stone) // 옥탑 lift core
+        }
         top(sh)
         note('아파트 · Apartment slabs', u, v, sh)
       } else if (kind < 0.46) {
@@ -872,7 +1005,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
         // walls by nearly 40% and the thing read as a mushroom; 15% is a roof.
         const bh = Math.max(0.44, Math.min(h, 0.72) * 0.95)
         emitBox(x, 0, z, bw * 0.8, bh, bd * 0.8, RAMP.mark)
-        emitRoof(x, bh, z, bw * 0.46, bd * 0.46, 0.2, 16, false)
+        emitRoof(x, bh, z, bw * 0.46, bd * 0.46, 0.3, 24, false)
         top(bh + 0.42)
         note('기와 저층 · Tiled low-rise', u, v, bh + 0.6)
       } else if (kind < 0.68) {
@@ -954,6 +1087,8 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
         a[o + 2] = tone[f + 2]
       }
     }
+    cityCol.clearUpdateRanges()
+    cityCol.addUpdateRange(0, a.length) // a landing's partial range would otherwise stand in for this whole upload
     cityCol.needsUpdate = true
   }
 
@@ -1092,7 +1227,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     f.tap = 0
     f.sendAt = PHONE_EVERY * 0.45 + n
     mark()
-    note(FIG_NAME[f.kind], f.u, f.v, FIG_H, { layer: 'fig', slot: n, r: 0.17 })
+    note(FIG_NAME[f.kind], f.u, f.v, FIG_H, { layer: 'fig', slot: n, r: 0.17, fig: f }) // live, so a gallery can follow the walker
   })
   for (const f of FIGS)
     if (f.kind === 2) note('말풍선 · Message bubble', f.u, f.v, BH * 2, { layer: 'bubble', r: BW })
@@ -1128,10 +1263,11 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
 
   const arm = new Float64Array(3) // held, not returned: nothing in the frame allocates
   const armPos = (f) => {
-    const s = Math.sign(f.u) || 1 // raised on the outboard side, away from the transcript
-    arm[0] = f.x + f.dx + (ARM_U * s + ARM_V) * ISQ2
+    const a = FIG_ARM[0] / 2
+    const out = f.u < 0 // outboard, away from the transcript
+    arm[0] = f.x + f.dx + (out ? a - FIG_TORSO[0] / 2 : FIG_TORSO[0] / 2 + a) // flush on the visible face, at its outer edge
     arm[1] = FIG_LEG[1] + FIG_TORSO[1] * 0.28 + f.bob + f.tap
-    arm[2] = f.z + (ARM_V - ARM_U * s) * ISQ2
+    arm[2] = f.z + (out ? FIG_TORSO[2] / 2 + a : a - FIG_TORSO[2] / 2)
   }
 
   const writeFig = (f) => {
@@ -1227,7 +1363,9 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   let RGZ = -RX
   let UGX = UX
   let UGZ = UX
+  let faceT = 0
   const face = (t) => {
+    faceT = t
     const c = Math.cos(t)
     const q = Math.sin(t)
     RGX = RX * (c + q)
@@ -1302,8 +1440,8 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
       to.u = dst.u
       to.v = dst.v
       to.y = dst.y
-      to.store = null
-      to.rec = dst
+      to.store = dst.store ?? null
+      to.rec = dst.store ? null : dst
       got = true
     } else if (Math.random() < 0.3) {
       let best = Infinity
@@ -1369,8 +1507,8 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     }
     if (r.kind === 'ripple') {
       const [rx, rz] = at(r.u, r.v)
-      spawn('ring', rx, -0.03, rz)
-      spawn('ring', rx, -0.03, rz, -0.24) // a second ring behind the first, so it reads as water
+      spawn('ring', rx, WATER_Y + 0.03, rz)
+      spawn('ring', rx, WATER_Y + 0.03, rz, -0.24) // a second ring behind the first, so it reads as water
     } else if (r.kind === 'blink') {
       spawn('blip', r.ax, r.ay, r.az)
     } else if (r.kind === 'heart') {
@@ -1416,6 +1554,11 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   const writeBubbles = () => {
     for (let s = 0; s < MAXB; s++) park(s)
     for (const p of live) {
+      const g = p.rec?.fig
+      if (g) {
+        p.u1 = (g.x + g.dx - g.z) * ISQ2 // a walker keeps walking, so the message homes on him
+        p.v1 = (g.x + g.dx + g.z) * ISQ2
+      }
       shape(p)
       const k = sh[0]
       const sx = sh[1]
@@ -1439,7 +1582,8 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     const arr = cityCol.array
     for (let pi = r.a; pi < r.b; pi++) {
       const q = parts[pi]
-      tones(q.ramp, age < 0 ? 0 : f(age, pi - r.a, span), FX_INK)
+      if (q.still) continue
+      tones(q.ramp, age < 0 ? 0 : f(age, pi - r.a, span), FX_GAIN[r.kind] ?? FX_INK)
       for (let i = 0; i < q.n; i++) {
         const fc = q.face[i] * 3
         const o = (q.v0 + i) * 3
@@ -1726,7 +1870,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
       stepFx(dt)
       for (const f of FIGS) {
         stepFig(f, age)
-        if (f.kind === 2 && age > f.sendAt) {
+        if (f.kind === 2 && !hushed && age > f.sendAt) {
           f.sendAt = age + PHONE_EVERY * (0.7 + Math.random() * 0.6)
           armPos(f)
           from.u = (arm[0] - arm[2]) * ISQ2
@@ -1757,10 +1901,27 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     paintAll()
   }
 
-  // The harness needs to make a message happen on demand and to aim it: a bubble is
-  // in flight rather than at a fixed spot, and a landmark's reaction only exists while
-  // one is landing on it. Nothing in the scene calls this.
-  const poke = (u, v) => {
+  // The gallery turns the world under the piece; undo that turn so a message still
+  // crosses the frame the same way rather than wherever the spin left it.
+  const unturn = (du, dv) => {
+    const [ox, oz] = at(du, dv)
+    const cs = Math.cos(faceT)
+    const sn = Math.sin(faceT)
+    const rx = ox * cs - oz * sn
+    const rz = ox * sn + oz * cs
+    return [(rx - rz) * ISQ2, (rx + rz) * ISQ2]
+  }
+
+  // The harness makes a message happen on demand and aims it, since a reaction only
+  // exists while one is landing. hop sends one across an empty spot. The page never calls it.
+  const poke = (u, v, hop) => {
+    if (hop) {
+      const [du, dv] = unturn(1.1, 0)
+      from.u = u - du
+      from.v = v - dv
+      from.y = 0.1
+      return !!launch(from, false, { u: u + du, v: v + dv, y: 0.1 })
+    }
     let dst = null
     if (u !== undefined) {
       let best = 2.5
@@ -1772,10 +1933,18 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
           dst = r
         }
       }
+      for (const s of STORES) {
+        const d = Math.hypot(s.u - u, s.v - v)
+        if (d < best) {
+          best = d
+          dst = { u: s.u, v: s.v, y: STACK_TOP, store: s }
+        }
+      }
       if (!dst) return false
     }
+    const [du, dv] = unturn(-3.6, -2.4) // in from the upper left
     const src = dst
-      ? { u: dst.u - 3.6, v: dst.v - 2.4, y: 1.1 }
+      ? { u: dst.u + du, v: dst.v + dv, y: 1.1 }
       : (FIGS.find((q) => q.kind === 2 && visible(q.u, q.v)) ?? FIGS[0])
     from.u = src.u
     from.v = src.v
