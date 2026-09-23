@@ -190,6 +190,7 @@ const FIG_LEG = [0.1, 0.22, 0.1]
 const FIG_TORSO = [0.18, 0.175, 0.12]
 const FIG_HEAD = [0.095, 0.135, 0.095]
 const FIG_NECK = 0.02 // the head clears the shoulders, or the pair reads as one post
+const FIG_H = 0.55 // legs, torso, neck gap and head, which is 21px on the page
 const FIG_ARM = [0.045, 0.2, 0.045] // raised to the chin: the one silhouette that says sending
 const ARM_U = 0.115 // offset in screen-u; an equal +x+z is pure screen-down and hides behind the torso
 const ARM_V = 0.04
@@ -475,9 +476,21 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
 
   // What got built and where, so harness-building.html can walk the scene piece by
   // piece instead of me hunting for one shop block in a corner of a screenshot.
-  // Recording only; nothing in the scene reads it.
+  // Every primitive lands in the same two buffers in build order, so a piece is a
+  // contiguous slice of each: mark() opens one, the note after the build closes it.
+  // Recording only; nothing on the page reads it.
   const catalog = []
-  const note = (name, u, v, h = 1) => catalog.push({ name, u, v, h })
+  let mi = 0
+  let me = 0
+  const mark = () => {
+    mi = cIdx.length
+    me = cEdge.length
+  }
+  const note = (name, u, v, h = 1, more) =>
+    catalog.push({
+      name, u, v, h, i0: mi, iN: cIdx.length - mi, e0: me, eN: cEdge.length - me,
+      ...more,
+    })
 
   // A wooded hill, a banded shaft out of it, the observation drum, a mast.
   // The real one is mostly mast: the antenna is about a third of everything above the
@@ -735,10 +748,14 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     }
   }
 
+  mark()
   river()
-  bridge(-10.6)
-  bridge(0.8) // mostly behind the column, but the crossing has to continue
-  bridge(10.8)
+  note('한강 · Han river', 0.8, RIVER_V, 1)
+  for (const bu of [-10.6, 0.8, 10.8]) {
+    mark()
+    bridge(bu) // the middle one is mostly behind the column, but the crossing continues
+    note('한강 다리 · Han bridge', bu, RIVER_V, 1)
+  }
 
   // Three set pieces a gutter and a datastore, staggered against the other side so no
   // two big shapes sit at the same height, and spaced so the scroll retires one and
@@ -748,22 +765,26 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   // thing outside the column should be a landmark, and the plain carpet fills
   // outward from behind it. On a wide screen the old spacing put anonymous boxes
   // next to the text and the set pieces off at the margin, which is backwards.
-  namsan(-10.9, -3.5)
-  geunjeongjeon(-10.8, 5.1)
-  hanok(-11.2, 15.8)
-  lotte(10.7, -8)
-  sungnyemun(10.9, 2)
-  bldg63(11.4, 13.6)
-
-  note('N서울타워 · Namsan Tower', -10.9, -3.5, 4.7)
-  note('경복궁 근정전 · Geunjeongjeon', -10.8, 5.1, 2.2)
-  note('한옥 · Hanok cluster', -11.2, 15.8, 1.2)
-  note('롯데월드타워 · Lotte World Tower', 10.7, -8, 4.4)
-  note('숭례문 · Sungnyemun', 10.9, 2, 2)
-  note('63빌딩 · 63 Building', 11.4, 13.6, 4)
-  note('한강 다리 · Han bridge', -10.6, RIVER_V, 1)
-  note('한강 · Han river', 0.8, RIVER_V, 1)
-  for (const s of STORES) note('데이터스토어 · Datastore', s.u, s.v, 1.6)
+  // Built and recorded in one step: a gallery has to be able to draw any one of these
+  // on its own, and the slice it needs only exists while the piece is being built.
+  const set = [
+    ['N서울타워 · Namsan Tower', namsan, -10.9, -3.5, 4.7],
+    ['경복궁 근정전 · Geunjeongjeon', geunjeongjeon, -10.8, 5.1, 2.2],
+    ['한옥 · Hanok cluster', hanok, -11.2, 15.8, 1.2],
+    ['롯데월드타워 · Lotte World Tower', lotte, 10.7, -8, 4.4],
+    ['숭례문 · Sungnyemun', sungnyemun, 10.9, 2, 2],
+    ['63빌딩 · 63 Building', bldg63, 11.4, 13.6, 4],
+  ]
+  for (const [name, build, bu, bv, bh] of set) {
+    mark()
+    build(bu, bv)
+    note(name, bu, bv, bh)
+  }
+  STORES.forEach((st, k) => {
+    mark()
+    const box = { layer: 'disc', slot: k, r: DISC_R * 1.2 }
+    note('데이터스토어 · Datastore', st.u, st.v, STACK_TOP, box)
+  })
 
   // ---- the carpet --------------------------------------------------------
   const cellKey = (i, j) => i * 1000 + j
@@ -829,6 +850,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
         continue
       }
 
+      mark()
       const kind = rnd(i, j, 6)
       const r4 = rnd(i, j, 7)
       const top = (y) => {
@@ -903,10 +925,9 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   const cityEdgeGeo = new THREE.BufferGeometry()
   cityEdgeGeo.setAttribute('position', new THREE.Float32BufferAttribute(cEdge, 3))
   const cityEdgeMat = new THREE.LineBasicMaterial()
-  world.add(
-    new THREE.Mesh(cityGeo, new THREE.MeshBasicMaterial({ vertexColors: true })),
-    new THREE.LineSegments(cityEdgeGeo, cityEdgeMat),
-  )
+  const cityMesh = new THREE.Mesh(cityGeo, new THREE.MeshBasicMaterial({ vertexColors: true }))
+  const cityLines = new THREE.LineSegments(cityEdgeGeo, cityEdgeMat)
+  world.add(cityMesh, cityLines)
 
   const paintCity = () => {
     // ink() blends bg2 toward fg, so a higher t is lighter on a dark theme and darker
@@ -962,10 +983,12 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   const discEdgeGeo = new THREE.BufferGeometry()
   discEdgeGeo.setAttribute('position', discEdgeAttr)
   discEdgeGeo.setAttribute('color', discEdgeCol)
-  world.add(
-    new THREE.Mesh(discGeo, new THREE.MeshBasicMaterial({ vertexColors: true })),
-    new THREE.LineSegments(discEdgeGeo, new THREE.LineBasicMaterial({ vertexColors: true })),
+  const discMesh = new THREE.Mesh(discGeo, new THREE.MeshBasicMaterial({ vertexColors: true }))
+  const discLines = new THREE.LineSegments(
+    discEdgeGeo,
+    new THREE.LineBasicMaterial({ vertexColors: true }),
   )
+  world.add(discMesh, discLines)
 
   STORES.forEach((s, n) => {
     s.base = n * DISCS
@@ -1056,7 +1079,11 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
   figLines.frustumCulled = false
   world.add(figMesh, figLines)
 
-  const FIG_NAME = ['사람 · Figure, idling', '사람 · Figure, walking', '사람 · Figure, sending']
+  const FIG_NAME = [
+    '선 사람 · Figure, idling',
+    '걷는 사람 · Figure, walking',
+    '보내는 사람 · Figure, sending',
+  ]
   FIGS.forEach((f, n) => {
     f.slot = n * FIG_BOXES
     f.phase = n * 1.31
@@ -1064,9 +1091,11 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     f.bob = 0
     f.tap = 0
     f.sendAt = PHONE_EVERY * 0.45 + n
-    note(FIG_NAME[f.kind], f.u, f.v, 0.75)
+    mark()
+    note(FIG_NAME[f.kind], f.u, f.v, FIG_H, { layer: 'fig', slot: n, r: 0.17 })
   })
-  for (const f of FIGS) if (f.kind === 2) note('말풍선 · Message bubble', f.u, f.v, 1.9)
+  for (const f of FIGS)
+    if (f.kind === 2) note('말풍선 · Message bubble', f.u, f.v, BH * 2, { layer: 'bubble', r: BW })
   for (const f of FIGS) roofs.push({ u: f.u, v: f.v, y: 0.6, kind: 'heart', fig: f })
 
   const writeBox = (pos, edge, slot, x, y, z, w, h, d) => {
@@ -1192,14 +1221,29 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     }
   }
 
+  // A bubble and a heart are flat symbols laid on the camera's own right and up. A
+  // gallery that turns the world has to turn that pair with it or they go edge-on.
+  let RGX = RX
+  let RGZ = -RX
+  let UGX = UX
+  let UGZ = UX
+  const face = (t) => {
+    const c = Math.cos(t)
+    const q = Math.sin(t)
+    RGX = RX * (c + q)
+    RGZ = RX * (q - c)
+    UGX = UX * (c - q)
+    UGZ = UX * (q + c)
+  }
+
   const scratch = new Float32Array(NPT * 3)
   const writeBubble = (slot, x, y, z, sx, sy, flip) => {
     for (let i = 0; i < NPT; i++) {
       const a = outline[i * 2] * sx * flip
       const b = outline[i * 2 + 1] * sy
-      scratch[i * 3] = x + RX * a + UX * b
+      scratch[i * 3] = x + RGX * a + UGX * b
       scratch[i * 3 + 1] = y + UP_Y * b
-      scratch[i * 3 + 2] = z - RX * a + UX * b
+      scratch[i * 3 + 2] = z + RGZ * a + UGZ * b
     }
     let o = slot * FILLV * 3
     bFill[o] = x
@@ -1334,13 +1378,19 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     }
   }
 
+  let hushed = false
   const stepBubbles = (dt) => {
+    if (hushed) return stepFlight(dt)
     sendAt -= dt
     if (sendAt <= 0) {
       sendAt = SEND_MIN + Math.random() * SEND_VAR
       const r = pick(Math.random() < 0.5 ? -1 : 1, true)
       if (r) launch(r, true)
     }
+    stepFlight(dt)
+  }
+
+  const stepFlight = (dt) => {
     for (let i = live.length - 1; i >= 0; i--) {
       const p = live[i]
       p.t += dt
@@ -1508,15 +1558,15 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
           } else if (blip) {
             const pa = Math.cos(ang) * r
             const pb = Math.sin(ang) * r
-            fxPos[o] = e.x + RX * pa + UX * pb
+            fxPos[o] = e.x + RGX * pa + UGX * pb
             fxPos[o + 1] = e.y + UP_Y * pb
-            fxPos[o + 2] = e.z - RX * pa + UX * pb
+            fxPos[o + 2] = e.z + RGZ * pa + UGZ * pb
           } else {
             const pa = heartPts[q * 2] * grow
             const pb = heartPts[q * 2 + 1] * grow
-            fxPos[o] = e.x + RX * pa + UX * pb
+            fxPos[o] = e.x + RGX * pa + UGX * pb
             fxPos[o + 1] = e.y + rise + UP_Y * pb
-            fxPos[o + 2] = e.z - RX * pa + UX * pb
+            fxPos[o + 2] = e.z + RGZ * pa + UGZ * pb
           }
           fxCol[c] = _c1.r
           fxCol[c + 1] = _c1.g
@@ -1733,5 +1783,31 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     return !!launch(from, false, dst)
   }
 
-  return { render, resize, retint, world, camera, catalog, poke }
+  // Draw one catalogued piece and nothing else. Indexed geometry counts a draw range
+  // in indices, non-indexed in vertices, which is why the edge pass divides by three.
+  // Messages and their reactions stay on, because an arriving one is the point.
+  // Nothing on the page calls this; the gallery does.
+  const ALL = Infinity
+  const isolate = (c) => {
+    const city = !!c && !c.layer
+    cityMesh.visible = cityLines.visible = !c || city
+    figMesh.visible = figLines.visible = !c || c.layer === 'fig'
+    discMesh.visible = discLines.visible = !c || c.layer === 'disc'
+    cityGeo.setDrawRange(city ? c.i0 : 0, city ? c.iN : ALL)
+    cityEdgeGeo.setDrawRange(city ? c.e0 / 3 : 0, city ? c.eN / 3 : ALL)
+    const fig = c?.layer === 'fig'
+    const fi = FIG_BOXES * boxT.idx.length
+    figGeo.setDrawRange(fig ? c.slot * fi : 0, fig ? fi : ALL)
+    figEdgeGeo.setDrawRange(fig ? c.slot * FIG_BOXES * BOXE : 0, fig ? FIG_BOXES * BOXE : ALL)
+    const disc = c?.layer === 'disc'
+    const di = DISCS * cylT.idx.length
+    discGeo.setDrawRange(disc ? c.slot * di : 0, disc ? di : ALL)
+    discEdgeGeo.setDrawRange(disc ? c.slot * DISCS * CYLE : 0, disc ? DISCS * CYLE : ALL)
+  }
+
+  // Stop the city sending on its own. poke() still works, so a gallery can show one
+  // delivery at a time instead of the whole post round crossing its frame.
+  const hush = (on) => (hushed = on)
+
+  return { render, resize, retint, world, camera, catalog, poke, isolate, hush, face }
 }

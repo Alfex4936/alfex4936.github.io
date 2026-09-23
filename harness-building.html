@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en" data-lang="en">
+<html lang="ko" data-lang="ko">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
-    <title>harness · every building in the city scene</title>
+    <title>city scene · 전시</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -13,50 +13,81 @@
     />
     <link rel="stylesheet" href="css/site.css?v=13" />
     <style>
-      /* A development tool, not a page of the site. It mounts the real
-         js/scene-city.js, so whatever it shows is what ships. */
+      /* A gallery, not a debug list: one piece at a time, on its own, turning.
+         It mounts the real js/scene-city.js, so what it shows is what ships. */
       body {
         display: grid;
-        grid-template-columns: 290px 1fr;
-        height: 100vh;
+        grid-template-columns: 252px minmax(0, 1fr);
         height: 100svh;
         overflow: hidden;
       }
 
       aside {
+        display: flex;
+        flex-direction: column;
         border-right: 1px solid var(--rule);
-        overflow-y: auto;
-        padding: 14px 0 40px;
         font: 400 13px/1.6 var(--font);
       }
 
-      h1 {
-        margin: 0 16px 4px;
-        font: 500 13px/1.6 var(--font);
+      .masthead {
+        padding: 18px 18px 14px;
+        border-bottom: 1px solid var(--rule);
+      }
+
+      .masthead b {
+        display: block;
+        font: 500 13px/1.5 var(--font);
         color: var(--fg);
       }
 
-      .hint {
-        margin: 0 16px 14px;
+      .masthead span {
         color: var(--faint);
-        font-size: 12px;
+        font-size: 11.5px;
+      }
+
+      nav {
+        overflow-y: auto;
+        padding: 8px 0 32px;
       }
 
       .grp {
-        margin: 14px 16px 5px;
+        margin: 14px 18px 6px;
         color: var(--faint);
-        font-size: 11px;
-        letter-spacing: 0.08em;
+        font-size: 10.5px;
+        letter-spacing: 0.1em;
         text-transform: uppercase;
       }
 
       button.pick {
-        display: block;
+        display: grid;
+        grid-template-columns: 22px minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: baseline;
         width: 100%;
-        padding: 5px 16px;
+        padding: 5px 18px;
         text-align: left;
         color: var(--dim);
         font: inherit;
+        border-left: 2px solid transparent;
+      }
+
+      button.pick i {
+        color: var(--faint);
+        font: 400 11px/1.6 var(--font);
+        font-style: normal;
+      }
+
+      button.pick em {
+        overflow: hidden;
+        font-style: normal;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      button.pick s {
+        color: var(--faint);
+        font-size: 11px;
+        text-decoration: none;
       }
 
       button.pick:hover {
@@ -64,14 +95,10 @@
         background: var(--bg-2);
       }
 
-      button.pick[aria-pressed="true"] {
+      button.pick[aria-current="true"] {
         color: var(--fg);
         background: var(--bg-2);
-        box-shadow: inset 2px 0 0 var(--claude);
-      }
-
-      .count {
-        color: var(--faint);
+        border-left-color: var(--claude);
       }
 
       main {
@@ -90,68 +117,177 @@
         cursor: grabbing;
       }
 
-      .bar2 {
+      /* Everything over the stage is a caption, so none of it takes the pointer
+         except the controls themselves. */
+      .over {
         position: absolute;
-        top: 12px;
-        right: 14px;
+        pointer-events: none;
+      }
+
+      .label {
+        left: 40px;
+        bottom: 36px;
+        max-width: 27rem;
+      }
+
+      .num {
+        color: var(--faint);
+        font: 400 11.5px/1.6 var(--font);
+        letter-spacing: 0.12em;
+      }
+
+      .ko {
+        margin: 2px 0 1px;
+        font: 600 26px/1.25 var(--font);
+        color: var(--fg);
+        letter-spacing: -0.01em;
+      }
+
+      .en {
+        font: 400 14px/1.5 var(--font);
+        color: var(--dim);
+      }
+
+      .facts {
+        margin-top: 14px;
+        padding-top: 12px;
+        border-top: 1px solid var(--rule);
+        display: grid;
+        grid-template-columns: 5.5rem minmax(0, 1fr);
+        gap: 3px 14px;
+        font: 400 12.5px/1.55 var(--font);
+        color: var(--dim);
+      }
+
+      .facts dt {
+        color: var(--faint);
+      }
+
+      .bar {
+        top: 16px;
+        right: 20px;
         display: flex;
-        gap: 4px;
+        gap: 18px;
+        align-items: center;
+        pointer-events: auto;
         font: 400 12px/1.6 var(--font);
       }
 
-      .bar2 button {
-        padding: 2px 9px;
+      .bar div {
+        display: flex;
+        gap: 3px;
+      }
+
+      .bar button {
+        padding: 3px 10px;
         color: var(--dim);
         border: 1px solid transparent;
         border-radius: 3px;
       }
 
-      .bar2 button[aria-pressed="true"] {
+      .bar button:hover {
+        color: var(--fg);
+      }
+
+      .bar button[aria-pressed="true"] {
         color: var(--fg);
         border-color: var(--rule);
         background: var(--bg-2);
       }
 
-      .read {
-        position: absolute;
-        left: 16px;
-        bottom: 14px;
-        color: var(--faint);
-        font: 400 11px/1.6 var(--font);
+      .step {
+        left: 40px;
+        top: 16px;
+        display: flex;
+        gap: 4px;
+        pointer-events: auto;
       }
 
-      .now {
-        position: absolute;
-        left: 16px;
-        top: 14px;
+      .step button {
+        width: 30px;
+        height: 26px;
+        color: var(--dim);
+        border: 1px solid var(--rule);
+        border-radius: 3px;
+        font: 400 13px/1 var(--font);
+      }
+
+      .step button:hover {
         color: var(--fg);
-        font: 500 14px/1.6 var(--font);
+        background: var(--bg-2);
+      }
+
+      .keys {
+        right: 20px;
+        bottom: 18px;
+        text-align: right;
+        color: var(--faint);
+        font: 400 11px/1.75 var(--font);
+      }
+
+      kbd {
+        padding: 0 4px;
+        border: 1px solid var(--rule);
+        border-radius: 3px;
+        font: inherit;
+        color: var(--dim);
+      }
+
+      @media (max-width: 860px) {
+        body {
+          grid-template-columns: 1fr;
+        }
+        aside {
+          display: none;
+        }
       }
     </style>
   </head>
   <body>
     <aside>
-      <h1>city scene · every piece</h1>
-      <p class="hint">
-        drag to turn · wheel to zoom · double-click to reset<br />
-        mounts the real <code>js/scene-city.js</code>
+      <p class="masthead">
+        <b>city scene · 전시</b>
+        <span>js/scene-city.js 를 그대로 마운트</span>
       </p>
       <nav id="list"></nav>
     </aside>
 
     <main>
       <canvas id="view"></canvas>
-      <div class="now" id="now"></div>
-      <div class="bar2">
-        <button type="button" data-theme-set="dark">dark</button>
-        <button type="button" data-theme-set="light">light</button>
-        <button type="button" data-theme-set="redis">redis</button>
+
+      <div class="over step">
+        <button type="button" id="prev" title="이전 (←)">‹</button>
+        <button type="button" id="next" title="다음 (→)">›</button>
       </div>
-      <div class="read" id="read"></div>
+
+      <div class="over bar">
+        <div>
+          <button type="button" id="solo" aria-pressed="true">격리</button>
+          <button type="button" id="spin" aria-pressed="true">회전</button>
+          <button type="button" id="ping">반응</button>
+        </div>
+        <div>
+          <button type="button" data-theme-set="dark" aria-pressed="true">dark</button>
+          <button type="button" data-theme-set="light">light</button>
+          <button type="button" data-theme-set="redis">redis</button>
+        </div>
+      </div>
+
+      <div class="over label">
+        <p class="num" id="num"></p>
+        <p class="ko" id="ko"></p>
+        <p class="en" id="en"></p>
+        <dl class="facts" id="facts"></dl>
+      </div>
+
+      <p class="over keys">
+        <kbd>←</kbd> <kbd>→</kbd> 작품 · <kbd>↑</kbd> <kbd>↓</kbd> 같은 종류 안에서<br />
+        드래그 돌리기 · 휠 확대 · <kbd>space</kbd> 회전 · <kbd>r</kbd> 반응
+      </p>
     </main>
 
     <script type="module">
-      import city from './js/scene-city.js?v=6'
+      import city from './js/scene-city.js?v=10'
 
       const root = document.documentElement
       const TOKENS = ['bg', 'bg-2', 'fg', 'dim', 'faint', 'rule', 'claude', 'ok']
@@ -174,24 +310,69 @@
         tokens: readTokens(),
         still: false,
       })
+      globalThis.scene = scene
 
-      globalThis.scene = scene // so the console can poke a reaction and time a capture
-
-      // The scene writes to `world` every frame for its own pan, so the harness never
-      // touches it. Two groups go in above it instead: `offset` slides the piece being
-      // looked at onto the origin, `pivot` turns and scales about that origin.
+      // The scene writes to `world` every frame for its own pan, so the gallery never
+      // touches it. Two groups go in above: `offset` slides the piece onto the origin,
+      // `pivot` turns and scales about that origin.
       const world = scene.world
-      const parent = world.parent
       const pivot = new THREE.Group()
       const offset = new THREE.Group()
-      parent.add(pivot)
+      world.parent.add(pivot)
       pivot.add(offset)
       offset.add(world)
 
-      const ISQ2 = Math.SQRT1_2
-      const at = (u, v) => [(u + v) * ISQ2, (v - u) * ISQ2]
+      // A ring on the floor under the piece: a shape with no ground under it reads as
+      // floating rather than standing.
+      const ring = (() => {
+        const p = []
+        for (let i = 0; i <= 72; i++) {
+          const a = (i / 72) * Math.PI * 2
+          p.push(Math.cos(a), 0, Math.sin(a))
+        }
+        const g = new THREE.BufferGeometry()
+        g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3))
+        const m = new THREE.Line(g, new THREE.LineBasicMaterial())
+        pivot.add(m)
+        return m
+      })()
 
-      // One entry per distinct name; the carpet types appear on many plots, so keep a
+      const SQ = Math.SQRT1_2
+      const at = (u, v) => [(u + v) * SQ, (v - u) * SQ]
+      const UP_Y = 0.81649658
+
+      // What each piece does when a message lands on it. The scene holds this as a
+      // kind on its delivery targets; here it only has to be readable.
+      const REACTS = {
+        N서울타워: '첨탑이 깜빡이고 꼭대기에 헤일로가 열린다',
+        '경복궁 근정전': '기와 두 겹이 한꺼번에 데워진다',
+        한옥: '메시지가 닿은 집 지붕만 데워진다',
+        롯데월드타워: '빛의 띠가 서른 개 단을 타고 올라간다',
+        숭례문: '석축과 그 사이 홍예가 밝아진다 — 지붕이 아니라 문이 답한다',
+        '63빌딩': '잘린 크라운이 항공장애등처럼 깜빡인다',
+        '한강 다리': '없음 — 강에 떨어진 링이 지나간다',
+        한강: '수면에 링 두 개가 번진다',
+        데이터스토어: '디스크가 하나 튀어 오르며 밝아진다',
+        사람: '머리 위로 하트가 떠오른다',
+        말풍선: '이것 자체가 메시지다',
+      }
+      const ORDER = [
+        'N서울타워',
+        '롯데월드타워',
+        '경복궁 근정전',
+        '숭례문',
+        '63빌딩',
+        '한옥',
+        '한강 다리',
+        '한강',
+        '데이터스토어',
+        '보내는 사람',
+        '걷는 사람',
+        '선 사람',
+        '말풍선',
+      ]
+
+      // One entry per distinct name; a carpet type stands on many plots, so keep a
       // handful of each and let the count say how common it is.
       const byName = new Map()
       for (const c of scene.catalog) {
@@ -200,30 +381,105 @@
         e.n++
         if (e.at.length < 8) e.at.push(c)
       }
-      const entries = [...byName.values()]
-      const landmarks = entries.filter((e) => e.n <= 2)
-      const fabric = entries.filter((e) => e.n > 2)
+      const rank = (e) => {
+        const i = ORDER.findIndex((o) => e.name.startsWith(o))
+        return i < 0 ? ORDER.length + e.n : i
+      }
+      const works = [...byName.values()].sort((a, b) => rank(a) - rank(b))
+      const isSet = (e) => rank(e) < ORDER.length
 
       const list = document.getElementById('list')
-      const now = document.getElementById('now')
-      const read = document.getElementById('read')
-      let active = null
-      let idx = 0
+      const numEl = document.getElementById('num')
+      const koEl = document.getElementById('ko')
+      const enEl = document.getElementById('en')
+      const factsEl = document.getElementById('facts')
 
-      const frame = (e, step = 0) => {
-        if (active === e) idx = (idx + step + e.at.length) % e.at.length
-        else {
-          active = e
-          idx = 0
+      let w = 0 // which work
+      let k = 0 // which copy of it
+      let solo = true
+      let spinning = true
+      let turn = 0
+      let pokeIn = 0
+      const buttons = []
+
+      // The exact box a piece fills, read off the buffer it was built into, so the
+      // framing is the piece's own rather than a guess from its catalogued height.
+      const cityGeo = world.children[0].geometry
+      const pos = cityGeo.attributes.position
+      const idx = cityGeo.index
+      const box = new THREE.Box3()
+      const vec = new THREE.Vector3()
+      const bounds = (c) => {
+        box.makeEmpty()
+        if (c.layer || !c.iN) {
+          const [x, z] = at(c.u, c.v)
+          const r = c.r ?? 0.5
+          box.set(vec.clone().set(x - r, 0, z - r), vec.clone().set(x + r, c.h, z + r))
+          return box
         }
-        const c = e.at[idx]
-        const [x, z] = at(c.u, c.v)
-        offset.position.set(-x, -c.h * 0.42, -z)
-        pivot.rotation.y = 0
-        pivot.scale.setScalar(Math.max(1.1, 3.4 / Math.max(0.9, c.h)))
-        now.textContent = e.name + (e.at.length > 1 ? `  ${idx + 1}/${e.at.length}` : '')
-        for (const b of list.querySelectorAll('button'))
-          b.setAttribute('aria-pressed', String(b.dataset.name === e.name))
+        for (let i = c.i0; i < c.i0 + c.iN; i++) {
+          const j = idx.getX(i)
+          box.expandByPoint(vec.set(pos.getX(j), pos.getY(j), pos.getZ(j)))
+        }
+        return box
+      }
+
+      const mid = new THREE.Vector3()
+      const size = new THREE.Vector3()
+      const frame = () => {
+        const e = works[w]
+        const c = e.at[k]
+        const b = bounds(c)
+        b.getCenter(mid)
+        b.getSize(size)
+        // Orthographic: world units map to pixels by one factor everywhere, and the
+        // camera's own frustum width is what states it.
+        const px = host.clientWidth / (scene.camera.right - scene.camera.left)
+        const reach = Math.max(size.x + size.z, size.y * 1.5) * 0.5 + 0.3
+        const foot = Math.max(size.x, size.z) * 0.62 + 0.12
+        const fit = (0.34 * Math.min(host.clientWidth, host.clientHeight)) / (reach * px)
+        offset.position.set(-mid.x, -mid.y, -mid.z)
+        pivot.scale.setScalar(fit)
+        ring.scale.set(foot, 1, foot)
+        ring.position.y = -size.y / 2 - 0.02
+        ring.visible = solo
+        scene.isolate(solo ? c : null)
+        scene.hush(solo)
+        caption(e, c)
+        pokeIn = 0.9
+      }
+
+      const caption = (e, c) => {
+        const [ko, en] = e.name.split(' · ')
+        const pad = (v) => String(v).padStart(2, '0')
+        numEl.textContent = `${pad(w + 1)} / ${pad(works.length)}`
+        koEl.textContent = ko
+        enEl.textContent = en ?? ''
+        const key = Object.keys(REACTS).find((r) => e.name.includes(r))
+        const rows = [
+          ['분류', isSet(e) ? '설정 · set piece' : '도시 조직 · city fabric'],
+          ['수량', e.n > 1 ? `${e.n} 개 중 ${k + 1} 번째` : '1 개'],
+          ['높이', `${Math.round(c.h * UP_Y * 46)}px · ${c.h.toFixed(2)} 단위`],
+          ['자리', `u ${c.u.toFixed(1)} · v ${c.v.toFixed(1)}`],
+          ['도착 반응', key ? REACTS[key] : '없음 — 메시지가 출발하는 쪽'],
+        ]
+        factsEl.replaceChildren(
+          ...rows.flatMap(([t, d]) => {
+            const dt = document.createElement('dt')
+            dt.textContent = t
+            const dd = document.createElement('dd')
+            dd.textContent = d
+            return [dt, dd]
+          }),
+        )
+        for (const [i, b] of buttons.entries()) b.setAttribute('aria-current', String(i === w))
+      }
+
+      const go = (i, copy = 0) => {
+        w = (i + works.length) % works.length
+        k = (copy + works[w].at.length) % works[w].at.length
+        turn = 0
+        frame()
       }
 
       const section = (label, items) => {
@@ -232,74 +488,107 @@
         h.textContent = label
         list.append(h)
         for (const e of items) {
+          const i = works.indexOf(e)
           const b = document.createElement('button')
           b.type = 'button'
           b.className = 'pick'
-          b.dataset.name = e.name
-          b.innerHTML = e.name + (e.n > 1 ? ` <span class="count">×${e.n}</span>` : '')
-          b.addEventListener('click', () => frame(e, 1))
+          const num = document.createElement('i')
+          num.textContent = String(i + 1).padStart(2, '0')
+          const nm = document.createElement('em')
+          nm.textContent = e.name.split(' · ')[0]
+          const cnt = document.createElement('s')
+          cnt.textContent = e.n > 1 ? '×' + e.n : ''
+          b.append(num, nm, cnt)
+          b.addEventListener('click', () => go(i))
+          buttons[i] = b
           list.append(b)
         }
       }
-      section('landmarks', landmarks)
-      section('city fabric', fabric)
+      section('설정', works.filter(isSet))
+      section('도시 조직', works.filter((e) => !isSet(e)))
 
       let drag = null
       canvas.addEventListener('pointerdown', (ev) => {
-        drag = { x: ev.clientX, y: ev.clientY, r: pivot.rotation.y }
+        drag = { x: ev.clientX, r: turn }
         canvas.setPointerCapture(ev.pointerId)
       })
       canvas.addEventListener('pointermove', (ev) => {
-        if (!drag) return
-        pivot.rotation.y = drag.r + (ev.clientX - drag.x) * 0.008
+        if (drag) turn = drag.r + (ev.clientX - drag.x) * 0.008
       })
       canvas.addEventListener('pointerup', () => (drag = null))
       canvas.addEventListener('wheel', (ev) => {
         ev.preventDefault()
         pivot.scale.multiplyScalar(ev.deltaY > 0 ? 0.92 : 1.087)
       })
-      canvas.addEventListener('dblclick', () => active && frame(active))
+      canvas.addEventListener('dblclick', frame)
+
+      const fire = () => {
+        const c = works[w].at[k]
+        return c.layer === 'bubble' ? scene.poke() : scene.poke(c.u, c.v)
+      }
+
+      const press = (id, fn) => document.getElementById(id).addEventListener('click', fn)
+      press('prev', () => go(w - 1))
+      press('next', () => go(w + 1))
+      press('ping', fire)
+      press('solo', (ev) => {
+        solo = !solo
+        ev.currentTarget.setAttribute('aria-pressed', String(solo))
+        frame()
+      })
+      press('spin', (ev) => {
+        spinning = !spinning
+        ev.currentTarget.setAttribute('aria-pressed', String(spinning))
+      })
+
+      addEventListener('keydown', (ev) => {
+        const f = {
+          ArrowLeft: () => go(w - 1),
+          ArrowRight: () => go(w + 1),
+          ArrowUp: () => go(w, k - 1),
+          ArrowDown: () => go(w, k + 1),
+          r: fire,
+          ' ': () => document.getElementById('spin').click(),
+        }[ev.key]
+        if (!f) return
+        ev.preventDefault()
+        f()
+      })
+
+      const paintRing = () =>
+        ring.material.color.set(getComputedStyle(root).getPropertyValue('--rule').trim())
 
       for (const b of document.querySelectorAll('[data-theme-set]'))
         b.addEventListener('click', () => {
           root.dataset.theme = b.dataset.themeSet
           scene.retint(readTokens())
+          paintRing()
           for (const o of document.querySelectorAll('[data-theme-set]'))
             o.setAttribute('aria-pressed', String(o === b))
         })
+      paintRing()
 
-      new ResizeObserver(() => scene.resize(host.clientWidth, host.clientHeight)).observe(host)
+      new ResizeObserver(() => {
+        scene.resize(host.clientWidth, host.clientHeight)
+        frame()
+      }).observe(host)
 
       let last = performance.now()
-      let acc = 0
-      let n = 0
-      // A message has no fixed place to stand and look at, and a landmark's reaction
-      // only exists while one is landing on it, so the harness keeps sending one at
-      // whatever is framed. poke returns false when that piece has no reaction.
-      let pokeIn = 0
       const tick = (t) => {
         const dt = Math.min((t - last) / 1000, 0.1)
         last = t
-        acc += dt
-        if (active) {
-          pokeIn -= dt
-          if (pokeIn <= 0) {
-            const c = active.at[idx]
-            pokeIn = active.name.includes('말풍선') ? 1.3 : 2.4
-            if (active.name.includes('말풍선')) scene.poke?.()
-            else scene.poke?.(c.u, c.v)
-          }
-        }
-        if (++n % 30 === 0) {
-          read.textContent = `${Math.round(30 / acc)} fps · ${entries.length} kinds · ${scene.catalog.length} pieces`
-          acc = 0
-        }
+        if (spinning && !drag) turn += dt * 0.22
+        pivot.rotation.y = turn
+        scene.face(turn) // the flat symbols are built on the camera axes, so turn those too
+        // A reaction only exists while a message is landing, so the gallery keeps
+        // sending one at whatever is on the plinth.
+        pokeIn -= dt
+        if (pokeIn <= 0) pokeIn = fire() ? 3.4 : 1.2
         scene.render(t / 1000, dt)
         requestAnimationFrame(tick)
       }
       requestAnimationFrame(tick)
-
-      frame(landmarks[0] ?? entries[0])
+      go(0)
     </script>
   </body>
 </html>
