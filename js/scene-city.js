@@ -1926,11 +1926,10 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     for (const f of FIGS) stepFig(f, STILL_T)
   }
 
-  let t0 = -1
+  let age = 0
 
   const render = (t, dt) => {
-    if (t0 < 0) t0 = t
-    const age = t - t0
+    age += dt // the scene's own clock, so a hidden tab pauses it instead of making every sender overdue
     panTarget = clamp01(scrollY / docSpan)
 
     if (still) {

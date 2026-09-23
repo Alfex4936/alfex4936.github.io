@@ -17,7 +17,9 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap"
     />
-    <link rel="stylesheet" href="css/site.css?v=13" />
+    <link rel="stylesheet" href="css/site.css?v=14" />
+    <link rel="modulepreload" href="https://unpkg.com/three@0.186.0/build/three.module.js" />
+    <link rel="modulepreload" href="https://unpkg.com/three@0.186.0/build/three.core.js" />
     <script>
       // Resolve language and theme before first paint so nothing flashes.
       ;(() => {
@@ -37,8 +39,6 @@
         if (theme === 'dark' || theme === 'light') document.documentElement.dataset.theme = theme
 
         // Where the last click landed, so the view transition opens from there.
-        // Its presence also means a transition is about to play, which is the
-        // one case the page's own opening animation has to sit out.
         const from = sessionStorage.getItem('portfolio:from')
         if (from) {
           const [x, y] = from.split(',')
@@ -46,7 +46,62 @@
           document.documentElement.style.setProperty('--vt-y', y + 'px')
           sessionStorage.removeItem('portfolio:from')
         }
-        document.documentElement.dataset.arrived = from ? 'transition' : 'direct'
+
+        // The veil stands in until the corridor has drawn a real frame, so the
+        // readable fallback never shows on the way in. Script sets it, so no-JS is never veiled.
+        const root = document.documentElement
+        root.dataset.veil = 'on'
+        const GLYPHS = ['·', '✢', '✳', '✶', '✻', '✽', '✻', '✶', '✳', '✢']
+        let turn = 0
+        const spin = matchMedia('(prefers-reduced-motion: reduce)').matches
+          ? 0
+          : setInterval(() => {
+              const g = document.querySelector('.veil__glyph')
+              if (g) g.textContent = GLYPHS[++turn % GLYPHS.length]
+            }, 120)
+
+        let since = performance.now()
+        let hold = 480 // long enough to read as a beat on purpose, not a flicker
+        let revealed = Promise.resolve()
+        addEventListener(
+          'pagereveal',
+          (e) => {
+            since = performance.now()
+            if (!e.viewTransition) return
+            hold = 240 // the circle opening onto the veil already was the beat
+            const at = () => (since = performance.now())
+            revealed = e.viewTransition.finished.then(at, at)
+          },
+          { once: true },
+        )
+
+        const lift = () => {
+          const veil = document.querySelector('.veil')
+          const gone = () => {
+            clearInterval(spin)
+            veil?.remove()
+            delete root.dataset.veil
+          }
+          root.dataset.veil = 'lifting'
+          veil?.addEventListener('animationend', (e) => e.target === veil && gone())
+          setTimeout(gone, 1600)
+        }
+        let going = false
+        const go = () => {
+          if (going) return
+          going = true
+          revealed.then(() => {
+            const wait = Math.max(0, hold - (performance.now() - since))
+            setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(lift)), wait)
+          })
+        }
+        document.addEventListener('flight:ready', go)
+        document.addEventListener('DOMContentLoaded', () => {
+          const s = document.getElementById('scene-timeline')
+          const check = () => s.dataset.scene === 'unavailable' && go()
+          if (s) new MutationObserver(check).observe(s, { attributeFilter: ['data-scene'] })
+        })
+        setTimeout(go, 8000) // the scene stalled without saying so; the fallback reads fine
       })()
     </script>
     <style>
@@ -56,30 +111,101 @@
         overflow-x: hidden;
       }
 
-      /* Arriving straight here - a bookmark, a refresh, a link from outside -
-         the corridor otherwise just appears. A disc of the page's own
-         background shrinks away instead, so the space opens from its edges.
-         Skipped when a view transition already played coming from index. */
-      .iris {
-        position: fixed;
-        inset: 0;
-        z-index: 20;
-        background: var(--bg);
-        clip-path: circle(150vmax at 50% 50%);
-        animation: iris-out 900ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-        pointer-events: none;
+      /* Over everything from the first paint until the corridor has drawn a real
+         frame, then opened from the vanishing point the camera flies into. */
+      @property --veil-r {
+        syntax: '<length>';
+        inherits: false;
+        initial-value: 0px;
       }
 
-      @keyframes iris-out {
+      .veil {
+        position: fixed;
+        inset: 0;
+        z-index: 1000; /* the corridor stacks the hero at 901 */
+        display: none;
+        place-items: center;
+        background: var(--bg);
+        pointer-events: none;
+        -webkit-mask-image: radial-gradient(circle, transparent calc(var(--veil-r) - 26vmax), #000 var(--veil-r));
+        mask-image: radial-gradient(circle, transparent calc(var(--veil-r) - 26vmax), #000 var(--veil-r));
+      }
+
+      [data-veil] .veil {
+        display: grid;
+      }
+
+      [data-veil] .bar {
+        z-index: 1001; /* the site's own chrome stays put while the room loads */
+      }
+
+      [data-veil='lifting'] .veil {
+        animation: veil-lift 1000ms cubic-bezier(0.4, 0, 0.25, 1) forwards;
+      }
+
+      @keyframes veil-lift {
+        85% {
+          opacity: 1;
+        }
         to {
-          clip-path: circle(0 at 50% 50%);
+          --veil-r: 92vmax; /* the soft edge clears the farthest corner right at the end */
           opacity: 0;
         }
       }
 
+      .veil__line {
+        margin: 0;
+        font: 400 12px/1.7 var(--font);
+        color: var(--dim);
+        white-space: nowrap;
+        transition: opacity 220ms ease-out;
+      }
+
+      [data-veil='lifting'] .veil__line {
+        opacity: 0;
+      }
+
+      .veil__glyph {
+        display: inline-block;
+        width: 1.5em;
+        color: var(--claude);
+      }
+
+      /* the same sweep Claude Code runs across its own status verb */
+      .veil__line [lang] {
+        color: var(--fg);
+        -webkit-mask: linear-gradient(90deg, rgb(0 0 0 / 0.5) 0 38%, #000 50%, rgb(0 0 0 / 0.5) 62% 100%) 0 0 / 260% 100%;
+        mask: linear-gradient(90deg, rgb(0 0 0 / 0.5) 0 38%, #000 50%, rgb(0 0 0 / 0.5) 62% 100%) 0 0 / 260% 100%;
+        animation: veil-sweep 1.9s linear infinite;
+      }
+
+      @keyframes veil-sweep {
+        from {
+          -webkit-mask-position: 100% 0;
+          mask-position: 100% 0;
+        }
+        to {
+          -webkit-mask-position: 0 0;
+          mask-position: 0 0;
+        }
+      }
+
       @media (prefers-reduced-motion: reduce) {
-        .iris {
-          display: none;
+        [data-veil='lifting'] .veil {
+          animation: veil-fade 220ms ease-out forwards;
+        }
+
+        .veil__line [lang] {
+          color: var(--dim);
+          -webkit-mask: none;
+          mask: none;
+          animation: none;
+        }
+      }
+
+      @keyframes veil-fade {
+        to {
+          opacity: 0;
         }
       }
 
@@ -440,7 +566,9 @@
     </style>
   </head>
   <body>
-    <div class="iris" aria-hidden="true"></div>
+    <div class="veil" aria-hidden="true">
+      <p class="veil__line"><span class="veil__glyph">✻</span><span lang="ko">타임라인 여는 중…</span><span lang="en">opening the timeline…</span></p>
+    </div>
 
     <header class="bar">
       <span class="bar__where">
@@ -527,19 +655,6 @@ in order</span></span
         new MutationObserver(reflect).observe(root, { attributeFilter: ['data-theme', 'data-lang'] })
         reflect()
 
-        // The opening disc plays only on a direct arrival, and leaves the DOM
-        // either way so it can never end up sitting on top of the corridor.
-        const iris = document.querySelector('.iris')
-        if (iris) {
-          if (root.dataset.arrived === 'transition') iris.remove()
-          else {
-            iris.addEventListener('animationend', () => iris.remove(), { once: true })
-            // Only a backstop for a browser that never fires animationend; well
-            // clear of the 900ms even if a slow first paint delays the start.
-            setTimeout(() => iris.remove(), 2600)
-          }
-        }
-
         // Going back closes the circle from wherever you clicked, same as coming in.
         addEventListener(
           'click',
@@ -558,7 +673,7 @@ in order</span></span
     <script type="module">
       import { entries } from './js/timeline-data.js?v=1'
       import { mount } from './js/scene-core.js?v=1'
-      import timeline from './js/scene-timeline.js?v=1'
+      import timeline from './js/scene-timeline.js?v=2'
 
       const root = document.documentElement
       const list = document.getElementById('flight-cards')

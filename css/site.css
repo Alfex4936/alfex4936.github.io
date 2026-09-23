@@ -1042,9 +1042,9 @@ button {
 /* --------------------------------------------- leaving for the scene */
 
 /* Clicking through to the timeline opens a circle from the point you clicked,
-   onto a corridor that is already flying in. Not a loading screen: the page is
-   fast, and a spinner would be a lie. --vt-x/--vt-y are stashed on click and
-   read back by the destination before its first paint. */
+   onto the destination's veil, which holds until the corridor has drawn a real
+   frame. --vt-x/--vt-y are stashed on click and read back by the destination
+   before its first paint. */
 @view-transition {
   navigation: auto;
 }

@@ -554,7 +554,10 @@ export default function timeline({ THREE, canvas, tokens, still }) {
         rec.shot.material.needsUpdate = true
         nudge() // in still mode nothing else will paint the texture that just arrived
       },
-      () => {},
+      () => {
+        rec.failed = true // a missing screenshot must not hold the veil forever
+        nudge()
+      },
     )
   }
 
@@ -847,7 +850,7 @@ export default function timeline({ THREE, canvas, tokens, still }) {
     } else {
       const k = 1 - Math.exp(-9.2 * dt) // ~90% of the gap closed in 250ms
       camZ += (targetZ + intro * 16 - camZ) * k
-      intro *= Math.exp(-dt / 0.215) // one authored settle, ~900ms
+      if (root.dataset.veil !== 'on') intro *= Math.exp(-dt / 0.215) // one authored settle, ~900ms, held until the veil lifts
       if (intro < 0.002) intro = 0
       camX += (SIDE[Math.round(fi)] * sideOffset * SWAY - camX) * (1 - Math.exp(-5 * dt))
     }
@@ -946,6 +949,18 @@ export default function timeline({ THREE, canvas, tokens, still }) {
     for (let i = 0; i < ticks.length; i++) ticks[i].setAttribute('aria-current', String(i === active))
 
     renderer.render(scene, camera)
+    if (!told) tell()
+  }
+
+  // The page's veil waits on this: real metrics laid out and the card in front
+  // of the camera wearing its screenshot, not an empty plate.
+  let measured = false
+  let told = false
+  function tell() {
+    const r = cards[active]
+    if (!measured || !(r.tex || r.failed)) return
+    told = true
+    page.dispatchEvent(new Event('flight:ready', { bubbles: true }))
   }
 
   // With less motion asked for, scene-core parks the loop and the camera has to
@@ -982,6 +997,7 @@ export default function timeline({ THREE, canvas, tokens, still }) {
   layout()
   ;(document.fonts ? document.fonts.ready : Promise.resolve()).then(() => {
     layout() // the card heights need real metrics, not the fallback face
+    measured = true
     nudge()
   })
 
