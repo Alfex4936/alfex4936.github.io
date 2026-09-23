@@ -118,6 +118,9 @@ const BRIDGE_X = [-26.4, -19.2, 19.2, 26.4] // two per gutter; the outer pair on
 const GUT_KEEP = 0.46 // of the plots the avenues leave, out where the ink is full
 const MID_KEEP = 0.18 // and a sparse ankle-high floor behind the column
 const MID_H = 0.2
+const TREE_KEEP = 0.72 // of the bare gutter plots in frame; a few parks, not a forest
+const TREE_U = 18 // inside a 1660 frame, so a laptop sees most of them
+const TREE_GAP = 3.6 // u–v distance between parks
 
 const FACE = { px: 0, nx: 4, py: 8, ny: 12, pz: 16, nz: 20 }
 // Faces are cut from the page, not lit: the darkest side sits a hair above --bg-2.
@@ -128,6 +131,7 @@ const RAMP = {
   stone: { top: 0.082, pz: 0.048, px: 0.021, dark: 0.008 }, // platforms and gate bases
   roof: { top: 0.17, pz: 0.152, px: 0.086, dark: 0.016 }, // tile, and nothing else
   store: { top: 0.135, pz: 0.075, px: 0.032, dark: 0.01 },
+  leaf: { top: 0.118, pz: 0.066, px: 0.028, dark: 0.009 }, // ink like the rest: green is what a message is
   fig: { top: 0.2, pz: 0.14, px: 0.085, dark: 0.045 },
   // Flat by design: the river is one surface seen from above, so every slot is the
   // same and it sits below the carpet's 0.105 to read as water rather than ground.
@@ -937,6 +941,7 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
     note('데이터스토어 · Datastore', st.u, st.v, STACK_TOP, box)
   })
 
+  const open = []
   const IMAX = Math.ceil(((U_HALF + V_FWD) * ISQ2) / CELL) + 1
   for (let i = -IMAX; i <= IMAX; i++) {
     for (let j = -IMAX; j <= IMAX; j++) {
@@ -957,7 +962,10 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
       if (blocked) continue
 
       const gut = Math.abs(u) > INK_U
-      if (rnd(i, j, 0) > (gut ? GUT_KEEP : MID_KEEP)) continue
+      if (rnd(i, j, 0) > (gut ? GUT_KEEP : MID_KEEP)) {
+        if (Math.abs(u) > GUTTER_U) open.push({ i, j, x, z, u, v }) // bare, so a tree may stand here
+        continue
+      }
       const r1 = rnd(i, j, 1)
       const r2 = rnd(i, j, 2)
       const r3 = rnd(i, j, 3)
@@ -1047,6 +1055,72 @@ export default function city({ THREE, canvas, width, height, tokens, still }) {
         note('좁은 빌딩 · Narrow tower', u, v, nh)
       }
     }
+  }
+
+  // ---- trees -------------------------------------------------------------
+  // Three trees a Seoul street really has, each told by silhouette alone: the ginkgo's
+  // column, the zelkova's wide dome, the red pine's flat pads stepping up a leaning trunk.
+  const TC6 = circle(6)
+  const TC8 = circle(8)
+  const TC10 = circle(10)
+  const SU = [ISQ2, -ISQ2] // one unit of screen-u in world x/z; any other horizontal also moves it up the screen
+  const trunk = (x, z, h, r, lean = 0) =>
+    emitLoft(x, z, TC6, [[0, r], [h, r * 0.7, r * 0.7, lean * SU[0], lean * SU[1]]], RAMP.stone, { rings: [] })
+  const crown = (x, z, plan, prof, ou, rings) =>
+    emitLoft(x, z, plan, prof.map(([y, r]) => [y, r, r, ou * SU[0], ou * SU[1]]), RAMP.leaf, { rings })
+  const GINKGO = [[0.2, 0.06], [0.34, 0.15], [0.54, 0.19], [0.76, 0.15], [0.92, 0.07], [1, 0]]
+  const ZELKOVA = [[0.28, 0.07], [0.4, 0.2], [0.54, 0.32], [0.66, 0.38], [0.78, 0.37], [0.9, 0.3], [1.01, 0.19], [1.05, 0]] // a vase, widest high; each band steeper than 44° so only the crown takes the top shade
+  const PAD = [[0, 0.6], [0.03, 1], [0.056, 0.95], [0.082, 0.5], [0.088, 0]] // underside, a short rim, a low dome
+  const TREES = [
+    ['은행나무 · Ginkgo', 1, (x, z, s) => {
+      trunk(x, z, 0.3 * s, 0.035 * s)
+      crown(x, z, TC8, GINKGO.map(([y, r]) => [y * s, r * s]), 0, [2])
+    }],
+    ['느티나무 · Zelkova', 1.05, (x, z, s) => {
+      trunk(x, z, 0.4 * s, 0.05 * s)
+      crown(x, z, TC10, ZELKOVA.map(([y, r]) => [y * s, r * s]), 0, [3])
+    }],
+    ['소나무 · Korean red pine', 0.76, (x, z, s, lean) => {
+      const h = 0.64 * s
+      trunk(x, z, h, 0.035 * s, lean)
+      for (const [f, side, r] of [[0.52, -0.1, 0.19], [0.76, 0.1, 0.23], [1, 0, 0.16]]) // pads alternate either side of the lean
+        crown(x, z, TC10, PAD.map(([dy, k]) => [h * f + dy * s, r * k * s]), lean * f + side * s * Math.sign(lean), [1])
+    }],
+  ]
+  const deal = [0, 1] // each side hands out the three in turn down the page, out of step with the other
+  const groves = []
+  const crowded = (u, v) => groves.some((g) => Math.hypot(g.u - u, g.v - v) < TREE_GAP)
+  for (const p of open.filter((q) => Math.abs(q.u) < TREE_U).sort((a, b) => a.v - b.v)) {
+    if (rnd(p.i, p.j, 20) > TREE_KEEP || crowded(p.u, p.v) || crowded(-p.u, p.v)) continue // parks apart, and never a mirror of one across the column
+    const side = p.u > 0 ? 1 : 0
+    const kind = deal[side] % 3
+    const [name, th, grow] = TREES[kind]
+    const two = rnd(p.i, p.j, 24)
+    const n = kind === 0 ? 2 + (two < 0.5 ? 1 : 0) : kind === 2 && two < 0.6 ? 2 : 1 // ginkgo in rows, zelkova alone
+    const along = rnd(p.i, p.j, 23) < 0.5 // a ginkgo row runs with one street or the other
+    const cx = p.x + (rnd(p.i, p.j, 25) - 0.5) * 0.48
+    const cz = p.z + (rnd(p.i, p.j, 26) - 0.5) * 0.48
+    let built = 0
+    let tall = 0
+    mark()
+    for (let k = 0; k < n; k++) {
+      const o = k - (n - 1) / 2
+      const [dx, dz] = kind === 0 ? (along ? [o * 0.5, 0] : [0, o * 0.5]) : [o * 0.36, -o * 0.3]
+      const tx = cx + dx
+      const tz = cz + dz
+      if (Math.abs(tz) < RZ + 0.55) continue // the bank stays bare
+      const s = 0.85 + 0.3 * rnd(p.i, p.j, 30 + k)
+      const h = th * s
+      if (keepOut.some(([kx, kz, ka, kb]) => [0, 0.5, 1].some((t) => Math.abs(tx - h * t - kx) < ka + 0.5 && Math.abs(tz - h * t - kz) < kb + 0.5))) continue // (−h, −h) is h straight up the screen: no crown covers a set piece or bridge
+      const lean = (0.12 + 0.1 * rnd(p.i, p.j, 40 + k)) * (n > 1 ? Math.sign(o) : rnd(p.i, p.j, 50 + k) < 0.5 ? -1 : 1) // a pair leans apart
+      grow(tx, tz, s, lean)
+      tall = Math.max(tall, h)
+      built++
+    }
+    if (!built) continue
+    deal[side]++
+    groves.push(p)
+    note(name, p.u, p.v, tall)
   }
 
   const cityGeo = new THREE.BufferGeometry()
