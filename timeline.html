@@ -671,8 +671,10 @@ in order</span></span
     </script>
 
     <script type="module">
-      import { entries } from './js/timeline-data.js?v=1'
-      import { mount } from './js/scene-core.js?v=1'
+      // no ?v= on these two: scene-timeline.js imports them unversioned, and a
+      // second URL for the same file is a second module instance.
+      import { entries } from './js/timeline-data.js'
+      import { mount } from './js/scene-core.js'
       import timeline from './js/scene-timeline.js?v=2'
 
       const root = document.documentElement

@@ -502,7 +502,9 @@ master   +FULLRESYNC -&gt; fork -&gt; rdb
     <script type="module">
       // three itself is not fetched until a mount comes near the viewport, and
       // the two scenes load independently so one failing cannot take the other.
-      import { mount } from './js/scene-core.js?v=1'
+      // no ?v= here: the scene modules import scene-core.js unversioned, and a
+      // second URL for the same file is a second module instance.
+      import { mount } from './js/scene-core.js'
 
       const scene = async (path, id) => {
         const el = document.getElementById(id)
