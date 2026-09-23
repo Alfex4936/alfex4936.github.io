@@ -112,7 +112,11 @@ const COMMANDS = {
   '/timeline': () => go('timeline'),
   '/walk': walk,
   '/resume': () => {
-    window.open(`resume/seokwon-resume-${root.dataset.lang}.pdf`, '_blank', 'noopener')
+    if (window.reader) {
+      window.reader.open()
+      return T('이력서를 펼칩니다', 'Opening the résumé')
+    }
+    window.open(`resume/seokwon-resume-${root.dataset.lang}.pdf`, '_blank', 'noopener') // reader.js never loaded
     return T('이력서 PDF를 새 탭에서 엽니다', 'Opening the résumé PDF in a new tab')
   },
   '/lang': (arg) =>
@@ -334,6 +338,7 @@ addEventListener('keydown', (event) => {
   if (event.metaKey || event.ctrlKey || event.altKey) return
   const el = document.activeElement
   if (el === input || el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA') return
+  if ((event.key === '/' || event.key === '?') && document.querySelector('dialog[open]')) return // prompt is inert under a modal
   if (event.key === '/') {
     event.preventDefault()
     input.focus()

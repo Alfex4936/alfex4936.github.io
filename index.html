@@ -17,7 +17,7 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap"
     />
-    <link rel="stylesheet" href="css/site.css?v=14" />
+    <link rel="stylesheet" href="css/site.css?v=15" />
     <script>
       // Resolve language and theme before first paint so nothing flashes.
       ;(() => {
@@ -96,8 +96,8 @@
           </li>
           <li>
             <button type="button" data-cmd="/resume">/resume</button>
-            <span lang="ko">는 이력서 PDF를 엽니다. 언어는 위 토글을 따릅니다.</span>
-            <span lang="en">opens the résumé PDF, in whichever language is toggled above.</span>
+            <span lang="ko">는 이력서를 이 페이지 위에 펼칩니다. 언어는 위 토글을 따릅니다.</span>
+            <span lang="en">opens the résumé right on this page, in whichever language is toggled above.</span>
           </li>
         </ol>
       </section>
@@ -135,8 +135,8 @@
             <a href="https://www.linkedin.com/in/seokwon-choi-482a41220" target="_blank" rel="noreferrer">LinkedIn</a>
             <a href="https://choiseokwon.tistory.com/" target="_blank" rel="noreferrer"><span lang="ko">블로그</span><span lang="en">Blog</span></a>
             <a href="mailto:seok.engineer@gmail.com">seok.engineer@gmail.com</a>
-            <a lang="ko" href="resume/seokwon-resume-ko.pdf" target="_blank" rel="noreferrer">이력서 PDF</a>
-            <a lang="en" href="resume/seokwon-resume-en.pdf" target="_blank" rel="noreferrer">Résumé PDF</a>
+            <a lang="ko" href="resume/seokwon-resume-ko.pdf" target="_blank" rel="noreferrer" data-reader>이력서</a>
+            <a lang="en" href="resume/seokwon-resume-en.pdf" target="_blank" rel="noreferrer" data-reader>Résumé</a>
           </p>
         </div>
       </section>
@@ -429,6 +429,38 @@ master   +FULLRESYNC -&gt; fork -&gt; rdb
       <p class="lightbox__caption"></p>
     </dialog>
 
+    <dialog class="reader" aria-labelledby="reader-title">
+      <header class="reader__head">
+        <span class="reader__grip" aria-hidden="true"></span>
+        <div class="reader__id">
+          <p class="tool" id="reader-title">
+            <span class="tool__name">Read</span><span class="tool__arg" lang="ko">(resume/seokwon-resume-ko.pdf)</span><span class="tool__arg" lang="en">(resume/seokwon-resume-en.pdf)</span>
+          </p>
+          <p class="out reader__status" aria-live="polite"></p>
+        </div>
+        <nav class="bar__ctl reader__ctl" aria-label="Résumé">
+          <button type="button" data-lang-set="ko" aria-pressed="false">ko</button>
+          <button type="button" data-lang-set="en" aria-pressed="false">en</button>
+          <span class="bar__sep" aria-hidden="true">·</span>
+          <a lang="ko" href="resume/seokwon-resume-ko.pdf" download>↓<span class="reader__word"> 내려받기</span></a>
+          <a lang="en" href="resume/seokwon-resume-en.pdf" download>↓<span class="reader__word"> download</span></a>
+          <button type="button" class="reader__close">esc ×<span class="sr-only" lang="ko">닫기</span><span class="sr-only" lang="en">Close</span></button>
+        </nav>
+      </header>
+      <div class="reader__scroll" tabindex="0" autofocus>
+        <div class="reader__pages"></div>
+      </div>
+      <div class="reader__dock" role="toolbar" aria-label="Zoom">
+        <button type="button" data-zoom="out">−<span class="sr-only" lang="ko">축소</span><span class="sr-only" lang="en">Zoom out</span></button>
+        <span class="reader__pct">100%</span>
+        <button type="button" data-zoom="in">+<span class="sr-only" lang="ko">확대</span><span class="sr-only" lang="en">Zoom in</span></button>
+        <span class="bar__sep" aria-hidden="true">·</span>
+        <button type="button" data-zoom="fit"><span lang="ko">너비 맞춤</span><span lang="en">fit width</span></button>
+        <span class="bar__sep" aria-hidden="true">·</span>
+        <span class="reader__pageno">1 / 2</span>
+      </div>
+    </dialog>
+
     <form class="composer" autocomplete="off">
       <div class="composer__inner">
         <p class="composer__out" aria-live="polite"></p>
@@ -465,7 +497,8 @@ master   +FULLRESYNC -&gt; fork -&gt; rdb
       </div>
     </form>
 
-    <script src="js/site.js?v=6"></script>
+    <script src="js/site.js?v=7"></script>
+    <script type="module" src="js/reader.js?v=1"></script>
     <script type="module">
       // three itself is not fetched until a mount comes near the viewport, and
       // the two scenes load independently so one failing cannot take the other.

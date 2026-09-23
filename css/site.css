@@ -1091,3 +1091,419 @@ button {
 .prompt:has(a:hover)::before {
   color: var(--claude);
 }
+
+/* --------------------------------------------------------------- reader */
+
+/* The résumé, read in place. The sheet rises from the composer's edge because
+   that is where /resume is typed; the paper stays paper whatever the theme. */
+html:has(.reader[open]) {
+  overflow: hidden;
+  scrollbar-gutter: stable;
+}
+
+.reader {
+  position: fixed;
+  inset: auto 0 0;
+  width: min(900px, calc(100vw - 32px));
+  max-width: none;
+  height: calc(100vh - 28px);
+  height: calc(100dvh - 28px);
+  max-height: none;
+  margin: 0 auto;
+  padding: 0;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  box-shadow: 0 -18px 60px -30px rgb(0 0 0 / 0.55);
+  overflow: hidden;
+  transform: translateY(var(--drag, 0px));
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.reader[open] {
+  display: flex;
+  flex-direction: column;
+  animation: reader-rise 0.48s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.reader.is-dragging {
+  transition: none;
+}
+
+.reader.is-closing {
+  animation: reader-sink 0.26s cubic-bezier(0.55, 0, 0.85, 0.35) forwards;
+}
+
+.reader::backdrop {
+  background: color-mix(in srgb, var(--bg) 74%, transparent);
+  animation: reader-dim 0.32s ease both;
+}
+
+.reader.is-closing::backdrop {
+  animation: reader-dim 0.26s ease reverse forwards;
+}
+
+@keyframes reader-rise {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes reader-sink {
+  from {
+    transform: translateY(var(--drag, 0px));
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes reader-dim {
+  from {
+    opacity: 0;
+  }
+}
+
+.reader__head {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 18px 10px;
+  border-bottom: 1px solid var(--rule);
+  touch-action: none; /* the header is the handle: a vertical drag puts the sheet away */
+  user-select: none;
+}
+
+.reader__grip {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  width: 36px;
+  height: 4px;
+  margin-left: -18px;
+  border-radius: 2px;
+  background: var(--rule);
+  cursor: grab;
+}
+
+.reader__id {
+  min-width: 0;
+}
+
+.reader__id .tool {
+  margin-top: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The tool dot blinks while the read runs and settles green, as it does in the CLI. */
+.reader[data-state="loading"] .reader__id .tool::before {
+  color: var(--dim);
+  animation: reader-blink 1s steps(2, jump-none) infinite;
+}
+
+.reader[data-state="error"] .reader__id .tool::before {
+  color: var(--claude);
+}
+
+@keyframes reader-blink {
+  to {
+    opacity: 0.25;
+  }
+}
+
+.reader__status {
+  min-height: 1.7em;
+  font: 400 12px/1.7 var(--font);
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.reader__ctl {
+  flex: none;
+  margin-top: -1px;
+  font: 400 12px/1.7 var(--font);
+}
+
+.reader__ctl a {
+  padding: 2px 8px;
+  color: var(--dim);
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+}
+
+.reader__ctl a:hover {
+  color: var(--fg);
+}
+
+.reader__ctl .reader__close {
+  margin-left: 8px;
+  padding: 2px 9px;
+  border-color: var(--rule);
+}
+
+.reader__ctl .reader__close:hover {
+  border-color: var(--dim);
+}
+
+.reader__scroll {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-x pan-y; /* pinch is ours: it zooms the pages, not the viewport */
+  background: var(--bg-2);
+  background: light-dark(color-mix(in srgb, var(--bg-2), var(--fg) 7%), var(--bg-2)); /* on light, white paper needs a desk under it */
+  scrollbar-color: var(--rule) transparent;
+}
+
+.reader__scroll:focus-visible {
+  outline: 1px solid var(--dim); /* it takes focus on open; a full claude ring would frame the whole sheet */
+  outline-offset: -1px;
+  border-radius: 0;
+}
+
+/* PDF.js sizes its text layer from these; the slots use them too, so a zoom is
+   one custom property and the canvases catch up after. */
+.reader__pages {
+  --scale-factor: 1.3333;
+  --user-unit: 1;
+  --total-scale-factor: calc(var(--scale-factor) * var(--user-unit));
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+  display: grid;
+  justify-items: center;
+  gap: 26px;
+  width: max-content;
+  min-width: 100%;
+  padding: 28px 28px 96px;
+}
+
+.page {
+  margin: 0;
+}
+
+.page__slot {
+  --pw: 595.28;
+  --ph: 841.89;
+  position: relative;
+  width: round(down, var(--total-scale-factor) * var(--pw) * 1px, 1px);
+  height: round(down, var(--total-scale-factor) * var(--ph) * 1px, 1px);
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--rule);
+  transition: box-shadow 0.5s;
+}
+
+.page__slot.is-printed {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.16),
+    0 16px 36px -20px rgb(0 0 0 / 0.55);
+}
+
+.page__sheet {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+}
+
+.page__slot:not(.is-printed) .page__sheet {
+  visibility: hidden;
+}
+
+.page__sheet canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.page figcaption {
+  margin-top: 8px;
+  font: 400 11px/1.7 var(--font);
+  color: var(--faint);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.page__links {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.page__links a {
+  position: absolute;
+  pointer-events: auto;
+  border-radius: 2px;
+  transition: background-color 0.15s;
+}
+
+.page__links a:hover,
+.page__links a:focus-visible {
+  background: color-mix(in srgb, var(--claude) 16%, transparent);
+}
+
+/* The minimum of pdf.js's own text layer rules: invisible glyphs laid exactly
+   over the canvas so selection and find-in-page work on the real words. */
+.reader .textLayer {
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: clip;
+  line-height: 1;
+  text-align: initial;
+  letter-spacing: normal;
+  word-spacing: normal;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  color-scheme: only light;
+  user-select: text;
+}
+
+.reader .textLayer :is(span, br) {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0 0;
+}
+
+.reader .textLayer > :not(.markedContent),
+.reader .textLayer .markedContent span:not(.markedContent) {
+  --font-height: 0;
+  --scale-x: 1;
+  --rotate: 0deg;
+  z-index: 1;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.reader .textLayer .markedContent {
+  display: contents;
+}
+
+.reader .textLayer ::selection {
+  color: transparent;
+  background: color-mix(in srgb, var(--claude) 30%, transparent);
+}
+
+.reader .textLayer br::selection {
+  background: transparent;
+}
+
+.reader .textLayer .endOfContent {
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  cursor: default;
+  user-select: none;
+}
+
+.reader .textLayer.selecting .endOfContent {
+  top: 0;
+}
+
+.reader__dock {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  font: 400 12px/1.7 var(--font);
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  box-shadow: 0 12px 30px -16px rgb(0 0 0 / 0.5);
+  transform: translateX(-50%);
+}
+
+.reader__dock button {
+  padding: 1px 8px;
+  color: var(--dim);
+  border-radius: 3px;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.reader__dock button:hover {
+  color: var(--fg);
+  background: var(--bg-2);
+}
+
+.reader__dock .bar__sep {
+  padding: 0 2px;
+}
+
+.reader__pct {
+  min-width: 5ch;
+  color: var(--fg);
+  text-align: center;
+}
+
+.reader__pageno {
+  padding: 0 6px;
+}
+
+@media (max-width: 720px) {
+  .reader {
+    width: 100vw;
+    height: calc(100vh - 12px);
+    height: calc(100dvh - 12px);
+    border-inline: 0;
+    border-radius: 12px 12px 0 0;
+  }
+
+  .reader__head {
+    gap: 10px;
+    padding: 18px 12px 8px;
+  }
+
+  .reader__word {
+    display: none;
+  }
+
+  .reader__ctl .reader__close {
+    margin-left: 4px;
+  }
+
+  .reader__pages {
+    gap: 16px;
+    padding: 14px 12px 84px;
+  }
+
+  .reader__dock {
+    bottom: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reader,
+  .page__slot {
+    transition: none;
+  }
+
+  .reader[open],
+  .reader::backdrop,
+  .reader[data-state="loading"] .reader__id .tool::before {
+    animation: none;
+  }
+}
