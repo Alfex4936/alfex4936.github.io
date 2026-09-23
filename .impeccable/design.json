@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-23T00:00:00Z",
+  "title": "Design System: Seokwon Choi Portfolio",
+  "extensions": {
+    "colorMeta": {
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "oklch(19.1% 0.002 106.6)",
+        "tonalRamp": ["oklch(15% 0.002 106.6)", "oklch(26% 0.002 106.6)", "oklch(37% 0.002 106.6)", "oklch(48% 0.002 106.6)", "oklch(59% 0.002 106.6)", "oklch(70% 0.002 106.6)", "oklch(82% 0.002 106.6)", "oklch(95% 0.002 106.6)"]
+      },
+      "ink-raised": {
+        "role": "neutral",
+        "displayName": "Ink Raised",
+        "canonical": "oklch(22.2% 0.004 84.6)",
+        "tonalRamp": ["oklch(15% 0.004 84.6)", "oklch(26% 0.004 84.6)", "oklch(37% 0.004 84.6)", "oklch(48% 0.004 84.6)", "oklch(59% 0.004 84.6)", "oklch(70% 0.004 84.6)", "oklch(82% 0.004 84.6)", "oklch(95% 0.004 84.6)"]
+      },
+      "cream": {
+        "role": "neutral",
+        "displayName": "Cream",
+        "canonical": "oklch(94.8% 0.011 95.2)",
+        "tonalRamp": ["oklch(15% 0.011 95.2)", "oklch(26% 0.011 95.2)", "oklch(37% 0.011 95.2)", "oklch(48% 0.011 95.2)", "oklch(59% 0.011 95.2)", "oklch(70% 0.011 95.2)", "oklch(82% 0.011 95.2)", "oklch(95% 0.011 95.2)"]
+      },
+      "dim": {
+        "role": "neutral",
+        "displayName": "Dim",
+        "canonical": "oklch(70.9% 0.009 91.5)",
+        "tonalRamp": ["oklch(15% 0.009 91.5)", "oklch(26% 0.009 91.5)", "oklch(37% 0.009 91.5)", "oklch(48% 0.009 91.5)", "oklch(59% 0.009 91.5)", "oklch(70% 0.009 91.5)", "oklch(82% 0.009 91.5)", "oklch(95% 0.009 91.5)"]
+      },
+      "faint": {
+        "role": "neutral",
+        "displayName": "Faint",
+        "canonical": "oklch(59.0% 0.011 87.5)",
+        "tonalRamp": ["oklch(15% 0.011 87.5)", "oklch(26% 0.011 87.5)", "oklch(37% 0.011 87.5)", "oklch(48% 0.011 87.5)", "oklch(59% 0.011 87.5)", "oklch(70% 0.011 87.5)", "oklch(82% 0.011 87.5)", "oklch(95% 0.011 87.5)"]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Rule",
+        "canonical": "oklch(28.5% 0.006 91.6)",
+        "tonalRamp": ["oklch(15% 0.006 91.6)", "oklch(26% 0.006 91.6)", "oklch(37% 0.006 91.6)", "oklch(48% 0.006 91.6)", "oklch(59% 0.006 91.6)", "oklch(70% 0.006 91.6)", "oklch(82% 0.006 91.6)", "oklch(95% 0.006 91.6)"]
+      },
+      "signal-terracotta": {
+        "role": "primary",
+        "displayName": "Signal Terracotta",
+        "canonical": "oklch(67.2% 0.131 38.8)",
+        "tonalRamp": ["oklch(15% 0.131 38.8)", "oklch(26% 0.131 38.8)", "oklch(37% 0.131 38.8)", "oklch(48% 0.131 38.8)", "oklch(59% 0.131 38.8)", "oklch(70% 0.131 38.8)", "oklch(82% 0.131 38.8)", "oklch(95% 0.131 38.8)"]
+      },
+      "tool-call-green": {
+        "role": "secondary",
+        "displayName": "Tool-Call Green",
+        "canonical": "oklch(70.5% 0.157 148.1)",
+        "tonalRamp": ["oklch(15% 0.157 148.1)", "oklch(26% 0.157 148.1)", "oklch(37% 0.157 148.1)", "oklch(48% 0.157 148.1)", "oklch(59% 0.157 148.1)", "oklch(70% 0.157 148.1)", "oklch(82% 0.157 148.1)", "oklch(95% 0.157 148.1)"]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "oklch(94.8% 0.011 95.2)",
+        "tonalRamp": ["oklch(15% 0.011 95.2)", "oklch(26% 0.011 95.2)", "oklch(37% 0.011 95.2)", "oklch(48% 0.011 95.2)", "oklch(59% 0.011 95.2)", "oklch(70% 0.011 95.2)", "oklch(82% 0.011 95.2)", "oklch(95% 0.011 95.2)"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Name", "purpose": "The name block. Once per page, nowhere else." },
+      "headline": { "displayName": "Prompt", "purpose": "The section question, set as an h2. A line of dialogue, not a banner." },
+      "title": { "displayName": "Project Name", "purpose": "Project and entry titles." },
+      "body": { "displayName": "Body", "purpose": "All prose, in the sans, inside a 760px measure." },
+      "label": { "displayName": "Label", "purpose": "Dates, stack lines, where-tags, hints, bar controls." },
+      "measure": { "displayName": "Measurement", "purpose": "Measured numbers. Always tabular so columns compare." }
+    },
+    "themes": [
+      { "name": "dark", "note": "Default. Warm near-black ground, cream text.",
+        "tokens": { "ink": "#141413", "ink-raised": "#1c1b19", "cream": "#f0eee6", "dim": "#a3a19b", "faint": "#807d76", "rule": "#2b2a27", "signal-terracotta": "#d97757", "tool-call-green": "#4eba65", "paper": "#f0eee6" } },
+      { "name": "light", "note": "Paper ground. Accent darkened to clear 4.5:1 on paper.",
+        "tokens": { "ink": "#faf9f5", "ink-raised": "#f0eee6", "cream": "#141413", "dim": "#625f59", "faint": "#75736d", "rule": "#e2ded4", "signal-terracotta": "#b35a37", "tool-call-green": "#2c7a39", "paper": "#faf9f5" } },
+      { "name": "redis", "note": "Hidden. Entered by typing a Redis command into the composer.",
+        "tokens": { "ink": "#091a23", "ink-raised": "#0f2430", "cream": "#e8eef1", "dim": "#97abb5", "faint": "#678592", "rule": "#1c3542", "signal-terracotta": "#ff4438", "tool-call-green": "#4eba65", "paper": "#e8eef1" } }
+    ],
+    "shadows": [
+      { "name": "overlay-lift", "value": "0 -18px 60px -30px rgb(0 0 0 / 0.55)", "purpose": "The reader dialog rising from the bottom edge." },
+      { "name": "sheet-edge", "value": "inset 0 0 0 1px var(--rule)", "purpose": "A PDF page slot before it has rendered." },
+      { "name": "printed-sheet", "value": "0 1px 2px rgb(0 0 0 / 0.16), 0 16px 36px -20px rgb(0 0 0 / 0.55)", "purpose": "The same slot once a page has painted, so paper reads as paper." },
+      { "name": "floating-control", "value": "0 12px 30px -16px rgb(0 0 0 / 0.5)", "purpose": "The zoom dock hovering over the pages." }
+    ],
+    "motion": [
+      { "name": "state", "value": "0.15s", "purpose": "Every hover and focus transition: colour, border-color, background-color." },
+      { "name": "turn-appear", "value": "0.45s cubic-bezier(0.22, 0.61, 0.36, 1)", "purpose": "A section fading in, staggered 130ms per turn via --i. Removed entirely under prefers-reduced-motion." },
+      { "name": "sheet-slide", "value": "0.32s cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "The reader sheet dragging and settling." },
+      { "name": "scene-open", "value": "640ms cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "The view transition to the timeline, a circle opening from the click point." },
+      { "name": "page-recede", "value": "540ms cubic-bezier(0.33, 1, 0.68, 1)", "purpose": "The outgoing page falling back behind that circle." }
+    ],
+    "breakpoints": [
+      { "name": "wide", "value": "900px", "note": "Below this the hero city scene is dropped." },
+      { "name": "narrow", "value": "720px", "note": "Below this every grid collapses to one column and thumbs go full width to a 320px cap." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Bar Control",
+      "kind": "button",
+      "refersTo": "bar-control",
+      "description": "Language and theme toggles in the sticky bar. Transparent until touched.",
+      "html": "<button class=\"ds-bar-ctl\">ko</button><button class=\"ds-bar-ctl\" aria-pressed=\"true\">en</button>",
+      "css": ".ds-bar-ctl { font: 400 12px/1.7 var(--font); color: var(--dim); padding: 2px 8px; border: 1px solid transparent; border-radius: 3px; background: none; cursor: pointer; transition: color 0.15s, border-color 0.15s, background-color 0.15s; } .ds-bar-ctl:hover { color: var(--fg); } .ds-bar-ctl[aria-pressed=\"true\"] { color: var(--fg); border-color: var(--rule); background: var(--bg-2); } .ds-bar-ctl:focus-visible { outline: 2px solid var(--claude); outline-offset: 2px; border-radius: 2px; }"
+    },
+    {
+      "name": "Command Link",
+      "kind": "button",
+      "refersTo": "command-link",
+      "description": "An inline slash command in prose. Underline goes terracotta with the text.",
+      "html": "<button class=\"ds-cmd\">/measurements</button>",
+      "css": ".ds-cmd { font: 400 13px/1.7 var(--font); color: var(--fg); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-decoration-color: var(--faint); text-underline-offset: 3px; transition: color 0.15s, text-decoration-color 0.15s; } .ds-cmd:hover { color: var(--claude); text-decoration-color: var(--claude); } .ds-cmd:focus-visible { outline: 2px solid var(--claude); outline-offset: 2px; border-radius: 2px; }"
+    },
+    {
+      "name": "Composer",
+      "kind": "input",
+      "refersTo": "composer-line",
+      "description": "The fixed command input. No box on the field itself, only a caret inside a ruled line.",
+      "html": "<div class=\"ds-composer\"><span class=\"ds-composer__caret\">&gt;</span><input class=\"ds-composer__input\" placeholder=\"/help\" /></div>",
+      "css": ".ds-composer { display: flex; align-items: center; gap: 1ch; padding: 8px 12px; font: 400 14px/1.7 var(--font); background: var(--bg); border: 1px solid var(--rule); border-radius: 6px; transition: border-color 0.15s; } .ds-composer:focus-within { border-color: var(--dim); } .ds-composer__caret { color: var(--dim); } .ds-composer__input { flex: 1; min-width: 0; padding: 0; font: inherit; color: var(--fg); background: none; border: 0; outline: none; caret-color: var(--claude); } .ds-composer__input::placeholder { color: var(--faint); }"
+    },
+    {
+      "name": "Tool Call Line",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "The signature line. Green names the tool, dim carries its argument; output hangs off the gutter glyph.",
+      "html": "<p class=\"ds-tool\"><span class=\"ds-tool__name\">Read</span><span class=\"ds-tool__arg\">(measurements.md)</span></p><p class=\"ds-out\">11 lines, every one read off a test or a dashboard.</p>",
+      "css": ".ds-tool { margin: 0 0 0 0; padding-left: 2ch; font: 400 13px/1.7 var(--font); } .ds-tool__name { font-weight: 600; color: var(--ok); } .ds-tool__arg { color: var(--dim); } .ds-out { position: relative; margin: 6px 0 0; padding-left: 4ch; color: var(--dim); font: 400 13.5px/1.7 var(--font); } .ds-out::before { content: \"\\232F\"; position: absolute; left: 2ch; top: 0; color: var(--faint); }"
+    },
+    {
+      "name": "Measurement Row",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "A measured number and what it means. Terracotta marks the figure that matters; everything numeric is tabular.",
+      "html": "<div class=\"ds-row\"><span class=\"ds-row__num\"><span>373</span><span class=\"ds-row__arrow\">\u2192</span><span class=\"ds-row__n\">4</span></span><span class=\"ds-row__what\">List calls per service phase evaluation on a 20-shard service<span class=\"ds-row__where\">Kubernetes operator \u00b7 2026</span></span></div>",
+      "css": ".ds-row { position: relative; display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 0 16px; align-items: baseline; padding-left: 4ch; font-size: 14.5px; } .ds-row::before { content: \"\\232F\"; position: absolute; left: 2ch; top: 0; color: var(--faint); } .ds-row__num { font: 600 13.5px/1.7 var(--font); font-variant-numeric: tabular-nums; white-space: nowrap; } .ds-row__arrow { color: var(--faint); padding: 0 0.5ch; } .ds-row__n { color: var(--claude); font-weight: 600; } .ds-row__where { display: block; font: 400 12px/1.7 var(--font); color: var(--dim); }"
+    },
+    {
+      "name": "Welcome Panel",
+      "kind": "card",
+      "refersTo": "welcome-panel",
+      "description": "The only container in the system, and the only place the accent draws a border. No fill.",
+      "html": "<section class=\"ds-welcome\"><p class=\"ds-welcome__hello\"><span class=\"ds-spark\">\u273b</span> Welcome to Seokwon Choi's portfolio.</p></section>",
+      "css": ".ds-welcome { border: 1px solid var(--claude); border-radius: 6px; padding: 14px 18px 16px; font: 400 15px/1.7 var(--font-sans); color: var(--fg); } .ds-welcome__hello { margin: 0; font-weight: 600; } .ds-spark { display: inline-block; width: 1.3em; color: var(--claude); cursor: pointer; }"
+    },
+    {
+      "name": "Timeline Thumb",
+      "kind": "card",
+      "refersTo": "timeline-thumb",
+      "description": "A screenshot in a timeline entry. Crops to 16/10; the border goes terracotta on hover.",
+      "html": "<button class=\"ds-thumb\"><img class=\"ds-thumb__img\" src=\"\" alt=\"k-pullup\" /></button>",
+      "css": ".ds-thumb { width: 112px; padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: 4px; } .ds-thumb__img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border: 1px solid var(--rule); border-radius: 4px; background: var(--bg-2); transition: border-color 0.15s; } .ds-thumb:hover .ds-thumb__img { border-color: var(--claude); }"
+    },
+    {
+      "name": "Timeline Mark",
+      "kind": "card",
+      "refersTo": "timeline-mark",
+      "description": "An institution's logo in a timeline entry. Never crops, never bleeds; sits on paper at 62% of its plate.",
+      "html": "<span class=\"ds-mark\"><img class=\"ds-mark__img\" src=\"\" alt=\"\" /></span>",
+      "css": ".ds-mark { display: block; width: 112px; } .ds-mark__img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: contain; padding: 11.9% 19%; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Session Transcript",
+    "overview": "The page is one session with an agent, read top to bottom. Each section opens with the question a reader would have asked, set as a prompt line. Under it comes a tool call, and under that the output, hung off a gutter glyph. Nothing on the page pretends to be a brochure. The structure is the argument: a claim is worth what the tool call under it returned.\n\nThe temperament is quiet and precise. Monospace carries the chrome, so the page reads as instrument rather than advertisement, and the restraint is what makes the two signal colours land: a reader who has scrolled past forty lines of ink notices terracotta immediately. Density is deliberate \u2014 a 760px measure, 46px between turns, and a 1.7 line-height throughout \u2014 because the page is read once, carefully, by someone deciding whether to make a call.\n\nThree WebGL scenes sit behind the page and never in front of it. They load only when a mount nears the viewport, hold a still frame under prefers-reduced-motion, and are aria-hidden throughout. Atmosphere is allowed; interference is not.",
+    "keyCharacteristics": [
+      "Mono for chrome, sans for prose, never the reverse",
+      "Two signal colours, each with exactly one job",
+      "Flat by default; shadow means \"this left the page\"",
+      "Every string present in both Korean and English, one hidden by CSS",
+      "Small radii (2\u20136px); nothing is a pill, nothing is square by accident"
+    ],
+    "rules": [
+      { "name": "The Two-Signal Rule", "body": "Terracotta means \"a human should look here\"; green means \"this line is a tool call\". Nothing else in the system is allowed a colour. A third accent would cost both of them their meaning.", "section": "colors" },
+      { "name": "The Contrast Floor Rule", "body": "--faint carries real text \u2014 the cwd and loc lines, the IPA line, stack labels, the composer placeholder \u2014 so each theme's value is the minimum lift that clears 4.5:1 on that theme's own background. It was 3.12:1 on dark and 2.54:1 on light before being raised. Never darken a neutral without re-checking it.", "section": "colors" },
+      { "name": "The Mono-First Rule", "body": "Mono is chrome; the sans is for reading. The mono stack lists IBM Plex Sans KR before monospace on purpose: Plex Mono has no Hangul, and without that entry every Korean word in a mono run would fall to a different face mid-line.", "section": "typography" },
+      { "name": "The Tabular Rule", "body": "Anything a reader might compare down a column \u2014 measurements, years, page counts, zoom percentages \u2014 carries font-variant-numeric: tabular-nums.", "section": "typography" },
+      { "name": "The Own-Column Rule", "body": "A timeline or ledger row's text always occupies its own grid column rather than flowing around an image, so a missing picture leaves alignment untouched.", "section": "layout" },
+      { "name": "The Flat-By-Default Rule", "body": "A shadow is a statement that an element is not part of the document. If it scrolls with the page, it gets a rule or a tonal step, never a shadow.", "section": "elevation" },
+      { "name": "The Clear-Space Rule", "body": "A logo never bleeds and never crops. It sits on paper whichever theme is up, at 62% of its plate, because the air around a wordmark is part of the wordmark.", "section": "components" }
+    ],
+    "dos": [
+      "Do spend terracotta on the spark, measured numbers, the caret, and interaction states \u2014 and nothing else.",
+      "Do set every numeric run in mono with tabular-nums.",
+      "Do write both the Korean and the English string into the markup and let [data-lang] hide the inactive one. Nothing re-renders on a language change.",
+      "Do keep new colours out of the token set; compose from the nine that exist.",
+      "Do check a new neutral against 4.5:1 on each theme's own background before shipping it.",
+      "Do bump the ?v=N on css/site.css in every page that links it whenever the stylesheet changes."
+    ],
+    "donts": [
+      "Don't add a shadow to anything that scrolls with the document.",
+      "Don't put prose in the mono face or chrome in the sans.",
+      "Don't let a WebGL scene animate under prefers-reduced-motion, take focus, or drop its aria-hidden.",
+      "Don't crop or bleed an institution's logo; it is a mark, not a screenshot.",
+      "Don't introduce a third accent colour. Two signals is the whole system.",
+      "Don't ship a string in one language only."
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "files": ["*.html"],
+  "exclude": [
+    "old.html",
+    "deck.html",
+    "jobscribe.html",
+    "pullup.html",
+    "redis-listpack.html",
+    "resume-eng.html"
+  ],
+  "insertBefore": "</body>",
+  "commentSyntax": "html",
+  "cspChecked": true
+}
