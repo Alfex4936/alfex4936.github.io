@@ -291,6 +291,14 @@ button {
   opacity: 1;
 }
 
+/* What the acronym stands for, before the sentence that says what it means.
+   Ink, not terracotta: the accent is spent on measured numbers. */
+.gloss__x {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--fg);
+}
+
 .welcome__meta dt {
   color: var(--faint);
   min-width: 3ch;
