@@ -247,8 +247,48 @@ button {
 }
 
 .welcome__meta div {
+  position: relative; /* the gloss panel anchors to the row, not to the word */
   display: flex;
   gap: 2ch;
+}
+
+/* The one piece of jargon in the opening line. A button, not a hover target:
+   a phone has no hover, and this has to be reachable by tap and by keyboard. */
+.gloss {
+  font: inherit;
+  color: var(--fg);
+  text-decoration: underline dotted;
+  text-decoration-color: var(--faint);
+  text-underline-offset: 3px;
+  transition: color 0.15s, text-decoration-color 0.15s;
+}
+
+.gloss:hover,
+.gloss:focus-visible {
+  color: var(--claude);
+  text-decoration-color: var(--claude);
+}
+
+.gloss__p {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 3;
+  width: max-content;
+  max-width: min(46ch, 100%);
+  padding: 8px 11px;
+  color: var(--dim);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.gloss:hover + .gloss__p,
+.gloss:focus-visible + .gloss__p {
+  opacity: 1;
 }
 
 .welcome__meta dt {
