@@ -1,0 +1,14 @@
+#!/bin/sh
+# Blocks the cache-busting mistake that has shipped once: an asset's bytes
+# change while its ?v= does not, so warm caches pair new markup with the old
+# file. Cheap (no browser); the scene checks are too slow to sit here.
+#
+# Enable in a fresh clone:  git config core.hooksPath .githooks
+# Deliberate exception:     git commit --no-verify
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "pre-commit: node not found, skipping the ?v= check" >&2
+  exit 0
+fi
+
+exec node "$(git rev-parse --show-toplevel)/scripts/check-versions.mjs"

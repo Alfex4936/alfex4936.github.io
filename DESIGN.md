@@ -314,8 +314,9 @@ better (the reader's scroll region uses a 1px `dim` inset outline).
 - **Do** keep new colours out of the token set; compose from the nine that exist.
 - **Do** check a new neutral against 4.5:1 on each theme's own background before
   shipping it.
-- **Do** bump the `?v=N` on `css/site.css` in every page that links it whenever
-  the stylesheet changes.
+- **Do** bump the `?v=N` in every page that links a changed asset. The
+  pre-commit hook runs `scripts/check-versions.mjs`, which fails on a stale or
+  mismatched version and bumps them with `--fix`.
 
 ### Don't:
 - **Don't** add a shadow to anything that scrolls with the document.
