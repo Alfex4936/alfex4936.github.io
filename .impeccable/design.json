@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-23T00:00:00Z",
+  "generatedAt": "2026-09-25T00:00:00Z",
   "title": "Design System: Seokwon Choi Portfolio",
   "extensions": {
     "colorMeta": {
@@ -184,7 +184,7 @@
       "Do write both the Korean and the English string into the markup and let [data-lang] hide the inactive one. Nothing re-renders on a language change.",
       "Do keep new colours out of the token set; compose from the nine that exist.",
       "Do check a new neutral against 4.5:1 on each theme's own background before shipping it.",
-      "Do bump the ?v=N on css/site.css in every page that links it whenever the stylesheet changes."
+      "Do bump the ?v=N in every page that links a changed asset. The pre-commit hook runs scripts/check-versions.mjs, which fails on a stale or mismatched version and bumps them with --fix."
     ],
     "donts": [
       "Don't add a shadow to anything that scrolls with the document.",
