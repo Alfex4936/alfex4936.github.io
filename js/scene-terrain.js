@@ -157,7 +157,9 @@ const CSS = `
   line-height:1.75;letter-spacing:.01em;max-width:min(560px,calc(100% - 28px))}
 .st-legend b{color:var(--dim);font-weight:400}
 .st-legend .st-k{display:inline-block;min-width:44px;color:var(--faint)}
-.st-callout{position:absolute;top:0;left:0;display:none;border:1px solid var(--rule);
+/* above .st-lb: the labels are appended after the callout, so without this an
+   opaque panel paints under every one of them */
+.st-callout{position:absolute;top:0;left:0;z-index:2;display:none;border:1px solid var(--rule);
   background:var(--bg);padding:7px 11px;font-size:11px;letter-spacing:.01em;
   max-width:calc(100% - 20px)}
 .st-callout.st-on{display:block}
@@ -639,6 +641,8 @@ export default function terrain({ THREE, canvas, width, height, tokens, still })
   // ---- hover ---------------------------------------------------------------
   const ray = new THREE.Raycaster()
   const ndc = new THREE.Vector2()
+  // the callout follows the cursor, so it thins labels the way the legend does
+  let coRect = null
   let px = -1
   let py = -1
   let pointerDirty = false
@@ -654,6 +658,7 @@ export default function terrain({ THREE, canvas, width, height, tokens, still })
     }
     if (!d) {
       callout.classList.remove('st-on')
+      coRect = null
       return
     }
     paintBody(d)
@@ -678,7 +683,10 @@ export default function terrain({ THREE, canvas, width, height, tokens, still })
     if (!hover) return
     const cw = callout.offsetWidth
     const ch = callout.offsetHeight
-    callout.style.transform = `translate3d(${Math.max(10, Math.min(lx + 16, vw - cw - 10))}px,${Math.max(10, Math.min(ly + 18, vh - ch - 10))}px,0)`
+    const cx = Math.max(10, Math.min(lx + 16, vw - cw - 10))
+    const cy = Math.max(10, Math.min(ly + 18, vh - ch - 10))
+    callout.style.transform = `translate3d(${cx}px,${cy}px,0)`
+    coRect = { x: cx, y: cy, w: cw, h: ch, hx: THALO[0], hy: THALO[1] }
   }
 
   // ---- label projection + thinning -----------------------------------------
@@ -709,6 +717,7 @@ export default function terrain({ THREE, canvas, width, height, tokens, still })
     if (!still && lastThin >= 0 && t - lastThin < 0.16) return
     lastThin = t
     const taken = [...legendRects] // legend outranks everything; it never thins
+    if (coRect) taken.push(coRect) // so does the callout, for as long as it is up
     let shown = 0
     for (const m of thinOrder) {
       const hot = m.d && hover === m.d

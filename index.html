@@ -521,7 +521,7 @@ master   +FULLRESYNC -&gt; fork -&gt; rdb
       scene('./js/scene-city.js?v=13', 'scene-city')
 
       // The figure only earns its space once its own scene is going to run.
-      if (await scene('./js/scene-terrain.js?v=1', 'scene-terrain'))
+      if (await scene('./js/scene-terrain.js?v=2', 'scene-terrain'))
         for (const fig of document.querySelectorAll('.fig')) fig.hidden = false
     </script>
   </body>
