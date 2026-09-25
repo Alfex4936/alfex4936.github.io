@@ -158,6 +158,32 @@ const CALLOUT_PROBE = `(async () => {
   return JSON.stringify({ ran: true, hovers, bad, zIndex: getComputedStyle(co).zIndex });
 })()`
 
+// Product Principle #5 is that the résumé is read in place with no download.
+// Slots alone do not prove that: is-printed is only set once a page has really
+// painted, so an empty reader would still look like a pass without it.
+const READER_PROBE = `(async () => {
+  const wait = async (fn, ms = 15000) => { const t0 = Date.now();
+    while (Date.now() - t0 < ms) { if (fn()) return true; await new Promise(r => setTimeout(r, 200)); } return false };
+  const link = [...document.querySelectorAll('[data-reader]')].find(a => getComputedStyle(a).display !== 'none');
+  if (!link) return JSON.stringify({ ran: false });
+  link.click();
+  const dlg = document.querySelector('.reader');
+  const opened = await wait(() => dlg.hasAttribute('open'));
+  await wait(() => document.querySelectorAll('.page__slot').length > 0);
+  await new Promise(r => setTimeout(r, 2500));
+  const pct0 = document.querySelector('.reader__pct').textContent;
+  document.querySelector('[data-zoom="in"]').click();
+  await new Promise(r => setTimeout(r, 700));
+  const pctIn = document.querySelector('.reader__pct').textContent;
+  document.querySelector('.reader__close').click();
+  await new Promise(r => setTimeout(r, 500));
+  return JSON.stringify({ ran: true, opened,
+    slots: document.querySelectorAll('.page__slot').length,
+    printed: document.querySelectorAll('.page__slot.is-printed').length,
+    pageno: document.querySelector('.reader__pageno').textContent.trim(),
+    zoomed: pctIn !== pct0, closed: !dlg.hasAttribute('open') });
+})()`
+
 async function run() {
   const server = await serve(PORT)
   await waitFor(`http://127.0.0.1:${PORT}/index.html`)
@@ -211,6 +237,18 @@ async function run() {
       else if (c.bad.length)
         fail('terrain callout', `labels painted over the callout: ${JSON.stringify(c.bad)}`)
       else ok('terrain callout clear of labels', `${c.hovers} hovers, z-index ${c.zIndex}`)
+    }
+
+    if (page === 'index.html') {
+      const r = await evalIn(READER_PROBE)
+      if (!r.ran) fail('résumé reader', 'no visible [data-reader] link to open')
+      else if (!r.opened) fail('résumé reader', 'clicking the link did not open the dialog')
+      else if (r.printed < 2)
+        fail('résumé reader', `${r.printed} of ${r.slots} pages actually painted, expected 2`)
+      else if (!/^1 \/ \d+$/.test(r.pageno)) fail('résumé reader', `page counter reads "${r.pageno}"`)
+      else if (!r.zoomed) fail('résumé reader', 'zoom in did not change the percentage')
+      else if (!r.closed) fail('résumé reader', 'close left the dialog open')
+      else ok('résumé reader', `${r.printed} pages painted, ${r.pageno}, zoom and close work`)
     }
 
     if (errors.length) fail(`${page} console`, errors.slice(0, 4).join(' | '))

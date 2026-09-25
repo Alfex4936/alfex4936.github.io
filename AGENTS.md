@@ -43,9 +43,12 @@ passes `--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader` and
 asserts `data-scene === "ready"` with a sized canvas, so an unmounted scene is
 a failure rather than a silent pass.
 
-`scene-check.mjs` also carries the regression test for the terrain callout: it
-sweeps the pointer across the bars and fails if any visible label is painted
-inside the callout's rect.
+`scene-check.mjs` also carries two regression tests. One sweeps the pointer
+across the terrain bars and fails if any visible label is painted inside the
+callout's rect. The other opens the résumé reader — Product Principle #5 is
+that the résumé is read in place with no download — and asserts both pages
+actually painted, not merely that slots exist: `is-printed` is only set once a
+page has rendered, so an empty reader would pass without it.
 
 ## Shared modules carry no version on purpose
 
