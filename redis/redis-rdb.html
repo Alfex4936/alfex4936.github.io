@@ -11,6 +11,8 @@
   .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .row > input { flex: 1 1 12ch; min-width: 0; }
   .stack { display: grid; gap: 10px; }
+  .panel__note { margin-bottom: 8px; }
+  .panel__foot { margin-top: 10px; }
   .field { display: grid; gap: 4px; }
   .field textarea {
     font: 400 12px/1.6 var(--mono); color: var(--fg); padding: 6px 9px;
@@ -26,6 +28,7 @@
   .rec + .rec { border-top: 1px solid var(--rule); }
   .rec__head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; margin-bottom: 6px; }
   .rec__head b { font: 500 12px/1.6 var(--mono); font-weight: 500; color: var(--dim); }
+  .fieldrow { margin-bottom: 8px; }
   .scroll { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font: 400 12px/1.7 var(--mono); }
   th { text-align: left; font-weight: 500; color: var(--faint); padding: 4px 10px 4px 0; white-space: nowrap; }
@@ -84,7 +87,7 @@
         </div>
         <div id="ks-list"></div>
         <p class="muted" id="ks-empty">No keys. Redis skips an empty database entirely &mdash; no <code>SELECTDB</code> opcode is written for it (rdb.c:1310).</p>
-        <div class="row" style="margin-top:10px">
+        <div class="row panel__foot">
           <button id="k-sample" class="btn">Load sample keyspace</button>
           <button id="k-clear" class="btn">Clear</button>
         </div>
@@ -110,7 +113,7 @@
           <span><span class="byte byte--eof">FF</span> end of file</span>
           <span><span class="byte byte--back">FF</span> CRC64</span>
         </p>
-        <div class="row" style="margin-top:10px">
+        <div class="row panel__foot">
           <button id="dl" class="btn">Download dump.rdb</button>
           <span class="cite" id="crc-line"></span>
         </div>
@@ -120,7 +123,7 @@
 
   <section class="panel">
     <div class="panel__head"><h2>Opcodes</h2><span class="cite">rdb.h:103&ndash;113</span></div>
-    <p class="muted" style="margin-bottom:8px">
+    <p class="muted panel__note">
       The complete 7.2.14 list. An opcode is read where a value type byte would otherwise be,
       so anything from 245 upward is an instruction rather than a type
       (<code>rdbIsObjectType</code> covers 0&ndash;7 and 9&ndash;21, rdb.h:100).
@@ -143,7 +146,7 @@
         </tbody>
       </table>
     </div>
-    <p class="cite" style="margin-top:10px">
+    <p class="cite panel__foot">
       Per-key metadata precedes the value type byte, not the key:
       <code>FC &lt;8 bytes&gt;</code> then <code>F8</code>/<code>F9</code> if the policy asks for
       them, then the type byte, then the key, then the value (rdb.c:1129&ndash;1158).
@@ -154,7 +157,7 @@
   <div class="grid grid--2">
     <section class="panel">
       <div class="panel__head"><h2>Length encoding</h2><span class="cite">rdb.c:172 rdbSaveLen</span></div>
-      <p class="muted" style="margin-bottom:8px">
+      <p class="muted panel__note">
         The top two bits of the first byte say how to read the rest.
       </p>
       <div class="scroll">
@@ -173,7 +176,7 @@
 
     <section class="panel">
       <div class="panel__head"><h2>String encodings</h2><span class="cite">rdb.c:442 rdbSaveRawString</span></div>
-      <p class="muted" style="margin-bottom:8px">
+      <p class="muted panel__note">
         A string is tried as an integer first, then as compressed, then stored verbatim.
       </p>
       <div class="scroll">
@@ -188,7 +191,7 @@
           </tbody>
         </table>
       </div>
-      <p class="cite" style="margin-top:10px">
+      <p class="cite panel__foot">
         Integer encoding is attempted only when the string is at most 11 bytes (rdb.c:447) and
         parses as a canonical integer &mdash; <code>string2ll</code> rejects leading zeros,
         <code>-0</code> and trailing text (util.c:438). Compression is attempted only when
@@ -200,7 +203,7 @@
 
   <section class="panel">
     <div class="panel__head"><h2>How the type byte is chosen</h2><span class="cite">rdb.c:661 rdbSaveObjectType</span></div>
-    <p class="muted" style="margin-bottom:8px">
+    <p class="muted panel__note">
       The type byte names the <em>encoding on disk</em>, not the user-visible type. A small
       collection is one packed blob; a large one is written element by element. The ziplist
       types 10, 12 and 13 are still read by 7.2 but nothing writes them any more.
@@ -222,7 +225,7 @@
         </tbody>
       </table>
     </div>
-    <p class="cite" style="margin-top:10px">
+    <p class="cite panel__foot">
       Thresholds are the shipped defaults from config.c:3236&ndash;3244. A list stays one
       listpack node until that node would exceed 8192 bytes, the limit
       <code>list-max-listpack-size = -2</code> selects (quicklist.c:49, quicklist.c:467).
@@ -631,8 +634,7 @@ document.addEventListener('DOMContentLoaded', () => {
         dump.append(box)
         continue
       }
-      const line = el('div')
-      line.style.marginBottom = '8px'
+      const line = el('div', 'fieldrow')
       const head = el('div', 'rec__head')
       const label = el('span', f.note ? 'tip mono' : 'mono', f.label)
       if (f.note) {

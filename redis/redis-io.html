@@ -72,8 +72,16 @@
         <option value="default">0 0 0 &mdash; default, no limit</option>
         <option value="demo">64kb 32kb 5 &mdash; CONFIG SET</option>
       </select>
+      <label for="sock">connWritev accepts</label>
+      <select id="sock">
+        <option value="all">everything offered</option>
+        <option value="half">half &mdash; a socket that is backing up</option>
+      </select>
       <span class="flags" id="flags">flags=N</span>
     </div>
+    <p class="note">The last control is this page's own knob, not a Redis constant: a short
+      <code>connWritev</code> is what leaves <code>sentlen</code> pointing into a
+      half-sent block (networking.c:1864, 1880&ndash;1900).</p>
 
     <div class="row" style="margin-top:10px">
       <button id="b-small">GET mykey</button>
@@ -255,7 +263,7 @@ function initial() {
     bufpos: 0, buf_usable_size: PROTO_REPLY_CHUNK_BYTES, buf_peak: PROTO_REPLY_CHUNK_BYTES,
     reply: [], reply_bytes: 0, sentlen: 0,
     soft_since: null, unixtime: 0,
-    asap: false, afterReply: false, gone: false, dimBuf: false,
+    asap: false, afterReply: false, gone: false, dimBuf: false, blocked: false,
   }
 }
 
@@ -327,7 +335,7 @@ function readEvent(pending) {
 // processInputBuffer, networking.c:2545
 function processInput(cmds) {
   for (const c of cmds) {
-    if (s.gone || s.afterReply) break
+    if (s.gone || s.afterReply || s.asap) break      // :2566
     if (c.bulklen !== undefined) {
       s.bulklen = c.bulklen
       // processMultibulkBuffer, networking.c:2356-2360
@@ -391,6 +399,10 @@ function addProtoToList(len) {
 // _addReplyToBufferOrList, networking.c:394
 function addReply(len) {
   if (len <= 0) return
+  if (s.asap) {                                      // prepareClientToWrite, networking.c:290-291
+    log('CLIENT_CLOSE_ASAP is set — prepareClientToWrite returns C_ERR, the reply is never installed.')
+    return
+  }
   const written = addToBuffer(len)
   if (written > 0) log('c->buf took ' + n(written) + ' of ' + n(len) + ' bytes (available was ' +
                        n(s.buf_usable_size - s.bufpos + written) + ')')
@@ -483,12 +495,26 @@ function writev() {
   log('writev() gathering ' + iovcnt + ' buffer(s), ' + both(len) +
       ' — capped at IOV_MAX and NET_MAX_WRITES_PER_EVENT (networking.c:1832, 1849)')
 
-  let left = len
+  // connWritev, networking.c:1864. How much the kernel takes is this page's knob.
+  const offered = len
+  let left = $('sock').value === 'half' ? Math.ceil(offered / 2) : offered
+  if (left < offered) {
+    s.blocked = true
+    log('connWritev returned ' + both(left) + ' of ' + both(offered) +
+        ' — short write, the remainder stays buffered', 'hit')
+  }
+  const written = left
+
   if (s.bufpos > 0) {                                // :1870-1876
-    const take = s.bufpos - s.sentlen
+    const take = Math.min(left, s.bufpos - s.sentlen)
     left -= take
-    s.bufpos = 0
-    s.sentlen = 0
+    if (take === s.bufpos - s.sentlen) {
+      s.bufpos = 0
+      s.sentlen = 0
+    } else {
+      s.sentlen += take
+      return written
+    }
   }
   while (left > 0 && s.reply.length) {               // :1880-1900
     const b = s.reply[0]
@@ -502,16 +528,18 @@ function writev() {
     }
     left -= take
   }
-  return len
+  return written
 }
 
 // _writeToClient, networking.c:1932/1940
 function writeOnce() {
   if (s.reply.length > 0) return writev()
   if (s.bufpos > 0) {                                // :1941
-    const nw = s.bufpos - s.sentlen
-    s.sentlen += nw
-    log('write() ' + n(nw) + ' bytes from c->buf — one buffer, so no writev (networking.c:1940)')
+    const offered = s.bufpos - s.sentlen
+    const nw = $('sock').value === 'half' ? Math.ceil(offered / 2) : offered
+    if (nw < offered) s.blocked = true
+    s.sentlen += nw                                  // :1943
+    log('write() ' + n(nw) + ' of ' + n(offered) + ' bytes from c->buf — one buffer, so no writev (networking.c:1940)')
     if (s.sentlen === s.bufpos) {                    // :1947
       s.bufpos = 0
       s.sentlen = 0
@@ -528,10 +556,15 @@ function writeEvent() {
     return
   }
   let tot = 0
+  s.blocked = false
   while (pending()) {
     const nw = writeOnce()
     if (nw === 0) break
     tot += nw
+    if (s.blocked) {
+      log('socket would block — the write handler stays installed and the rest goes out on a later event.')
+      break
+    }
     if (tot > NET_MAX_WRITES_PER_EVENT) {            // :1986-1989
       log('totwritten ' + both(tot) + ' > NET_MAX_WRITES_PER_EVENT — stopping so other clients get served; ' +
           'the rest waits for the next event.', 'hit')
@@ -759,11 +792,13 @@ function slow() {
   if (lim[0] === 0 && lim[1] === 0) {
     log('class ' + $('cls').value + ' limit is 0 0 0 — expect the buffer to grow and nothing to stop it.')
   }
-  for (let i = 0; i < 16 && !s.gone; i++) {
+  let i = 0
+  for (; i < 16 && !s.gone && !s.asap; i++) {
     readEvent(22)
-    if (s.gone) break
+    if (s.gone || s.asap) break
     processInput([{ name: 'GET big #' + (i + 1), cmd: 22, reply: 22538 }])
   }
+  if (s.asap) log('stopped after ' + (i + 1) + ' commands — processInputBuffer breaks on CLIENT_CLOSE_ASAP (networking.c:2566).')
   if (!s.gone && !s.asap) {
     log('buffered ' + both(s.reply_bytes) + ' for one client and it is still connected.',
         limits()[0] === 0 && limits()[1] === 0 ? 'hit' : undefined)
