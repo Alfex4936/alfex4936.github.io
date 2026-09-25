@@ -419,12 +419,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function listNodes(elements) {
     /* One packed node until it would pass 8192 bytes, then a new one. */
+    const EMPTY = 7 /* 6-byte header plus the terminator */
     const nodes = []
     let cur = []
+    let size = EMPTY
     for (const e of elements) {
-      const next = [...cur, e]
-      if (cur.length && listpack(next).length > LIMIT.listNodeBytes) { nodes.push(cur); cur = [e] }
-      else cur = next
+      const n = lpEntry(e).length
+      if (cur.length && size + n > LIMIT.listNodeBytes) { nodes.push(cur); cur = []; size = EMPTY }
+      cur.push(e)
+      size += n
     }
     if (cur.length || !nodes.length) nodes.push(cur)
     return nodes
