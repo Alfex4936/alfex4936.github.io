@@ -1211,8 +1211,9 @@ html:has(.reader[open]) {
   transition: none;
 }
 
+/* reader.js sets both per close so a flung sheet leaves at the speed it was thrown. */
 .reader.is-closing {
-  animation: reader-sink 0.26s cubic-bezier(0.55, 0, 0.85, 0.35) forwards;
+  animation: reader-sink var(--sink-t, 0.24s) var(--sink-ease, cubic-bezier(0.333, 0, 0.667, 0.333)) forwards;
 }
 
 .reader::backdrop {
@@ -1220,8 +1221,9 @@ html:has(.reader[open]) {
   animation: reader-dim 0.32s ease both;
 }
 
+/* Its own name: reversing reader-dim leaves a finished animation finished, and the dim snapped off. */
 .reader.is-closing::backdrop {
-  animation: reader-dim 0.26s ease reverse forwards;
+  animation: reader-undim var(--sink-t, 0.24s) var(--sink-ease, cubic-bezier(0.333, 0, 0.667, 0.333)) forwards;
 }
 
 @keyframes reader-rise {
@@ -1241,6 +1243,12 @@ html:has(.reader[open]) {
 
 @keyframes reader-dim {
   from {
+    opacity: 0;
+  }
+}
+
+@keyframes reader-undim {
+  to {
     opacity: 0;
   }
 }

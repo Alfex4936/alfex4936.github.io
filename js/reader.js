@@ -424,9 +424,19 @@ function close() {
   dismiss()
 }
 
+let fling = 0 // px/ms downward at release; 0 for a button, Esc or back
 function dismiss() {
   if (!dialog.open) return
   if (reduced.matches) return dialog.close()
+  // One constant pull from wherever the sheet is, starting at the speed it was thrown.
+  const h = dialog.offsetHeight
+  const d = Math.max(1, h - (parseFloat(dialog.style.getPropertyValue('--drag')) || 0))
+  const a = (2 * h) / 240 ** 2 // an untouched sheet clears in 240ms
+  const t = (Math.sqrt(fling ** 2 + 2 * a * d) - fling) / a
+  const k = (fling * t) / d // the curve's starting slope, so velocity carries across release
+  fling = 0
+  dialog.style.setProperty('--sink-t', `${Math.round(t)}ms`)
+  dialog.style.setProperty('--sink-ease', `cubic-bezier(0.333, ${(k / 3).toFixed(3)}, 0.667, ${((k + 1) / 3).toFixed(3)})`)
   dialog.classList.add('is-closing')
   const done = () => {
     clearTimeout(backstop)
@@ -435,7 +445,7 @@ function dismiss() {
     dialog.close()
   }
   const end = (e) => e.animationName === 'reader-sink' && done()
-  const backstop = setTimeout(done, 600)
+  const backstop = setTimeout(done, t + 300)
   dialog.addEventListener('animationend', end)
 }
 
@@ -473,22 +483,27 @@ dialog.addEventListener('click', (e) => {
 let drag = null
 head.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || e.target.closest('a, button')) return
-  drag = { y: e.clientY, t: e.timeStamp, dy: 0, id: e.pointerId }
+  drag = { y: e.clientY, t: e.timeStamp, dy: 0, id: e.pointerId, v: 0, lt: e.timeStamp }
   head.setPointerCapture(e.pointerId)
 })
 head.addEventListener('pointermove', (e) => {
   if (!drag || e.pointerId !== drag.id) return
-  drag.dy = Math.max(0, e.clientY - drag.y)
+  const dy = Math.max(0, e.clientY - drag.y)
+  drag.v = (dy - drag.dy) / Math.max(1, e.timeStamp - drag.lt)
+  drag.lt = e.timeStamp
+  drag.dy = dy
   dialog.classList.add('is-dragging')
   dialog.style.setProperty('--drag', `${drag.dy}px`)
 })
 const release = (e) => {
   if (!drag) return
-  const { dy, t } = drag
+  const { dy, t, v, lt } = drag
   drag = null
   dialog.classList.remove('is-dragging')
-  if (dy > 120 || (dy > 36 && dy / Math.max(1, e.timeStamp - t) > 0.5)) close()
-  else dialog.style.removeProperty('--drag')
+  if (dy > 120 || (dy > 36 && dy / Math.max(1, e.timeStamp - t) > 0.5)) {
+    fling = e.timeStamp - lt < 80 ? Math.max(0, v) : 0 // a finger that stopped has no throw
+    close()
+  } else dialog.style.removeProperty('--drag')
 }
 head.addEventListener('pointerup', release)
 head.addEventListener('pointercancel', release)
