@@ -619,7 +619,7 @@ function build (id) {
   steps = handshake().concat(sc.body())
   if (NEEDS_FORK[id]) steps = steps.concat(forkSequence())
   cursor = 0
-  $('log').innerHTML = ''
+  $('log').innerHTML = '<p class="faint" id="log-hint">' + sc.note + ' — press Run, or Step through it one line at a time.</p>'
   $('log-cite').textContent = sc.cite
   $('scenario-note').textContent = sc.note
   render()
@@ -635,6 +635,8 @@ function select (id) {
 
 function step () {
   if (cursor >= steps.length) return false
+  const hint = $('log-hint')
+  if (hint) hint.remove()
   const s = steps[cursor++]
   if (s.a) s.a()
   if (s.t || s.w) log(s)
