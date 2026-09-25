@@ -1,0 +1,435 @@
+/* Shared style for the Redis internals visualizers.
+ *
+ * Redis red on Redis midnight. The palette is the hidden [data-theme="redis"]
+ * from the portfolio's css/site.css, promoted from easter egg to the default
+ * here — these pages are that world, so they should look like it.
+ *
+ * Deliberately self-contained: no import of site.css, so a change to the
+ * portfolio's design cannot break ten visualizers, and PRODUCT.md's record of
+ * these pages as standalone stays true.
+ *
+ * Replaces the Tailwind Play CDN, which is a JIT compiler that runs in the
+ * browser and which Tailwind's own docs say is not for production.
+ */
+
+:root {
+  --bg: #091a23; /* Redis midnight */
+  --bg-2: #0f2430; /* one tonal step up: panels, wells */
+  --bg-3: #143241; /* two steps: byte cells, chips */
+  --fg: #e8eef1;
+  --dim: #97abb5; /* secondary text */
+  --faint: #678592; /* labels, gutters, placeholders */
+  --rule: #1c3542; /* hairlines */
+  --red: #ff4438; /* Redis red. The one attention colour. */
+  --ok: #4eba65; /* a state that is fine */
+  --warn: #e3a008; /* a state that is degrading */
+
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 32px 24px 64px;
+  font: 400 14px/1.65 var(--sans);
+  color: var(--fg);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+/* ---------------------------------------------------------------- type */
+
+h1,
+h2,
+h3,
+p,
+ul,
+ol,
+figure,
+pre {
+  margin: 0;
+}
+
+h1 {
+  font: 600 22px/1.3 var(--mono);
+  letter-spacing: -0.01em;
+}
+
+/* The subject, not decoration: every page names the C file it came from. */
+.src {
+  margin-top: 4px;
+  font: 400 12px/1.6 var(--mono);
+  color: var(--faint);
+}
+
+.src a {
+  color: inherit;
+}
+
+h2 {
+  font: 600 15px/1.5 var(--mono);
+  letter-spacing: -0.005em;
+}
+
+h3 {
+  font: 500 13px/1.5 var(--mono);
+  color: var(--dim);
+}
+
+.lede {
+  margin-top: 8px;
+  max-width: 68ch;
+  color: var(--dim);
+}
+
+.muted {
+  color: var(--dim);
+}
+
+.faint {
+  color: var(--faint);
+}
+
+/* Anything a reader compares down a column. */
+.num,
+.byte,
+.addr,
+td,
+.log {
+  font-variant-numeric: tabular-nums;
+}
+
+code,
+.mono {
+  font-family: var(--mono);
+  font-size: 0.92em;
+}
+
+/* ------------------------------------------------------------- surface */
+
+.panel {
+  padding: 14px 16px;
+  background: var(--bg-2);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+
+.panel + .panel {
+  margin-top: 12px;
+}
+
+.panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.grid {
+  display: grid;
+  gap: 12px;
+}
+
+@media (min-width: 860px) {
+  .grid--2 {
+    grid-template-columns: 1fr 1fr;
+  }
+  .grid--side {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+}
+
+/* ------------------------------------------------------------ controls */
+
+button,
+.btn {
+  font: 500 12px/1.6 var(--mono);
+  color: var(--dim);
+  padding: 5px 11px;
+  background: none;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+
+button:hover,
+.btn:hover {
+  color: var(--fg);
+  border-color: var(--faint);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button:disabled:hover {
+  color: var(--dim);
+  border-color: var(--rule);
+}
+
+/* The one action that advances the simulation. One per screen. */
+.btn--go {
+  color: var(--bg);
+  background: var(--red);
+  border-color: var(--red);
+}
+
+.btn--go:hover {
+  color: var(--bg);
+  background: #ff5f55;
+  border-color: #ff5f55;
+}
+
+.btn[aria-pressed="true"] {
+  color: var(--fg);
+  background: var(--bg-3);
+  border-color: var(--faint);
+}
+
+input,
+select {
+  font: 400 12px/1.6 var(--mono);
+  color: var(--fg);
+  padding: 5px 9px;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  transition: border-color 0.15s;
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: var(--faint);
+}
+
+input::placeholder {
+  color: var(--faint);
+}
+
+input[type="range"] {
+  padding: 0;
+  border: 0;
+  accent-color: var(--red);
+}
+
+label {
+  font: 400 12px/1.6 var(--mono);
+  color: var(--faint);
+}
+
+:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* --------------------------------------------------------------- state */
+
+.pill {
+  display: inline-block;
+  padding: 1px 8px;
+  font: 500 11px/1.7 var(--mono);
+  letter-spacing: 0.02em;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  color: var(--dim);
+}
+
+.pill--ok {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+}
+
+.pill--warn {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+}
+
+.pill--fail {
+  color: var(--red);
+  border-color: color-mix(in srgb, var(--red) 50%, transparent);
+}
+
+/* ------------------------------------------------------------ the bytes */
+
+/* These pages exist to show layout, so a byte is a first-class object. */
+.bytes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  font: 400 12px/1 var(--mono);
+}
+
+.byte {
+  min-width: 2.2em;
+  padding: 6px 4px;
+  text-align: center;
+  background: var(--bg-3);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+}
+
+.byte--hdr {
+  border-color: color-mix(in srgb, var(--dim) 40%, transparent);
+  color: var(--dim);
+}
+
+.byte--enc {
+  border-color: color-mix(in srgb, var(--red) 50%, transparent);
+  color: var(--red);
+}
+
+.byte--data {
+  color: var(--fg);
+}
+
+.byte--back {
+  border-color: color-mix(in srgb, var(--ok) 40%, transparent);
+  color: var(--ok);
+}
+
+.byte--eof {
+  border-style: dashed;
+  color: var(--faint);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 10px;
+  font: 400 11px/1.7 var(--mono);
+  color: var(--faint);
+}
+
+.legend b {
+  font-weight: 400;
+  color: var(--dim);
+}
+
+/* --------------------------------------------------------------- code */
+
+pre,
+.dump {
+  overflow-x: auto;
+  padding: 10px 12px;
+  font: 400 12px/1.6 var(--mono);
+  color: var(--dim);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+}
+
+pre b {
+  font-weight: 400;
+  color: var(--red);
+}
+
+/* A citation into the real source. Never decorative. */
+.cite {
+  font: 400 11px/1.6 var(--mono);
+  color: var(--faint);
+}
+
+/* ---------------------------------------------------------------- log */
+
+.log {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  font: 400 12px/1.7 var(--mono);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+}
+
+.log p {
+  color: var(--dim);
+}
+
+.log p::before {
+  content: "⎿ ";
+  color: var(--faint);
+}
+
+.log .t {
+  color: var(--faint);
+  padding-right: 1ch;
+}
+
+.log .hit {
+  color: var(--red);
+}
+
+.log .good {
+  color: var(--ok);
+}
+
+/* ------------------------------------------------------------ tooltip */
+
+.tip {
+  position: relative;
+  border-bottom: 1px dotted var(--faint);
+  cursor: help;
+}
+
+.tip__body {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 5;
+  width: max-content;
+  max-width: min(44ch, 78vw);
+  padding: 8px 11px;
+  font: 400 12px/1.6 var(--mono);
+  color: var(--dim);
+  background: var(--bg-2);
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+}
+
+.tip:hover .tip__body,
+.tip:focus-visible .tip__body {
+  display: block;
+}
+
+/* --------------------------------------------------------------- back */
+
+.back {
+  display: inline-block;
+  margin-bottom: 20px;
+  font: 400 12px/1.6 var(--mono);
+  color: var(--faint);
+  text-decoration: none;
+}
+
+.back:hover {
+  color: var(--red);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
