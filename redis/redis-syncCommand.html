@@ -1,541 +1,689 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Redis syncCommand Visualizer</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #111827;
-            color: #d1d5db;
-        }
-        .mono {
-            font-family: 'Fira Code', monospace;
-        }
-        .card {
-            background-color: #1f2937;
-            border: 1px solid #374151;
-            border-radius: 0.75rem;
-            padding: 1.5rem;
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
-        }
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0.5rem 1rem;
-            border-radius: 0.5rem;
-            border: 1px solid #4b5563;
-            background-color: #374151;
-            color: #d1d5db;
-            transition: all 0.2s ease-in-out;
-            cursor: pointer;
-            font-weight: 500;
-        }
-        .btn:hover {
-            background-color: #4b5563;
-            border-color: #6b7280;
-        }
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .btn i {
-            margin-right: 0.5rem;
-            font-size: 1.25rem;
-        }
-        .state-badge {
-            display: inline-block;
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            letter-spacing: 0.05em;
-        }
-        .state-online { background-color: #10b981; color: #064e3b; }
-        .state-wait { background-color: #f59e0b; color: #78350f; }
-        .state-offline { background-color: #6b7280; color: #1f2937; }
-        .state-transfer { background-color: #3b82f6; color: #1e3a8a; }
-        .data-label {
-            color: #9ca3af;
-            font-size: 0.875rem;
-            display: flex;
-            align-items: center;
-        }
-        .data-type {
-            font-family: 'Fira Code', monospace;
-            font-size: 0.75rem;
-            color: #6b7280;
-            margin-left: 0.5rem;
-            border: 1px solid #4b5563;
-            padding: 0.1rem 0.3rem;
-            border-radius: 0.25rem;
-        }
-        .data-value {
-            color: #e5e7eb;
-            font-size: 1.125rem;
-            word-break: break-all;
-        }
-        #communication-channel {
-            transition: opacity 0.5s ease-in-out;
-        }
-        .command-packet {
-            position: absolute;
-            background-color: #dc382d;
-            color: white;
-            padding: 0.75rem 1.25rem;
-            border-radius: 0.5rem;
-            box-shadow: 0 0 15px rgba(220, 56, 45, 0.5);
-            transition: all 1.5s ease-in-out;
-            opacity: 0;
-            transform: translateY(20px);
-            z-index: 10;
-            text-align: center;
-        }
-        .log-entry {
-            border-left: 3px solid #4b5563;
-            padding-left: 1rem;
-            margin-bottom: 0.75rem;
-            transition: opacity 0.3s;
-        }
-        [data-tooltip] {
-            position: relative;
-            cursor: help;
-        }
-        [data-tooltip]::after {
-            content: attr(data-tooltip);
-            position: absolute;
-            bottom: 100%;
-            left: 50%;
-            transform: translateX(-50%) translateY(-8px);
-            background-color: #111827;
-            color: #e5e7eb;
-            border: 1px solid #4b5563;
-            padding: 0.5rem 0.75rem;
-            border-radius: 0.5rem;
-            font-size: 0.875rem;
-            line-height: 1.4;
-            white-space: pre-wrap;
-            z-index: 20;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.2s, visibility 0.2s;
-            width: max-content;
-            max-width: 320px;
-            text-align: left;
-            font-family: 'Inter', sans-serif;
-            font-weight: 400;
-        }
-        [data-tooltip]:hover::after {
-            opacity: 1;
-            visibility: visible;
-        }
-    </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Redis syncCommand: PSYNC, the fork, and the backlog</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+<link rel="stylesheet" href="viz.css" />
+<style>
+  /* Page-specific only: viz.css has no key/value state card, no meter, and no
+     decision table. Everything else comes from viz.css. */
+  .grid > * { min-width: 0; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .row--tight { gap: 6px; }
+  .stack { display: grid; gap: 10px; }
+
+  .kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 12px;
+        font: 400 12px/1.7 var(--mono); margin: 0; }
+  .kv dt { color: var(--faint); }
+  .kv dd { margin: 0; color: var(--fg); overflow-wrap: anywhere; }
+  .kv dd.nil { color: var(--faint); }
+  .kv dd.on { color: var(--ok); }
+  .kv dd.hot { color: var(--red); }
+
+  .meter { height: 6px; margin-top: 5px; background: var(--bg); border: 1px solid var(--rule);
+           border-radius: 999px; overflow: hidden; }
+  .meter i { display: block; height: 100%; width: 0; background: var(--red); transition: width .25s; }
+  .meter--ok i { background: var(--ok); }
+
+  /* Replication buffer blocks. Sized off .byte so the strip wraps at 390px
+     instead of widening the document. */
+  .bytes .blk { min-width: 7.1em; padding: 5px 4px; font: 400 11px/1.45 var(--mono); }
+  .blk b { display: block; font-weight: 400; color: var(--faint); }
+
+  .field { display: grid; gap: 3px; }
+  table { width: 100%; border-collapse: collapse; font: 400 12px/1.6 var(--mono); }
+  th { text-align: left; font-weight: 500; color: var(--faint); padding: 4px 10px 4px 0; vertical-align: top; }
+  td { padding: 5px 10px 5px 0; color: var(--dim); vertical-align: top; }
+  tr + tr th, tr + tr td { border-top: 1px solid var(--rule); }
+  /* Identifiers out of the C source are long and unbreakable; without this they
+     set the min-content width of a grid track and the page scrolls sideways. */
+  code, th, td, .log p, .note { overflow-wrap: anywhere; }
+  .log code { color: var(--fg); }
+  .log b { font-weight: 500; padding-right: 1ch; }
+  .note { font: 400 12px/1.7 var(--mono); color: var(--dim); }
+  .note + .note { margin-top: 8px; }
+</style>
 </head>
-<body class="p-4 sm:p-6 md:p-8">
-    <div class="max-w-7xl mx-auto">
-        <header class="text-center mb-8">
-            <h1 class="text-3xl sm:text-4xl font-bold text-white">Redis Replication: The `syncCommand` Visualizer</h1>
-            <p class="mt-2 text-lg text-gray-400">An interactive guide to how a new replica connection is handled.</p>
-        </header>
+<body>
+<div class="wrap">
 
-        <!-- Controls -->
-        <div id="controls" class="card mb-8 flex flex-wrap justify-center items-center gap-4">
-            <h2 class="text-lg font-semibold mr-4">Scenarios:</h2>
-            <button id="btn-partial" class="btn" data-tooltip="Simulates a reconnecting replica whose offset is still within the master's backlog. This is the fastest, most efficient sync.">
-                <i class="ph ph-plug-charging"></i> PSYNC (Partial)
-            </button>
-            <button id="btn-full" class="btn" data-tooltip="Simulates a replica that is too far behind or has a different replication ID. This forces a costly full dataset transfer.">
-                <i class="ph ph-plugs-connected"></i> PSYNC (Full)
-            </button>
-            <button id="btn-legacy" class="btn" data-tooltip="Simulates an old client using SYNC. This protocol doesn't support partial syncs, so the replica doesn't cache the master's ID/offset and always triggers a full sync.">
-                <i class="ph ph-plug"></i> SYNC (Legacy)
-            </button>
-            <div class="border-l border-gray-600 h-8 mx-2"></div>
-            <button id="btn-reset" class="btn bg-red-800/50 border-red-700 hover:bg-red-700/50">
-                <i class="ph ph-arrow-counter-clockwise"></i> Reset
-            </button>
-        </div>
+  <a class="back" href="../index.html">&larr; index</a>
+  <h1>syncCommand: PSYNC, the fork, and the backlog</h1>
+  <p class="src">Modelled on <a href="https://github.com/redis/redis/blob/7.2.14/src/replication.c">src/replication.c</a>, with <a href="https://github.com/redis/redis/blob/7.2.14/src/rdb.c">src/rdb.c</a> and <a href="https://github.com/redis/redis/blob/7.2.14/src/config.c">src/config.c</a>, Redis 7.2.14. Every line number on this page is from that release.</p>
 
-        <!-- Log & Explanation -->
-        <div class="mb-8 card" id="log-card">
-             <h2 class="text-2xl font-bold text-white mb-4 flex items-center"><i class="ph-fill ph-terminal-window mr-3"></i> Process Log & Explanation</h2>
-             <div id="log-container" class="space-y-3 max-h-96 overflow-y-auto pr-2">
-                <p class="text-gray-400">Click a scenario button above to start the visualization.</p>
-             </div>
-        </div>
+  <p class="lede">
+    <code>syncCommand</code> handles both <code>SYNC</code> and <code>PSYNC</code>
+    (replication.c:939), but a 7.2 replica only ever sends <code>PSYNC</code> &mdash; even
+    on its very first connection, where it sends <code>PSYNC ? -1</code>. What it sent in the
+    handshake just before that decides everything downstream: <code>capa eof</code> is what
+    lets the master fork straight into the replica's socket, and <code>capa psync2</code> is
+    what makes <code>+CONTINUE</code> carry a replication ID. Pick a scenario and run it.
+  </p>
 
-        <!-- Main Visualization -->
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            <!-- Master -->
-            <div class="lg:col-span-5 card" id="master-card">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-2xl font-bold text-white flex items-center" data-tooltip="The primary Redis instance that accepts writes and propagates them to replicas."><i class="ph-fill ph-database text-red-500 mr-3"></i> Master</h2>
-                    <div id="master-state" class="state-badge state-online">ONLINE</div>
-                </div>
-                <div class="space-y-4">
-                    <div data-tooltip="A 40-character pseudo-random string that uniquely identifies a master's dataset history. If this changes, a full resync is required.&#10;&#10;Type: char* (CONFIG_RUN_ID_SIZE)">
-                        <div class="data-label">Replication ID (replid) <span class="data-type">char*</span></div>
-                        <p id="master-replid" class="data-value mono"></p>
-                    </div>
-                    <div data-tooltip="A counter tracking the number of bytes produced in the replication stream. This is the key to partial resynchronization.&#10;&#10;Type: long long">
-                        <div class="data-label">Replication Offset <span class="data-type">long long</span></div>
-                        <p id="master-offset" class="data-value mono"></p>
-                    </div>
-                    <div data-tooltip="The actual size in bytes of the data currently stored in the backlog. It's the 'history length' available for partial syncs.&#10;&#10;Type: size_t">
-                        <div class="data-label">Backlog History Length (histlen) <span class="data-type">size_t</span></div>
-                        <p id="master-histlen" class="data-value mono"></p>
-                    </div>
-                </div>
-                <div class="mt-6">
-                    <h3 class="font-semibold text-white mb-2" data-tooltip="A circular buffer (FIFO queue) on the master storing recent write commands. Essential for PSYNC.&#10;&#10;- The size is configured via `repl-backlog-size` in redis.conf (default 1MB).&#10;- As new commands arrive, the oldest are overwritten. The offset range it covers slides forward over time, it's not random.">Replication Backlog</h3>
-                    <div id="backlog" class="bg-gray-900/50 p-3 rounded-lg flex flex-col space-y-1 overflow-x-auto">
-                        <!-- Backlog blocks will be generated here -->
-                    </div>
-                </div>
-            </div>
-
-            <!-- Communication Channel -->
-            <div class="lg:col-span-2 flex justify-center items-center min-h-[150px] relative" id="communication-channel">
-                 <!-- Command packets will appear here -->
-            </div>
-
-            <!-- Replica -->
-            <div class="lg:col-span-5 card" id="replica-card">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-2xl font-bold text-white flex items-center" data-tooltip="A copy of the master instance. It receives updates from the master to stay in sync."><i class="ph-fill ph-hard-drives text-blue-400 mr-3"></i> Replica</h2>
-                    <div id="replica-state" class="state-badge state-offline">OFFLINE</div>
-                </div>
-                <div class="space-y-4">
-                    <div data-tooltip="The last known replication ID of the master. This is cached in the Replica's memory inside the `server.cached_master` struct when a connection is lost. It's used for the next PSYNC attempt.">
-                        <div class="data-label">Master's Repl ID (cached) <span class="data-type">char*</span></div>
-                        <p id="replica-replid" class="data-value mono">?</p>
-                    </div>
-                    <div data-tooltip="The last replication offset processed by the replica. This is cached in the Replica's memory along with the repl ID. It tells the master exactly where the replica needs to resume the data stream from.">
-                        <div class="data-label">Master's Offset (cached) <span class="data-type">long long</span></div>
-                        <p id="replica-offset" class="data-value mono">?</p>
-                    </div>
-                    <div id="rdb-progress-container" class="hidden">
-                        <div class="data-label">RDB Transfer Progress</div>
-                        <div class="w-full bg-gray-700 rounded-full h-2.5 mt-1">
-                          <div id="rdb-progress-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+  <section class="panel">
+    <div class="panel__head"><h2>Scenario</h2><span class="cite">replication.c:940 syncCommand</span></div>
+    <div class="row" id="scenarios"></div>
+    <div class="row row--tight" style="margin-top:12px">
+      <button class="btn btn--go" id="run">Run</button>
+      <button class="btn" id="stepbtn">Step</button>
+      <button class="btn" id="reset">Reset</button>
+      <span class="cite" id="scenario-note"></span>
     </div>
+  </section>
 
-    <script>
-        const masterState = {
-            replid: '',
-            offset: 0,
-            histlen: 0,
-            backlog: [],
-            backlogStartOffset: 0,
-        };
+  <section class="panel">
+    <div class="panel__head"><h2>Configuration</h2><span class="cite">config.c:3089, 3185, 3154</span></div>
+    <div class="row">
+      <div class="field">
+        <label for="c-diskless">repl-diskless-sync</label>
+        <select id="c-diskless">
+          <option value="yes" selected>yes &mdash; default in 7.x</option>
+          <option value="no">no</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="c-delay">repl-diskless-sync-delay</label>
+        <select id="c-delay">
+          <option value="5" selected>5 &mdash; default</option>
+          <option value="0">0</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="c-load">repl-diskless-load (replica side)</label>
+        <select id="c-load">
+          <option value="disabled" selected>disabled &mdash; default</option>
+          <option value="on-empty-db">on-empty-db</option>
+          <option value="swapdb">swapdb</option>
+        </select>
+      </div>
+    </div>
+    <p class="cite" style="margin-top:10px">
+      <code>repl-diskless-sync</code> defaults to <b>1</b> (config.c:3089) and every 7.2 replica
+      advertises <code>capa eof</code> (replication.c:2739), so <code>socket_target</code> at
+      replication.c:868 is true out of the box. The disk-backed path is the variant, not the norm.
+      The replica side is a separate setting with the opposite default.
+    </p>
+  </section>
 
-        const replicaState = {
-            knownReplid: '?',
-            knownOffset: '?',
-        };
+  <div class="grid grid--2">
+    <section class="panel">
+      <div class="panel__head"><h2>Master</h2><span class="pill" id="m-pill">idle</span></div>
+      <dl class="kv">
+        <dt>replid</dt><dd><code id="m-replid"></code></dd>
+        <dt>replid2</dt><dd><code id="m-replid2"></code></dd>
+        <dt>second_replid_offset</dt><dd class="num" id="m-second"></dd>
+        <dt>master_repl_offset</dt><dd class="num" id="m-offset"></dd>
+        <dt>repl_backlog-&gt;offset</dt><dd class="num" id="m-bloff"></dd>
+        <dt>repl_backlog-&gt;histlen</dt><dd class="num" id="m-histlen"></dd>
+        <dt>RDB child</dt><dd id="m-child"></dd>
+      </dl>
+      <p class="cite" style="margin-top:12px">Writes buffered for this replica since the fork
+        <span class="num" id="m-pending"></span></p>
+      <div class="meter"><i id="m-pendingbar"></i></div>
+      <p class="cite" style="margin-top:4px">replication.c:704&ndash;706, 719 &mdash; WAIT_BGSAVE_END is what starts the accumulation</p>
+    </section>
 
-        const dom = {
-            masterCard: document.getElementById('master-card'),
-            replicaCard: document.getElementById('replica-card'),
-            masterReplid: document.getElementById('master-replid'),
-            masterOffset: document.getElementById('master-offset'),
-            masterHistlen: document.getElementById('master-histlen'),
-            masterState: document.getElementById('master-state'),
-            replicaReplid: document.getElementById('replica-replid'),
-            replicaOffset: document.getElementById('replica-offset'),
-            replicaState: document.getElementById('replica-state'),
-            backlog: document.getElementById('backlog'),
-            channel: document.getElementById('communication-channel'),
-            logContainer: document.getElementById('log-container'),
-            rdbProgressContainer: document.getElementById('rdb-progress-container'),
-            rdbProgressBar: document.getElementById('rdb-progress-bar'),
-            buttons: {
-                partial: document.getElementById('btn-partial'),
-                full: document.getElementById('btn-full'),
-                legacy: document.getElementById('btn-legacy'),
-                reset: document.getElementById('btn-reset'),
-            }
-        };
+    <section class="panel">
+      <div class="panel__head"><h2>Replica</h2><span class="pill" id="r-pill">offline</span></div>
+      <dl class="kv">
+        <dt>cached_master replid</dt><dd><code id="r-replid"></code></dd>
+        <dt>cached_master reploff</dt><dd class="num" id="r-reploff"></dd>
+        <dt>next byte wanted</dt><dd class="num" id="r-want"></dd>
+      </dl>
+      <p class="cite" style="margin-top:12px">The replica sends <code>reploff + 1</code>, the first
+        byte it has <em>not</em> received &mdash; not the last one it has (replication.c:2469).</p>
+      <p class="cite" style="margin-top:12px">RDB received <span class="num" id="r-rdb">0%</span></p>
+      <div class="meter meter--ok"><i id="r-rdbbar"></i></div>
+      <p class="cite" style="margin-top:4px" id="r-loadnote"></p>
+    </section>
+  </div>
 
-        const generateRandomId = (length) => {
-            let result = '';
-            const characters = 'abcdefghijklmnopqrstuvwxyz0123456789';
-            for (let i = 0; i < length; i++) {
-                result += characters.charAt(Math.floor(Math.random() * characters.length));
-            }
-            return result;
-        };
-        
-        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-        
-        function updateUI() {
-            dom.masterReplid.textContent = masterState.replid;
-            dom.masterOffset.textContent = masterState.offset;
-            dom.masterHistlen.textContent = masterState.histlen;
-            dom.replicaReplid.textContent = replicaState.knownReplid;
-            dom.replicaOffset.textContent = replicaState.knownOffset;
+  <section class="panel">
+    <div class="panel__head"><h2>Replication buffer blocks</h2><span class="cite">replication.c:261 incrementalTrimReplicationBacklog</span></div>
+    <div class="bytes" id="blocks"></div>
+    <div class="legend">
+      <span><b>solid</b> inside the backlog window</span>
+      <span><b>dashed</b> trimmed, no longer reachable</span>
+      <span><b>red</b> the block holding the requested offset</span>
+    </div>
+  </section>
 
-            dom.backlog.innerHTML = '';
-            const backlogSize = 10;
-            const start = Math.max(0, masterState.backlog.length - backlogSize);
-            const visibleBacklog = masterState.backlog.slice(start);
-            
-            visibleBacklog.forEach((item, index) => {
-                const block = document.createElement('div');
-                block.className = 'bg-gray-700 p-1.5 rounded text-xs mono flex justify-between items-center';
-                block.innerHTML = `<span>Offset: ${masterState.backlogStartOffset + start + index}</span> <span class="text-gray-400">${item}</span>`;
-                block.id = `backlog-${masterState.backlogStartOffset + start + index}`;
-                block.setAttribute('data-tooltip', `Represents a real Redis write command (e.g., 'SET key value') that was propagated to replicas. The 'CMD_X' is a placeholder for visualization.`);
-                dom.backlog.appendChild(block);
-            });
-        }
+  <section class="panel">
+    <div class="panel__head"><h2>Wire and decisions</h2><span class="cite" id="log-cite">pick a scenario</span></div>
+    <div class="log" id="log"><p class="faint">Pick a scenario above, then press Run.</p></div>
+  </section>
 
-        function setButtonsDisabled(disabled) {
-            Object.values(dom.buttons).forEach(btn => {
-                if(btn.id !== 'btn-reset') btn.disabled = disabled;
-            });
-        }
-        
-        function addLog(title, detail) {
-            const entry = document.createElement('div');
-            entry.className = 'log-entry opacity-0';
-            entry.innerHTML = `
-                <p class="font-semibold text-white">${title}</p>
-                <p class="text-gray-400 text-sm">${detail}</p>
-            `;
-            dom.logContainer.appendChild(entry);
-            // Scroll to bottom
-            dom.logContainer.scrollTop = dom.logContainer.scrollHeight;
-            // Fade in effect
-            setTimeout(() => entry.classList.remove('opacity-0'), 50);
-        }
-        
-        function setReplicaState(state, text) {
-            dom.replicaState.className = `state-badge ${state}`;
-            dom.replicaState.textContent = text;
-        }
+  <div class="grid grid--2">
+    <section class="panel">
+      <div class="panel__head"><h2>What the backlog actually is</h2><span class="cite">server.h:1112</span></div>
+      <p class="note">Since 7.0 it is not a circular buffer. <code>replBacklog</code> holds a
+        reference node, a rax index, <code>long long histlen</code> and <code>long long offset</code>
+        &mdash; no buffer member at all (server.h:1112&ndash;1122), and
+        <code>createReplicationBacklog</code> allocates none (replication.c:121).</p>
+      <p class="note">The bytes live in <code>server.repl_buffer_blocks</code>, the one buffer shared
+        with every replica's output buffer. Nothing is overwritten in place:
+        <code>incrementalTrimReplicationBacklog</code> drops the head block only while
+        <code>histlen &gt; repl-backlog-size</code> <em>and</em> that block's
+        <code>refcount == 1</code>, meaning the backlog is its last reference
+        (replication.c:261&ndash;285). A lagging replica still referencing the head block therefore
+        pins the backlog above its configured size &mdash; the source calls this out as deliberate,
+        so that partial resync stays possible as long as it can.</p>
+      <p class="note"><code>repl-backlog-size</code> defaults to 1mb (config.c:3229).
+        <code>repl-backlog-ttl</code> defaults to 1 hour (config.c:3251): a master with no replicas
+        for that long has <code>replicationCron</code> free the backlog and, in the same branch,
+        call <code>changeReplicationId()</code> and <code>clearReplicationId2()</code>
+        (replication.c:3865&ndash;3893). The first replica to attach afterwards rotates the ID a
+        second time, before the new backlog is created (replication.c:1050&ndash;1060).</p>
+    </section>
 
-        async function createAndMovePacket(text, from, to, tooltipText, duration = 1500) {
-            const packet = document.createElement('div');
-            packet.className = 'command-packet mono';
-            packet.innerHTML = text;
-            if (tooltipText) {
-                packet.setAttribute('data-tooltip', tooltipText);
-            }
-            dom.channel.appendChild(packet);
+    <section class="panel">
+      <div class="panel__head"><h2>When a new replica costs no fork</h2><span class="cite">replication.c:1063 syncCommand</span></div>
+      <table>
+        <tr><th>RDB child running</th><th>What the arriving replica gets</th></tr>
+        <tr>
+          <td>disk target, and its capabilities and <code>slave_req</code> match a replica already in WAIT_BGSAVE_END</td>
+          <td><code>copyReplicaOutputBuffer</code> clones that replica's accumulated buffer and it rides the same BGSAVE &mdash; no second fork (replication.c:1092&ndash;1093)</td>
+        </tr>
+        <tr>
+          <td>disk target, capabilities or <code>slave_req</code> differ</td>
+          <td>"Can't attach the replica to the current BGSAVE" &mdash; it waits for the next one (replication.c:1098)</td>
+        </tr>
+        <tr>
+          <td>socket target</td>
+          <td>always waits for the next BGSAVE; a streaming child cannot take on a new reader (replication.c:1105&ndash;1108)</td>
+        </tr>
+        <tr>
+          <td>none</td>
+          <td>fork now, or defer to <code>replicationCron</code> when diskless and <code>repl-diskless-sync-delay</code> is non-zero (replication.c:1110&ndash;1128, 3969)</td>
+        </tr>
+      </table>
+    </section>
+  </div>
 
-            const fromRect = from.getBoundingClientRect();
-            const toRect = to.getBoundingClientRect();
-            const channelRect = dom.channel.getBoundingClientRect();
-            
-            const startX = fromRect.right - channelRect.left - (fromRect.width / 4);
-            const endX = toRect.left - channelRect.left + (toRect.width / 4);
-            
-            packet.style.left = from === dom.replicaCard ? `${startX}px` : `${endX}px`;
-            
-            await sleep(100);
-            packet.style.opacity = '1';
-            packet.style.transform = 'translateY(0)';
-            
-            await sleep(100);
-            packet.style.left = from === dom.replicaCard ? `${endX}px` : `${startX}px`;
+  <section class="panel">
+    <div class="panel__head"><h2>Footnote: the literal SYNC command</h2><span class="cite">replication.c:1031</span></div>
+    <p class="note">A 7.2 replica reaches for <code>SYNC</code> only after the master fails to
+      understand <code>PSYNC</code>: <code>syncWithMaster</code> logs "Retrying with SYNC..." and
+      writes the six bytes by hand (replication.c:2870&ndash;2872). The source's own example of who
+      does this is <code>redis-cli --slave</code> (replication.c:1031&ndash;1033).</p>
+    <p class="note">Such a client is flagged <code>CLIENT_PRE_PSYNC</code>
+      (replication.c:1034), and <code>replicationSetupSlaveForFullResync</code> guards its reply with
+      <code>if (!(slave-&gt;flags &amp; CLIENT_PRE_PSYNC))</code> (replication.c:727) &mdash; so it
+      gets the RDB payload with no <code>+FULLRESYNC</code> header in front of it. It also never sent
+      <code>REPLCONF capa</code>, so <code>mincapa &amp; SLAVE_CAPA_EOF</code> is zero at
+      replication.c:868 and the transfer is disk-backed no matter what
+      <code>repl-diskless-sync</code> says.</p>
+  </section>
 
-            await sleep(duration);
-            packet.style.opacity = '0';
-            await sleep(500);
-            packet.remove();
-        }
+</div>
 
-        function reset() {
-            setButtonsDisabled(false);
-            dom.logContainer.innerHTML = '<p class="text-gray-400">Click a scenario button above to start the visualization.</p>';
-            
-            masterState.replid = generateRandomId(40);
-            masterState.offset = 1000;
-            masterState.backlogStartOffset = 990;
-            masterState.backlog = Array.from({length: 10}, (_, i) => `CMD_${i}`);
-            masterState.histlen = masterState.offset - masterState.backlogStartOffset;
-            
-            replicaState.knownReplid = '?';
-            replicaState.knownOffset = '?';
-            
-            setReplicaState('state-offline', 'OFFLINE');
-            dom.rdbProgressContainer.classList.add('hidden');
-            dom.rdbProgressBar.style.width = '0%';
-            
-            updateUI();
-        }
-        
-        async function runPartialSync() {
-            setButtonsDisabled(true);
-            dom.logContainer.innerHTML = '';
-            addLog("Scenario Started: Partial Resynchronization", "Replica reconnects with valid credentials, allowing for a fast catch-up.");
+<script>
+'use strict'
 
-            replicaState.knownReplid = masterState.replid;
-            replicaState.knownOffset = 995;
-            updateUI();
-            await sleep(500);
-            
-            addLog("1. Replica Connects", "Replica establishes a TCP connection to the Master and prepares to send PSYNC.");
-            setReplicaState('state-wait', 'HANDSHAKE');
-            await sleep(1000);
+const $ = (id) => document.getElementById(id)
+const hex = (n) => {
+  let s = ''
+  for (let i = 0; i < n; i++) s += '0123456789abcdef'[(Math.random() * 16) | 0]
+  return s
+}
+const BLOCK = 16
+const TOP = 4096
+const WINDOW_LO = 3969
+const GHOST_LO = 3905
 
-            addLog("2. Replica Sends PSYNC", `Sends <code>PSYNC ${replicaState.knownReplid.substring(0,8)}... ${replicaState.knownOffset}</code>. It's asking the master if it can resume from this point.`);
-            await createAndMovePacket(`PSYNC ${replicaState.knownReplid.substring(0,8)}... ${replicaState.knownOffset}`, dom.replicaCard, dom.masterCard, "The command sent by a modern replica to initiate synchronization.\n\nPSYNC <replid> <offset>");
-            
-            addLog("3. Master Processes PSYNC", "Master receives the command and calls <code>masterTryPartialResynchronization()</code> to check if a partial sync is possible.");
-            await sleep(1000);
+const cfg = { diskless: 'yes', delay: 5, load: 'disabled' }
+let S = null
+let steps = []
+let cursor = 0
+let playing = false
+let current = 'fresh'
 
-            const checkCode = `<code class="text-xs block bg-gray-900/50 p-2 rounded mt-1">
-// Simplified check in replication.c<br>
-if (master_replid == server.replid && <br>
-&nbsp;&nbsp;&nbsp;&nbsp;psync_offset >= backlog.offset && <br>
-&nbsp;&nbsp;&nbsp;&nbsp;psync_offset <= (backlog.offset + backlog.histlen)) {<br>
-&nbsp;&nbsp;// OK: Partial resync possible<br>
-} else {<br>
-&nbsp;&nbsp;// FAIL: Full resync required<br>
-}</code>`;
-            addLog("4. Master Checks Conditions (SUCCESS)", `Replica's ID matches and the requested offset (${replicaState.knownOffset}) is within the master's backlog range. The master checks: <code>${replicaState.knownOffset} <= (${masterState.backlogStartOffset} + ${masterState.histlen})</code>. This is true. ${checkCode}`);
-            await sleep(3000);
+function fresh (over) {
+  const s = {
+    replid: hex(40),
+    replid2: '0'.repeat(40),
+    second: -1,
+    offset: TOP,
+    blOffset: WINDOW_LO,
+    histlen: TOP - WINDOW_LO + 1,
+    hasBacklog: true,
+    child: 'none',
+    childLabel: 'none',
+    pending: 0,
+    rdb: 0,
+    want: null,
+    ghosts: true,
+    rReplid: '?',
+    rReploff: null,
+    rState: ['offline', ''],
+    mState: ['idle', ''],
+    loadNote: '',
+  }
+  return Object.assign(s, over || {})
+}
 
-            addLog("5. Master Responds with +CONTINUE", "Master sends a +CONTINUE reply, confirming that partial sync will proceed.");
-            await createAndMovePacket('+CONTINUE', dom.masterCard, dom.replicaCard, "Master's reply indicating a partial resync is possible. The replica should prepare to receive stream data from the backlog.\n\nType: Simple String Reply");
-            setReplicaState('state-transfer', 'SYNCING');
+/* ---------------------------------------------------------------- render */
 
-            addLog("6. Master Streams Backlog Data", "Master sends the missing commands directly from the backlog to the replica.");
-            for (let i = replicaState.knownOffset + 1; i <= masterState.offset; i++) {
-                const block = document.getElementById(`backlog-${i}`);
-                if (block) {
-                    block.style.transition = 'all 0.3s';
-                    block.style.backgroundColor = '#dc382d';
-                    block.style.transform = 'scale(1.05)';
-                    await sleep(300);
-                    replicaState.knownOffset++;
-                    updateUI();
-                }
-            }
-            await sleep(500);
+function blocks () {
+  const out = []
+  if (!S.hasBacklog) return out
+  if (S.ghosts) {
+    for (let lo = GHOST_LO; lo < WINDOW_LO; lo += BLOCK) {
+      out.push({ lo, hi: lo + BLOCK - 1, live: false })
+    }
+  }
+  for (let lo = S.blOffset; lo <= S.offset; lo += BLOCK) {
+    out.push({ lo, hi: Math.min(lo + BLOCK - 1, S.offset), live: true })
+  }
+  return out
+}
 
-            addLog("7. Synchronization Complete", "Replica has received all missing data and is now in sync with the master.");
-            setReplicaState('state-online', 'ONLINE');
-            dom.backlog.querySelectorAll('div').forEach(d => {
-                d.style.backgroundColor = '';
-                d.style.transform = '';
-            });
+function render () {
+  $('m-replid').textContent = S.replid
+  $('m-replid2').textContent = S.second === -1 ? S.replid2 + ' (cleared)' : S.replid2
+  $('m-replid2').parentElement.className = S.second === -1 ? 'nil' : ''
+  $('m-second').textContent = S.second
+  $('m-offset').textContent = S.offset
+  $('m-bloff').textContent = S.hasBacklog ? S.blOffset : 'NULL'
+  $('m-histlen').textContent = S.hasBacklog ? S.histlen : 'NULL'
+  $('m-child').textContent = S.childLabel
+  $('m-child').className = S.child === 'none' ? 'nil' : 'hot'
+  $('m-pending').textContent = S.pending + ' bytes'
+  $('m-pendingbar').style.width = Math.min(100, (S.pending / 512) * 100) + '%'
 
-            addLog("FINISHED", "The replica is now online and will receive new write commands in real-time. This process was extremely efficient, avoiding a full data transfer.");
-            setButtonsDisabled(false);
-        }
+  $('r-replid').textContent = S.rReplid
+  $('r-reploff').textContent = S.rReploff === null ? '(no cached master)' : S.rReploff
+  $('r-want').textContent = S.rReploff === null ? '-1' : S.rReploff + 1
+  $('r-rdb').textContent = S.rdb + '%'
+  $('r-rdbbar').style.width = S.rdb + '%'
+  $('r-loadnote').textContent = S.loadNote
 
-        async function runFullSync() {
-            setButtonsDisabled(true);
-            dom.logContainer.innerHTML = '';
-            addLog("Scenario Started: Full Resynchronization", "Replica has an outdated Replication ID, forcing a full, more expensive, data synchronization.");
+  $('m-pill').textContent = S.mState[0]
+  $('m-pill').className = 'pill' + (S.mState[1] ? ' pill--' + S.mState[1] : '')
+  $('r-pill').textContent = S.rState[0]
+  $('r-pill').className = 'pill' + (S.rState[1] ? ' pill--' + S.rState[1] : '')
 
-            replicaState.knownReplid = generateRandomId(40); // Mismatched ID
-            replicaState.knownOffset = 950;
-            updateUI();
-            await sleep(500);
-            
-            addLog("1. Replica Connects & Sends PSYNC", `Replica sends <code>PSYNC ${replicaState.knownReplid.substring(0,8)}... ${replicaState.knownOffset}</code>.`);
-            setReplicaState('state-wait', 'HANDSHAKE');
-            await createAndMovePacket(`PSYNC ${replicaState.knownReplid.substring(0,8)}...`, dom.replicaCard, dom.masterCard, "The command sent by a modern replica to initiate synchronization.\n\nPSYNC <replid> <offset>");
-            
-            addLog("2. Master Processes PSYNC", "Master calls <code>masterTryPartialResynchronization()</code> to check conditions.");
-            await sleep(1000);
+  const box = $('blocks')
+  box.innerHTML = ''
+  const list = blocks()
+  if (!list.length) {
+    const p = document.createElement('span')
+    p.className = 'faint mono'
+    p.textContent = 'server.repl_backlog == NULL — nothing to resync from'
+    box.appendChild(p)
+    return
+  }
+  for (const b of list) {
+    const el = document.createElement('div')
+    const wanted = S.want !== null && S.want >= b.lo && S.want <= b.hi
+    el.className = 'byte blk ' + (wanted ? 'byte--enc' : b.live ? 'byte--data' : 'byte--eof')
+    el.innerHTML = '<b>' + b.lo + '</b>' + b.hi
+    box.appendChild(el)
+  }
+}
 
-            const checkCode = `<code class="text-xs block bg-gray-900/50 p-2 rounded mt-1">
-// Simplified check in replication.c<br>
-if (master_replid == server.replid && ...) { // <-- This fails! <br>
-&nbsp;&nbsp;// ...<br>
-} else {<br>
-&nbsp;&nbsp;// FAIL: Full resync required<br>
-}</code>`;
-            addLog("3. Master Checks Conditions (FAILURE)", `The replica's Replication ID does not match the master's. A full resync is required. ${checkCode}`);
-            await sleep(3000);
+function log (s) {
+  const box = $('log')
+  const p = document.createElement('p')
+  let html = '<span class="t">' + String(cursor).padStart(2, '0') + '</span>'
+  if (s.d) html += '<b class="' + (s.d === 'R' ? 'hit' : 'good') + '">' +
+    (s.d === 'R' ? 'R -&gt; M' : 'M -&gt; R') + '</b>'
+  if (s.w) html += '<code>' + s.w + '</code> '
+  html += s.t
+  if (s.c) html += ' <span class="cite">' + s.c + '</span>'
+  p.innerHTML = html
+  box.appendChild(p)
+  box.scrollTop = box.scrollHeight
+}
 
-            addLog("4. Master Responds with +FULLRESYNC", `Master replies with <code>+FULLRESYNC ${masterState.replid.substring(0,8)}... ${masterState.offset}</code>. This tells the replica to discard its data and prepare for a full snapshot, while also giving it the new, correct credentials for next time.`);
-            await createAndMovePacket(`+FULLRESYNC ${masterState.replid.substring(0,8)}... ${masterState.offset}`, dom.masterCard, dom.replicaCard, "Master's reply indicating a full resync is required. It includes the master's current replid and offset for the replica to cache for future attempts.\n\nType: Simple String Reply");
-            
-            // Replica updates its info
-            replicaState.knownReplid = masterState.replid;
-            replicaState.knownOffset = masterState.offset;
-            updateUI();
-            
-            addLog("5. Master Starts BGSAVE", "The master forks a background process to save its entire dataset to an RDB file. The replica is put into a waiting state.");
-            setReplicaState('state-wait', 'WAIT_BGSAVE');
-            await sleep(2500);
+/* ----------------------------------------------------------- step pieces */
 
-            addLog("6. Master Transfers RDB File", "The BGSAVE is complete. The master now sends the entire RDB snapshot over the network.");
-            setReplicaState('state-transfer', 'TRANSFER');
-            dom.rdbProgressContainer.classList.remove('hidden');
-            for(let i = 0; i <= 100; i+=2) {
-                dom.rdbProgressBar.style.width = `${i}%`;
-                await sleep(50);
-            }
+function handshake () {
+  return [
+    { d: 'R', w: '(connect)', t: 'Non-blocking connect. The replica is now in REPL_STATE_CONNECTING and nothing has been sent yet.', c: 'replication.c:2624 syncWithMaster' },
+    { d: 'R', w: 'PING', t: 'The first bytes on the wire are not PSYNC.', c: 'replication.c:2654' },
+    { d: 'M', w: '+PONG', t: 'Only four replies are accepted here: anything starting with +, or -NOAUTH, -NOPERM, or the legacy -ERR operation not permitted.', c: 'replication.c:2660-2675' },
+    {
+      d: 'R',
+      w: 'REPLCONF listening-port 6380 &middot; REPLCONF capa eof capa psync2',
+      t: 'One write, not four round trips. AUTH is prepended when masterauth is set and REPLCONF ip-address when replica-announce-ip is set (config.c:3124); neither is configured here, so both are skipped.',
+      c: 'replication.c:2688-2739',
+    },
+    { d: 'M', w: '+OK +OK', t: 'The replies are read back in the order they were written, at 2750, 2765, 2783 and 2798. capa eof selects the fork target below; capa psync2 selects the +CONTINUE form.', c: 'replication.c:2798' },
+    { a: () => { S.rState = ['handshake', 'warn'] } },
+  ]
+}
 
-            addLog("7. Synchronization Complete", "Replica receives and loads the RDB file. It is now a perfect copy of the master at the moment the BGSAVE started.");
-            setReplicaState('state-online', 'ONLINE');
-            
-            addLog("FINISHED", "The replica is now online. From this point, it will receive a continuous stream of new write commands, just like after a partial sync. This process was much slower due to the RDB generation and transfer.");
-            setButtonsDisabled(false);
-        }
-        
-        async function runLegacySync() {
-            setButtonsDisabled(true);
-            dom.logContainer.innerHTML = '';
-            addLog("Scenario Started: Legacy SYNC", "An older replica connects using the outdated SYNC command. It does not cache the master's replid/offset and cannot perform a partial sync.");
-            await sleep(500);
+function socketTarget () {
+  return cfg.diskless === 'yes'
+}
 
-            addLog("1. Replica Connects & Sends SYNC", "The replica sends the legacy <code>SYNC</code> command. This command has no arguments for partial sync.");
-            setReplicaState('state-wait', 'HANDSHAKE');
-            await createAndMovePacket(`SYNC`, dom.replicaCard, dom.masterCard, "The legacy command sent by older replicas. It always triggers a full resync.");
-            
-            addLog("2. Master Processes SYNC", "The master immediately recognizes this as a request for a full resync. It skips the partial sync check entirely.");
-            await sleep(2000);
-            
-            addLog("3. Master Initiates Full Resync", "The process now follows the same path as a failed PSYNC. The master starts a BGSAVE and prepares to send the RDB file.");
-            setReplicaState('state-wait', 'WAIT_BGSAVE');
-            await sleep(2500);
+function forkSequence () {
+  const out = []
+  const socket = socketTarget()
 
-            // The rest is identical to the full sync flow
-            addLog("4. Master Transfers RDB File", "The BGSAVE is complete. The master now sends the entire RDB snapshot over the network.");
-            setReplicaState('state-transfer', 'TRANSFER');
-            dom.rdbProgressContainer.classList.remove('hidden');
-            for(let i = 0; i <= 100; i+=2) {
-                dom.rdbProgressBar.style.width = `${i}%`;
-                await sleep(50);
-            }
-            addLog("5. Synchronization Complete", "Replica receives and loads the RDB file and is now in sync.");
-            setReplicaState('state-online', 'ONLINE');
-            addLog("FINISHED", "The replica is online. Modern Redis uses PSYNC for its efficiency improvements over the legacy SYNC protocol.");
-            setButtonsDisabled(false);
-        }
+  if (socket && cfg.delay > 0) {
+    out.push({
+      t: 'repl-diskless-sync is on and the replica has capa eof, so syncCommand starts nothing at all and logs "Delay next BGSAVE for diskless SYNC". The fork is handed to replicationCron so more replicas can be batched into it.',
+      c: 'replication.c:1112-1118, 3969',
+      a: () => { S.child = 'delay'; S.childLabel = 'deferred to replicationCron'; S.mState = ['waiting to fork', 'warn'] },
+    })
+    out.push({
+      t: 'The replica receives nothing for up to repl-diskless-sync-delay seconds — 5 by default. This silence is the normal case, not a stall.',
+      c: 'config.c:3185',
+    })
+  }
 
-        // Event Listeners
-        dom.buttons.partial.addEventListener('click', runPartialSync);
-        dom.buttons.full.addEventListener('click', runFullSync);
-        dom.buttons.legacy.addEventListener('click', runLegacySync);
-        dom.buttons.reset.addEventListener('click', reset);
-        
-        // Initial setup
-        window.onload = reset;
-    </script>
+  if (socket) {
+    out.push({
+      d: 'M',
+      w: '+FULLRESYNC &lt;replid&gt; 4096',
+      t: 'rdbSaveToSlavesSockets writes +FULLRESYNC to every waiting replica (rdb.c:3547) and forks immediately afterwards (rdb.c:3552). The offset it carries is getPsyncInitialOffset(), which is master_repl_offset at this instant.',
+      c: 'replication.c:694, 868, 881',
+      a: () => {
+        S.child = 'socket'
+        S.childLabel = 'forked, socket target'
+        S.mState = ['forked', 'warn']
+        S.rReplid = S.replid
+        S.rReploff = S.offset
+        S.want = null
+      },
+    })
+  } else {
+    out.push({
+      d: 'M',
+      w: '+FULLRESYNC &lt;replid&gt; 4096',
+      t: 'socket_target is false, so rdbSaveBackground forks first (replication.c:884) and startBgsaveForReplication only then sends +FULLRESYNC to every replica still in WAIT_BGSAVE_START (replication.c:931). Either way the reply is written inside the same call that starts the child — it is never a separate earlier step.',
+      c: 'replication.c:833-837, 868, 931',
+      a: () => {
+        S.child = 'disk'
+        S.childLabel = 'forked, disk target'
+        S.mState = ['forked', 'warn']
+        S.rReplid = S.replid
+        S.rReploff = S.offset
+        S.want = null
+      },
+    })
+  }
+
+  out.push({
+    t: 'replicationSetupSlaveForFullResync puts the replica in WAIT_BGSAVE_END, which is precisely what makes the master start accumulating writes for it, and resets slaveseldb to -1 so the accumulated stream opens with a SELECT.',
+    c: 'replication.c:704-706, 719, 723',
+    a: () => { S.pending = 64; S.rState = ['wait bgsave end', 'warn'] },
+  })
+
+  out.push({
+    d: 'M',
+    w: '&lt;rdb payload&gt;',
+    t: socket
+      ? 'The child serialises straight into the replica socket. There is no RDB file and no wait for a save to finish.'
+      : 'The child wrote dump.rdb. The master now opens that file and sends it to the replica socket.',
+    c: socket ? 'replication.c:881' : 'replication.c:1668',
+    a: () => { S.rdb = 100; S.pending = 320; S.rState = ['receiving rdb', 'warn'] },
+  })
+
+  out.push({
+    t: cfg.load === 'disabled'
+      ? 'repl-diskless-load is disabled, the default, so useDisklessLoad() is false and the replica opens a temp file for the stream before loading it. Diskless on the master does not imply diskless on the replica.'
+      : 'repl-diskless-load is ' + cfg.load + ', so useDisklessLoad() is true and the temp file at replication.c:2880 is skipped.',
+    c: 'replication.c:2880, config.c:3154',
+    a: () => { S.loadNote = cfg.load === 'disabled' ? 'temp file written (repl-diskless-load disabled)' : 'temp file skipped (repl-diskless-load ' + cfg.load + ')' },
+  })
+
+  if (socket) {
+    out.push({
+      t: 'With a socket target the replica is put online without a write handler, and the master waits for a REPLCONF ACK before installing one — the replica has to find the RDB EOF marker first, and gluing stream data onto the end of the transfer would make that harder.',
+      c: 'replication.c:1637-1666',
+    })
+  }
+
+  out.push({
+    d: 'M',
+    w: '&lt;buffered writes&gt;',
+    t: 'Every write since the fork was held in this replica’s output buffer. replicaStartCommandStream clears repl_start_cmd_stream_on_ack and puts the client in the pending-write queue, which is what finally sends it.',
+    c: 'replication.c:1232-1233, 1329-1334',
+    a: () => { S.pending = 0; S.rState = ['online', 'ok']; S.mState = ['streaming', 'ok']; S.child = 'none'; S.childLabel = 'none'; S.rdb = 100 },
+  })
+
+  return out
+}
+
+/* ------------------------------------------------------------- scenarios */
+
+const SCENARIOS = {
+  fresh: {
+    label: 'PSYNC ? -1',
+    note: 'a replica that has never synced',
+    cite: 'replication.c:2471 slaveTryPartialResynchronization',
+    setup: () => fresh(),
+    body: () => [
+      {
+        d: 'R',
+        w: 'PSYNC ? -1',
+        t: 'There is no cached master, so the replica asks with replid "?" and offset -1. It does not fall back to SYNC; PSYNC with those two arguments is how a brand new replica opens.',
+        c: 'replication.c:2471-2474, 2484',
+      },
+      {
+        t: 'masterTryPartialResynchronization sees the "?" and logs "Full resync requested by replica". It returns C_ERR having written nothing, because the reply has to carry the offset at the instant the RDB is generated.',
+        c: 'replication.c:754-755, 833-837',
+        a: () => { S.mState = ['full resync', 'fail'] },
+      },
+    ],
+  },
+
+  partial: {
+    label: '+CONTINUE from backlog',
+    note: 'reconnect, offset still inside the window',
+    cite: 'replication.c:743 masterTryPartialResynchronization',
+    setup: () => fresh({ rReploff: 4032, want: 4033, rReplid: null }),
+    body: () => [
+      {
+        d: 'R',
+        w: 'PSYNC &lt;replid&gt; 4033',
+        t: 'cached_master->reploff is 4032, so the replica asks for 4033 — the first byte it has not received.',
+        c: 'replication.c:2469',
+      },
+      {
+        t: 'The replid matches server.replid, and 4033 lies inside [repl_backlog->offset, offset + histlen]. Both tests pass.',
+        c: 'replication.c:755-758, 781-784',
+        a: () => { S.mState = ['partial ok', 'ok'] },
+      },
+      {
+        d: 'M',
+        w: '+CONTINUE &lt;replid&gt;',
+        t: 'The replica sent capa psync2, so the reply carries the master replid. The bare +CONTINUE is the pre-4.0 form and a 7.2 replica never sees it.',
+        c: 'replication.c:806-810',
+      },
+      {
+        d: 'M',
+        w: '&lt;backlog bytes&gt;',
+        t: 'addReplyReplicationBacklog walks the shared buffer blocks from 4033 to the end. No fork, no RDB, no output buffer to rebuild.',
+        c: 'replication.c:815',
+        a: () => { S.rReploff = S.offset; S.want = null; S.rState = ['online', 'ok'] },
+      },
+    ],
+  },
+
+  failover: {
+    label: '+CONTINUE after failover',
+    note: 'replid mismatch that is still granted',
+    cite: 'replication.c:1713 shiftReplicationId',
+    setup: () => {
+      const old = hex(40)
+      return fresh({ replid2: old, second: TOP + 1, rReplid: old, rReploff: 4032, want: 4033 })
+    },
+    body: () => [
+      {
+        t: 'This master was a replica until a moment ago. replicationUnsetMaster called shiftReplicationId: the inherited ID became replid2, second_replid_offset became master_repl_offset + 1, a fresh replid was generated, and every replica was disconnected so it would learn the change.',
+        c: 'replication.c:1713-1724, 3084, 3089',
+      },
+      {
+        d: 'R',
+        w: 'PSYNC &lt;old replid&gt; 4033',
+        t: 'The reconnecting replica still holds the ID of the master that is now gone.',
+        c: 'replication.c:2469',
+      },
+      {
+        t: 'The first strcasecmp fails. The second arm succeeds: the ID matches server.replid2 and 4033 is not past second_replid_offset, so the partial resync is granted. A replid mismatch is not on its own a reason for a full resync.',
+        c: 'replication.c:755-758',
+        a: () => { S.mState = ['partial ok via replid2', 'ok'] },
+      },
+      {
+        d: 'M',
+        w: '+CONTINUE &lt;new replid&gt;',
+        t: 'This is the argument the pre-4.0 protocol had nowhere to put.',
+        c: 'replication.c:806-810',
+      },
+      {
+        d: 'M',
+        w: '&lt;backlog bytes&gt;',
+        t: 'Sent from 4033 as in any other partial resync.',
+        c: 'replication.c:815',
+        a: () => { S.rReploff = S.offset; S.want = null },
+      },
+      {
+        t: 'The replica does not recognise the returned ID, so it moves its own replid to replid2 with second_replid_offset = master_repl_offset + 1, adopts the new one, and calls disconnectSlaves() so its own sub-replicas repeat this exact exchange one level down.',
+        c: 'replication.c:2556-2577',
+        a: () => { S.rReplid = S.replid; S.rState = ['online', 'ok']; S.mState = ['streaming', 'ok'] },
+      },
+    ],
+  },
+
+  trimmed: {
+    label: '+FULLRESYNC, offset trimmed',
+    note: 'replid matches, the bytes are gone',
+    cite: 'replication.c:781 backlog range check',
+    setup: () => fresh({ rReploff: 3940, want: 3941, rReplid: null }),
+    body: () => [
+      {
+        d: 'R',
+        w: 'PSYNC &lt;replid&gt; 3941',
+        t: 'The replica was disconnected long enough for its position to fall behind the window.',
+        c: 'replication.c:2469',
+      },
+      {
+        t: 'The replid still matches, but 3941 is below repl_backlog->offset. Those blocks were released once the backlog held the last reference to them. "Unable to partial resync with replica ... for lack of backlog."',
+        c: 'replication.c:781-787',
+        a: () => { S.mState = ['full resync', 'fail'] },
+      },
+    ],
+  },
+
+  ttl: {
+    label: '+FULLRESYNC, backlog freed',
+    note: 'repl-backlog-ttl expired',
+    cite: 'replication.c:3865 replicationCron',
+    setup: () => fresh({
+      hasBacklog: false,
+      ghosts: false,
+      rReploff: 4032,
+      want: null,
+      rReplid: hex(40),
+    }),
+    body: () => [
+      {
+        t: 'This master had no replicas for longer than repl-backlog-ttl, 1 hour by default. replicationCron freed the backlog and, in the same branch, called changeReplicationId() and clearReplicationId2(). The source comment explains the rationale: a master that keeps its ID with no backlog can later be accepted by a new master on its second ID even though the histories have diverged.',
+        c: 'replication.c:3865-3893, config.c:3251',
+      },
+      {
+        d: 'R',
+        w: 'PSYNC &lt;old replid&gt; 4033',
+        t: 'The replica asks with the ID it cached before the master rotated it.',
+        c: 'replication.c:2469',
+      },
+      {
+        t: 'Both tests fail. The ID matches neither replid nor replid2, and server.repl_backlog is NULL so the range check cannot even be attempted.',
+        c: 'replication.c:755-758, 781',
+        a: () => { S.mState = ['full resync', 'fail'] },
+      },
+      {
+        t: 'This replica is the first to attach, so syncCommand rotates the replication ID a second time and clears replid2 before creating a new backlog. The ID that comes back in +FULLRESYNC is that second one, not the one the cron produced.',
+        c: 'replication.c:1050-1060',
+        a: () => { S.replid = hex(40); S.replid2 = '0'.repeat(40); S.second = -1; S.hasBacklog = true; S.blOffset = S.offset + 1; S.histlen = 0 },
+      },
+    ],
+  },
+}
+
+const ORDER = ['fresh', 'partial', 'failover', 'trimmed', 'ttl']
+const NEEDS_FORK = { fresh: 1, trimmed: 1, ttl: 1 }
+
+/* ---------------------------------------------------------------- driver */
+
+function build (id) {
+  const sc = SCENARIOS[id]
+  S = sc.setup()
+  if (S.rReplid === null) S.rReplid = S.replid
+  steps = handshake().concat(sc.body())
+  if (NEEDS_FORK[id]) steps = steps.concat(forkSequence())
+  cursor = 0
+  $('log').innerHTML = ''
+  $('log-cite').textContent = sc.cite
+  $('scenario-note').textContent = sc.note
+  render()
+}
+
+function select (id) {
+  current = id
+  for (const b of document.querySelectorAll('#scenarios .btn')) {
+    b.setAttribute('aria-pressed', String(b.dataset.id === id))
+  }
+  build(id)
+}
+
+function step () {
+  if (cursor >= steps.length) return false
+  const s = steps[cursor++]
+  if (s.a) s.a()
+  if (s.t || s.w) log(s)
+  render()
+  return cursor < steps.length
+}
+
+function setBusy (v) {
+  playing = v
+  $('run').disabled = v
+  $('stepbtn').disabled = v
+  for (const b of document.querySelectorAll('#scenarios .btn')) b.disabled = v
+}
+
+function play (id, opts) {
+  const fast = !!(opts && opts.fast)
+  if (id && id !== current) select(id)
+  else build(current)
+  setBusy(true)
+  return new Promise((done) => {
+    const tick = () => {
+      const more = step()
+      if (more) setTimeout(tick, fast ? 0 : 700)
+      else { setBusy(false); done(cursor) }
+    }
+    setTimeout(tick, fast ? 0 : 250)
+  })
+}
+
+for (const id of ORDER) {
+  const b = document.createElement('button')
+  b.className = 'btn'
+  b.dataset.id = id
+  b.textContent = SCENARIOS[id].label
+  b.setAttribute('aria-pressed', 'false')
+  b.addEventListener('click', () => select(id))
+  $('scenarios').appendChild(b)
+}
+
+$('run').addEventListener('click', () => play(null, { fast: false }))
+$('stepbtn').addEventListener('click', () => { if (!playing) step() })
+$('reset').addEventListener('click', () => { if (!playing) build(current) })
+$('c-diskless').addEventListener('change', (e) => { cfg.diskless = e.target.value; build(current) })
+$('c-delay').addEventListener('change', (e) => { cfg.delay = Number(e.target.value); build(current) })
+$('c-load').addEventListener('change', (e) => { cfg.load = e.target.value; build(current) })
+
+select('fresh')
+
+window.viz = { play, select, step, scenarios: ORDER, setCfg: (k, v) => { cfg[k] = v; build(current) } }
+</script>
 </body>
 </html>
-
-
-
-
-
-
