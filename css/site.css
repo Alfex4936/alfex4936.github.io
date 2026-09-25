@@ -247,7 +247,6 @@ button {
 }
 
 .welcome__meta div {
-  position: relative; /* the gloss panel anchors to the row, not to the word */
   display: flex;
   gap: 2ch;
 }
@@ -269,26 +268,25 @@ button {
   text-decoration-color: var(--claude);
 }
 
+/* In flow, not floating. The cwd row sits near the top of the page: floated
+   below, the panel covered the tips and the line the page is built around;
+   floated above, it ran off the top of the viewport. Growing the block covers
+   nothing, and only shifts what is already below the cursor. */
 .gloss__p {
-  position: absolute;
-  left: 0;
-  top: calc(100% + 6px);
-  z-index: 3;
-  width: max-content;
-  max-width: min(46ch, 100%);
+  display: none;
+  margin-top: 6px;
+  max-width: 46ch;
   padding: 8px 11px;
   color: var(--dim);
   background: var(--bg);
   border: 1px solid var(--rule);
   border-radius: 6px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s;
 }
 
-.gloss:hover + .gloss__p,
-.gloss:focus-visible + .gloss__p {
-  opacity: 1;
+/* ~ not +: the panel sits after the date so the row still reads as one line */
+.gloss:hover ~ .gloss__p,
+.gloss:focus-visible ~ .gloss__p {
+  display: block;
 }
 
 /* What the acronym stands for, before the sentence that says what it means.
