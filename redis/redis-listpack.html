@@ -1,918 +1,765 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF--8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interactive Listpack Visualizer</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #111827;
-            color: #d1d5db;
-        }
-        .mono {
-            font-family: 'Fira Code', monospace;
-        }
-        .byte-box {
-            transition: all 0.3s ease-in-out;
-            transform-origin: center;
-        }
-        .byte-box:hover {
-            transform: translateY(-4px) scale(1.05);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
-        }
-        .tooltip {
-            position: absolute;
-            bottom: 125%;
-            left: 50%;
-            transform: translateX(-50%);
-            visibility: hidden;
-            opacity: 0;
-            transition: opacity 0.3s, visibility 0.3s;
-            z-index: 10;
-        }
-        .byte-box:hover .tooltip {
-            visibility: visible;
-            opacity: 1;
-        }
-        .fade-in {
-            animation: fadeIn 0.5s ease-in-out;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .active-entry {
-            outline: 3px solid #3b82f6;
-            box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
-            transform: scale(1.02);
-            border-radius: 0.5rem;
-        }
-        .control-btn {
-            background-color: #374151; /* bg-gray-700 */
-            color: white;
-            font-weight: 600;
-            padding: 0.5rem 1rem;
-            border-radius: 0.5rem;
-            transition: background-color 0.2s, opacity 0.2s, transform 0.2s;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-        }
-        .control-btn:hover:not(:disabled) {
-            background-color: #4b5563; /* hover:bg-gray-600 */
-            transform: translateY(-2px);
-        }
-        .control-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .entry-container.collapsed .hidden-byte {
-            display: none;
-        }
-        .entry-container:not(.collapsed) .ellipsis-byte {
-            display: none;
-        }
-        .collapsible-label {
-            cursor: pointer;
-        }
-        .collapsible-label .toggle-icon {
-            transition: transform 0.3s ease-in-out;
-        }
-        .entry-container:not(.collapsed) .toggle-icon {
-            transform: rotate(180deg);
-        }
-        #hex-dump-output {
-            background-color: #0c1221;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            white-space: pre;
-            overflow-x: auto;
-            color: #9ca3af; /* text-gray-400 */
-            line-height: 1.6;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-        }
-        .toggle-icon-hex {
-            transition: transform 0.3s ease-in-out;
-        }
-        #hex-dump-container.is-collapsed .toggle-icon-hex {
-            transform: rotate(-90deg);
-        }
-        #hex-dump-container.is-collapsed #hex-dump-output {
-            display: none;
-        }
-        .spinner {
-            width: 24px;
-            height: 24px;
-            border: 3px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
-            border-top-color: #fff;
-            animation: spin 1s ease-in-out infinite;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .toggle-icon-analysis {
-            transition: transform 0.3s ease-in-out;
-        }
-        #encoding-analysis-container.is-collapsed .toggle-icon-analysis {
-            transform: rotate(-90deg);
-        }
-        #encoding-analysis-container.is-collapsed #encoding-analysis-output {
-            display: none;
-        }
-
-        @keyframes pulse-yellow {
-            0% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.7); }
-            70% { box-shadow: 0 0 0 10px rgba(250, 204, 21, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0); }
-        }
-        .pulse-animation {
-            animation: pulse-yellow 1s ease-in-out;
-        }
-
-        #encoding-analysis-output {
-            white-space: pre-wrap;
-            line-height: 1.7;
-        }
-        #encoding-analysis-output h3 {
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: #fff;
-            border-bottom: 1px solid #374151;
-            padding-bottom: 0.5rem;
-            margin-top: 1.5rem;
-        }
-        #encoding-analysis-output ul {
-            list-style-type: disc;
-            padding-left: 1.5rem;
-            margin-bottom: 1rem;
-        }
-        #encoding-analysis-output li {
-            margin-bottom: 0.5rem;
-        }
-        #encoding-analysis-output code {
-            background-color: #1f2937;
-            color: #f9fafb;
-            padding: 0.2em 0.4em;
-            border-radius: 0.25rem;
-            font-size: 0.9em;
-        }
-        #encoding-analysis-output strong {
-            color: #a5b4fc; /* indigo-300 */
-            font-weight: 600;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>listpack — byte layout</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="viz.css">
+<style>
+  /* Only what viz.css has no equivalent for. */
+  .panel { min-width: 0; }
+  .field { width: 100%; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .entry { padding: 8px 0; border-top: 1px dashed var(--rule); }
+  .entry:first-child { border-top: 0; }
+  .entry__head {
+    display: flex; flex-wrap: wrap; gap: 4px 12px;
+    margin-bottom: 6px;
+    font: 400 11px/1.7 var(--mono); color: var(--faint);
+    overflow-wrap: anywhere;
+  }
+  .entry__head b { font-weight: 500; color: var(--dim); }
+  .entry.is-active { background: var(--bg-3); border-radius: 4px; padding-left: 8px; padding-right: 8px; }
+  .entry.is-active .entry__head b { color: var(--red); }
+  .byte.is-lit { animation: lit 0.9s ease-in-out 2; }
+  @keyframes lit {
+    0%, 100% { background: var(--bg-3); }
+    50% { background: color-mix(in srgb, var(--ok) 35%, var(--bg-3)); }
+  }
+  .ell { align-self: center; padding: 0 4px; font: 400 11px/1 var(--mono); color: var(--faint); }
+  .scroll-x { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font: 400 12px/1.6 var(--mono); }
+  th, td { padding: 5px 10px 5px 0; text-align: left; vertical-align: top; white-space: nowrap; }
+  th { font-weight: 500; color: var(--faint); border-bottom: 1px solid var(--rule); }
+  td { color: var(--dim); border-bottom: 1px solid var(--rule); }
+  td:first-child { color: var(--fg); }
+  .legend .k--enc { color: var(--red); }
+  .legend .k--back { color: var(--ok); }
+  .legend .k--data { color: var(--fg); }
+  .legend .k--hdr { color: var(--dim); }
+  .stat { display: flex; justify-content: space-between; gap: 12px; font: 400 12px/1.9 var(--mono); }
+  .stat span:last-child { color: var(--fg); }
+  .note { margin-top: 10px; font: 400 12px/1.7 var(--mono); color: var(--faint); }
+  .prose p + p, .prose ul { margin-top: 10px; }
+  .prose ul { padding-left: 18px; }
+  .prose li { margin-bottom: 4px; }
+</style>
 </head>
-<body class="min-h-screen flex flex-col items-center justify-center p-4">
+<body>
+<div class="wrap">
 
-    <div class="w-full max-w-7xl mx-auto bg-gray-900 rounded-2xl shadow-2xl p-6 md:p-8">
-        <header class="text-center mb-8">
-            <h1 class="text-3xl md:text-4xl font-bold text-white mb-2">Interactive Listpack Visualizer</h1>
-            <p class="text-lg text-gray-400">See how Redis serializes lists of strings efficiently.</p>
-        </header>
+<a class="back" href="../index.html">&larr; index</a>
 
-        <main>
-            <!-- Input Section -->
-            <div class="mb-8 p-6 bg-gray-800 rounded-xl space-y-4">
-                <div>
-                    <label for="string-input" class="block text-lg font-semibold text-gray-200 mb-3">Enter comma-separated values:</label>
-                    <div class="flex flex-col sm:flex-row gap-4">
-                        <input type="text" id="string-input" class="flex-grow bg-gray-700 text-white rounded-lg px-4 py-2 border border-gray-600 focus:ring-2 focus:ring-blue-500 focus:outline-none transition" placeholder="e.g., hello, world, 123, -500">
-                         <button id="visualize-btn" class="control-btn bg-blue-600 hover:bg-blue-700">Visualize</button>
-                    </div>
-                </div>
-                 <div class="border-t border-gray-700 pt-4">
-                    <label for="target-size-input" class="block text-lg font-semibold text-gray-200 mb-3">...or generate random data:</label>
-                     <div class="flex flex-col sm:flex-row gap-4 items-center">
-                        <button id="suggest-btn" class="control-btn bg-teal-600 hover:bg-teal-700 w-full sm:w-auto">✨ Suggest Examples</button>
-                        <span class="text-gray-500">or</span>
-                        <input type="number" id="target-size-input" class="bg-gray-700 text-white rounded-lg px-4 py-2 border border-gray-600 focus:ring-2 focus:ring-blue-500 focus:outline-none transition w-full sm:w-48" placeholder="Target size in bytes">
-                        <button id="generate-by-size-btn" class="control-btn bg-emerald-600 hover:bg-emerald-700 w-full sm:w-auto">Generate by Size</button>
-                        <button id="download-btn" class="control-btn bg-indigo-600 hover:bg-indigo-700 w-full sm:w-auto">Download .bin</button>
-                    </div>
-                </div>
-            </div>
+<h1>listpack</h1>
+<p class="src">src/listpack.c &middot; Redis 7.2.14</p>
+<p class="lede">
+  A listpack is one contiguous allocation: a six-byte header, a run of entries, and a
+  single terminator byte. Every entry carries its own length at both ends, which is what
+  lets a reader walk it backwards. Type values below and watch the bytes; the page then
+  validates its own output with the same arithmetic Redis uses.
+</p>
 
-            <!-- Visualization Output -->
-            <div id="visualization-output" class="p-6 bg-gray-800 rounded-xl min-h-[200px] fade-in">
-                 <div id="welcome-message" class="text-center text-gray-500 py-10">
-                    <svg class="mx-auto h-12 w-12 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 O 001-2-2V7a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <h3 class="mt-2 text-sm font-medium text-gray-400">Ready to Visualize</h3>
-                    <p class="mt-1 text-sm text-gray-500">Enter some data above and click "Visualize".</p>
-                  </div>
-            </div>
-            
-            <!-- Encoding Analysis Section -->
-            <div id="encoding-analysis-container" class="mt-8 p-6 bg-gray-800 rounded-xl hidden fade-in is-collapsed">
-                 <h2 id="encoding-analysis-toggle" class="text-2xl font-bold text-white flex justify-between items-center cursor-pointer">
-                    <span>Encoding Analysis</span>
-                     <svg class="toggle-icon-analysis w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                    </svg>
-                </h2>
-                 <div id="encoding-analysis-output" class="text-gray-300 min-h-[100px] mt-4"></div>
-            </div>
+<div class="panel">
+  <div class="panel__head"><h2>input</h2><span class="faint">comma separated, trimmed</span></div>
+  <label for="src-input">values</label>
+  <div class="row" style="margin-top:6px">
+    <input class="field mono" id="src-input" type="text" autocomplete="off"
+           placeholder="hello, 12345, -99, cafe">
+  </div>
+  <div class="row" style="margin-top:10px">
+    <button class="btn btn--go" id="go">build</button>
+    <button class="btn" id="rand">random</button>
+    <label for="size-input" style="margin-left:6px">target bytes</label>
+    <input class="mono" id="size-input" type="number" min="16" step="16" style="width:8em" placeholder="512">
+    <button class="btn" id="grow">fill to size</button>
+    <button class="btn" id="dl">download .bin</button>
+  </div>
+</div>
 
-            <!-- Hex Dump View -->
-            <div id="hex-dump-container" class="mt-8 p-6 bg-gray-800 rounded-xl hidden fade-in is-collapsed">
-                <h2 id="hex-dump-toggle" class="text-2xl font-bold text-white flex justify-between items-center cursor-pointer">
-                    <span>Raw Hex Dump</span>
-                     <svg class="toggle-icon-hex w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                    </svg>
-                </h2>
-                <pre id="hex-dump-output" class="mono mt-4"></pre>
-            </div>
-            
-            <!-- Interactive Controls -->
-            <div id="interactive-controls" class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8 hidden fade-in">
-                <!-- Traversal -->
-                <div class="p-6 bg-gray-800 rounded-xl">
-                    <h3 class="text-xl font-bold text-white mb-4">Interactive Traversal</h3>
-                    <p class="text-sm text-gray-400 mb-4">Click "Prev" to see an animation of how `backlen` enables reverse traversal.</p>
-                    <div class="flex justify-center gap-2 flex-wrap">
-                        <button id="btn-first" class="control-btn">First</button>
-                        <button id="btn-prev" class="control-btn">Prev</button>
-                        <button id="btn-next" class="control-btn">Next</button>
-                        <button id="btn-last" class="control-btn">Last</button>
-                    </div>
-                </div>
-                <!-- Memory Savings -->
-                <div id="memory-savings" class="p-6 bg-gray-800 rounded-xl flex flex-col items-center justify-center text-center">
-                    <!-- Content will be generated by JS -->
-                </div>
-            </div>
+<div class="panel">
+  <div class="panel__head">
+    <h2>byte layout</h2>
+    <span class="pill" id="size-pill">&mdash;</span>
+  </div>
+  <div id="hdr-row" class="bytes"></div>
+  <div id="entries"></div>
+  <div id="eof-row" class="bytes" style="margin-top:8px"></div>
+  <div class="legend">
+    <span><b class="k--hdr">header</b> 4B total-bytes + 2B num-elements, little-endian</span>
+    <span><b class="k--enc">encoding</b> type byte, plus inline length or integer</span>
+    <span><b class="k--data">data</b> element bytes, stored verbatim</span>
+    <span><b class="k--back">backlen</b> this entry's encoding+data length</span>
+    <span><b>EOF</b> 0xFF</span>
+  </div>
+  <p class="note">Hover any cell for what it holds.</p>
+</div>
 
-            <!-- Explanation Section -->
-            <div id="explanation" class="mt-8 p-6 bg-gray-800 rounded-xl hidden fade-in">
-                <h2 class="text-2xl font-bold text-white mb-4">How it Works</h2>
-                <div class="space-y-4 text-gray-300">
-                    <p><strong class="font-semibold text-blue-400">Listpack</strong> is a memory-efficient format to store a list of strings. It's a single, contiguous block of memory, which is great for cache performance.</p>
-                    <ul class="list-disc list-inside space-y-2 pl-4">
-                        <li><strong class="font-semibold text-green-400">Header (6 bytes):</strong> The first 4 bytes store the total size of the listpack, and the next 2 bytes store the number of elements.</li>
-                        <li><strong class="font-semibold text-yellow-400">Entries:</strong> Each entry consists of an <span class="mono text-yellow-300">encoding-type</span>, the <span class="mono text-yellow-300">element-data</span>, and a <span class="mono text-yellow-300">backlen</span>.</li>
-                        <li>
-                            <strong class="font-semibold text-purple-400">Encoding:</strong> Listpack uses variable-length encoding for both integers and strings to save space. The specific type is chosen based on the value or byte length of the data:
-                            <ul class="list-['-_'] list-inside pl-6 mt-2 text-gray-400">
-                                <li><strong>Integers:</strong> Stored as <code>7-bit</code>, <code>13-bit</code>, <code>16-bit</code>, <code>24-bit</code>, <code>32-bit</code>, or <code>64-bit</code> values.</li>
-                                <li><strong>Strings:</strong> Length is stored using <code>6-bit</code>, <code>12-bit</code>, or <code>32-bit</code> encodings based on the string's byte length.</li>
-                            </ul>
-                        </li>
-                        <li><strong class="font-semibold text-pink-400">Backlen:</strong> This is the magic for traversing backward! It stores the length of the *previous* entry, allowing efficient navigation from tail to head. It's also variable-length encoded.</li>
-                        <li><strong class="font-semibold text-red-400">EOF (1 byte):</strong> A final `0xFF` byte marks the end of the listpack.</li>
-                    </ul>
-                </div>
-            </div>
+<div class="panel">
+  <div class="panel__head">
+    <h2>self-check</h2>
+    <span class="pill" id="check-pill">&mdash;</span>
+  </div>
+  <p class="cite">
+    Walks the bytes above exactly as <span class="mono">lpValidateNext</span> does
+    (listpack.c:1292&ndash;1338): read the encoding, derive the entry length, step over it,
+    then decode the backlen that sits immediately to the left of the next entry and require
+    <span class="mono">prevlen + encodedBacklen == entrylen</span> (listpack.c:1331&ndash;1332).
+  </p>
+  <div class="log" id="check-log" style="margin-top:10px"></div>
+</div>
 
-        </main>
+<div class="grid grid--2">
+  <div class="panel">
+    <div class="panel__head"><h2>traversal</h2><span class="faint" id="cursor">&mdash;</span></div>
+    <p class="cite">
+      <span class="mono">lpPrev</span> (listpack.c:485&ndash;496) steps one byte left of the
+      current entry, lands on the last byte of the previous entry's backlen, decodes it
+      right to left, then subtracts that length plus the backlen's own width.
+    </p>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="first">first</button>
+      <button class="btn" id="prev">prev</button>
+      <button class="btn" id="next">next</button>
+      <button class="btn" id="last">last</button>
     </div>
+    <div class="log" id="walk-log" style="margin-top:10px"></div>
+  </div>
 
-    <script>
-        const stringInput = document.getElementById('string-input');
-        const visualizeBtn = document.getElementById('visualize-btn');
-        const suggestBtn = document.getElementById('suggest-btn');
-        const downloadBtn = document.getElementById('download-btn');
-        const targetSizeInput = document.getElementById('target-size-input');
-        const generateBySizeBtn = document.getElementById('generate-by-size-btn');
-        const visualizationOutput = document.getElementById('visualization-output');
-        const welcomeMessage = document.getElementById('welcome-message');
-        const explanationDiv = document.getElementById('explanation');
-        const interactiveControls = document.getElementById('interactive-controls');
-        const memorySavingsDiv = document.getElementById('memory-savings');
-        const hexDumpContainer = document.getElementById('hex-dump-container');
-        const hexDumpOutput = document.getElementById('hex-dump-output');
-        const encodingAnalysisContainer = document.getElementById('encoding-analysis-container');
-        const encodingAnalysisOutput = document.getElementById('encoding-analysis-output');
-        const encodingAnalysisToggle = document.getElementById('encoding-analysis-toggle');
-        const hexDumpToggle = document.getElementById('hex-dump-toggle');
+  <div class="panel">
+    <div class="panel__head"><h2>size</h2></div>
+    <div class="stat"><span class="faint">header</span><span id="s-hdr">&mdash;</span></div>
+    <div class="stat"><span class="faint">encoding bytes</span><span id="s-enc">&mdash;</span></div>
+    <div class="stat"><span class="faint">element data</span><span id="s-data">&mdash;</span></div>
+    <div class="stat"><span class="faint">backlen bytes</span><span id="s-back">&mdash;</span></div>
+    <div class="stat"><span class="faint">terminator</span><span id="s-eof">&mdash;</span></div>
+    <div class="stat" style="border-top:1px solid var(--rule);margin-top:6px;padding-top:6px">
+      <span class="faint">total</span><span id="s-total">&mdash;</span></div>
+    <p class="note" id="numele-note"></p>
+  </div>
+</div>
 
-        // Traversal buttons
-        const btnFirst = document.getElementById('btn-first');
-        const btnPrev = document.getElementById('btn-prev');
-        const btnNext = document.getElementById('btn-next');
-        const btnLast = document.getElementById('btn-last');
+<div class="panel">
+  <div class="panel__head"><h2>hex dump</h2><span class="faint">offset, bytes, printable ASCII</span></div>
+  <pre id="dump"></pre>
+</div>
 
-        // State
-        let currentElementIndex = -1;
-        let entryDomElements = [];
-        let currentElements = [];
-        let allBytes = [];
-        let isAnimating = false;
+<div class="panel">
+  <div class="panel__head"><h2>per element</h2></div>
+  <div class="log" id="analysis" style="max-height:320px"></div>
+</div>
 
-        // Constants
-        const LP_HDR_SIZE = 6;
-        const LP_EOF = 0xFF;
-        const LP_ENCODING_7BIT_UINT = 0x00;
-        const LP_ENCODING_6BIT_STR = 0x80;
-        const LP_ENCODING_13BIT_INT = 0xC0;
-        const LP_ENCODING_12BIT_STR = 0xE0;
-        const LP_ENCODING_16BIT_INT = 0xF1;
-        const LP_ENCODING_24BIT_INT = 0xF2;
-        const LP_ENCODING_32BIT_INT = 0xF3;
-        const LP_ENCODING_64BIT_INT = 0xF4;
-        const LP_ENCODING_32BIT_STR = 0xF0;
-        const COLLAPSE_THRESHOLD = 12;
-        const VISIBLE_BYTES_EACH_SIDE = 5;
-        const MAX_RENDER_ENTRIES = 250; // Performance optimization
+<div class="panel prose">
+  <div class="panel__head"><h2>how the format works</h2></div>
 
-        // Event Listeners
-        visualizeBtn.addEventListener('click', visualizeListpack);
-        suggestBtn.addEventListener('click', suggestTestCases);
-        downloadBtn.addEventListener('click', downloadBinary);
-        generateBySizeBtn.addEventListener('click', generateBySize);
-        stringInput.addEventListener('keyup', (e) => {
-            if (e.key === 'Enter') visualizeListpack();
-        });
-        btnFirst.addEventListener('click', () => updateTraversal(0));
-        btnPrev.addEventListener('click', handlePrevClick);
-        btnNext.addEventListener('click', () => updateTraversal(currentElementIndex + 1));
-        btnLast.addEventListener('click', () => updateTraversal(currentElements.length - 1));
+  <h3>header</h3>
+  <p class="muted">
+    <span class="mono">LP_HDR_SIZE</span> is 6 (listpack.c:48): four bytes of total size
+    then two bytes of element count, both little-endian
+    (<span class="mono">lpGetTotalBytes</span>, listpack.c:106&ndash;109;
+    <span class="mono">lpGetNumElements</span>, listpack.c:111&ndash;112). Total size counts
+    the header and the terminator, which is why an empty listpack is 7 bytes
+    (<span class="mono">lpNew</span>, listpack.c:245).
+  </p>
+  <p class="muted">
+    The count field is a cache, not a guarantee. <span class="mono">LP_HDR_NUMELE_UNKNOWN</span>
+    is 65535 (listpack.c:49); once the count reaches it,
+    <span class="mono">lpInsert</span> stops incrementing (listpack.c:898) and
+    <span class="mono">lpLength</span> answers by scanning the whole listpack instead
+    (listpack.c:519), re-caching only if the count later drops back below the sentinel
+    (listpack.c:532).
+  </p>
 
-        encodingAnalysisToggle.addEventListener('click', () => {
-            encodingAnalysisContainer.classList.toggle('is-collapsed');
-        });
+  <h3>entry</h3>
+  <p class="muted">
+    An entry is an encoding byte, optional inline length bytes, the element data, and a
+    backlen. Integer elements have no separate data: the value lives in the encoding bytes.
+  </p>
+  <div class="scroll-x">
+    <table>
+      <thead><tr><th>encoding</th><th>first byte</th><th>test</th><th>holds</th><th>enc+data</th></tr></thead>
+      <tbody>
+        <tr><td>7-bit uint</td><td>0xxxxxxx</td><td>b &amp; 0x80 == 0x00</td><td>0 &hellip; 127</td><td>1</td></tr>
+        <tr><td>6-bit string</td><td>10xxxxxx</td><td>b &amp; 0xC0 == 0x80</td><td>length 0 &hellip; 63</td><td>1 + len</td></tr>
+        <tr><td>13-bit int</td><td>110xxxxx</td><td>b &amp; 0xE0 == 0xC0</td><td>-4096 &hellip; 4095</td><td>2</td></tr>
+        <tr><td>12-bit string</td><td>1110xxxx</td><td>b &amp; 0xF0 == 0xE0</td><td>length 64 &hellip; 4095</td><td>2 + len</td></tr>
+        <tr><td>32-bit string</td><td>0xF0</td><td>b == 0xF0</td><td>length 4096 &hellip; 2^32-1</td><td>5 + len</td></tr>
+        <tr><td>16-bit int</td><td>0xF1</td><td>b == 0xF1</td><td>-32768 &hellip; 32767</td><td>3</td></tr>
+        <tr><td>24-bit int</td><td>0xF2</td><td>b == 0xF2</td><td>-8388608 &hellip; 8388607</td><td>4</td></tr>
+        <tr><td>32-bit int</td><td>0xF3</td><td>b == 0xF3</td><td>-2147483648 &hellip; 2147483647</td><td>5</td></tr>
+        <tr><td>64-bit int</td><td>0xF4</td><td>b == 0xF4</td><td>full signed 64-bit</td><td>9</td></tr>
+        <tr><td>EOF</td><td>0xFF</td><td>b == 0xFF</td><td>terminator</td><td>1</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="cite" style="margin-top:8px">
+    Macros at listpack.c:55&ndash;97. Integer payloads and the 12- and 32-bit string lengths
+    are little-endian (<span class="mono">lpEncodeIntegerGetType</span>, listpack.c:267&ndash;321;
+    <span class="mono">lpEncodeString</span>, listpack.c:403&ndash;419). Those widths exclude
+    the backlen, so an entry costs one byte more than the table's last column for anything
+    under 128 bytes; Redis's own <span class="mono">LP_ENCODING_*_ENTRY_SIZE</span> constants
+    (listpack.c:58, 67, 76, 81, 86, 91) include it.
+  </p>
 
-        hexDumpToggle.addEventListener('click', () => {
-            hexDumpContainer.classList.toggle('is-collapsed');
-        });
+  <h3>backlen</h3>
+  <p class="muted">
+    The trailing field of an entry encodes <em>that entry's own</em> encoding+data length,
+    not the previous entry's, and not including the backlen bytes themselves.
+    <span class="mono">lpInsert</span> calls
+    <span class="mono">lpEncodeBacklen(backlen, enclen)</span> with the length of the element
+    it just encoded (listpack.c:831) and writes it directly after the data (listpack.c:891).
+    The validator's arithmetic is the proof: it requires
+    <span class="mono">prevlen + encodedBacklen == entrylen</span> (listpack.c:1331&ndash;1332).
+  </p>
+  <p class="muted">The layout is built to be read backwards:</p>
+  <ul class="muted">
+    <li>Seven payload bits per byte, so a backlen is 1 to 5 bytes
+      (<span class="mono">lpEncodeBacklen</span>, listpack.c:347&ndash;384).</li>
+    <li>The most significant group is written <em>first</em>, leftmost.</li>
+    <li>Bit <span class="mono">0x80</span> is set on every byte <em>except the first</em> &mdash;
+      the inverse of the usual varint convention.</li>
+    <li>So a reader starts at the rightmost byte and walks left, treating
+      <span class="mono">0x80</span> as "another byte to my left", and stops on the byte
+      without it (<span class="mono">lpDecodeBacklen</span>, listpack.c:386&ndash;399,
+      which decrements the pointer at line 394 and gives up past a shift of 28).</li>
+  </ul>
+  <p class="muted">
+    That is what makes <span class="mono">lpPrev</span> possible at all: standing at the
+    start of an entry, the bytes immediately to the left are the tail of the previous
+    entry's backlen, and decoding them right to left yields how far back to jump.
+  </p>
 
-        document.addEventListener('keydown', (e) => {
-            if (document.activeElement === stringInput || document.activeElement === targetSizeInput || isAnimating) return;
-            if (e.key === 'ArrowLeft') {
-                e.preventDefault();
-                btnPrev.click();
-            } else if (e.key === 'ArrowRight') {
-                e.preventDefault();
-                btnNext.click();
-            }
-        });
+  <h3>integer or string</h3>
+  <p class="muted">
+    An element is stored as an integer only when
+    <span class="mono">lpStringToInt64</span> accepts it (listpack.c:331), and that function
+    is deliberately strict (listpack.c:176&ndash;238): it rejects anything 21 bytes or
+    longer (line 183), a lone minus sign (line 195), any first digit that is not 1&ndash;9
+    unless the whole string is exactly <span class="mono">0</span> (lines 200&ndash;206),
+    trailing non-digits (line 221), and any value outside signed 64-bit range
+    (lines 210, 214, 226, 230).
+  </p>
+  <p class="muted">
+    So <span class="mono">007</span>, <span class="mono">-0</span> and
+    <span class="mono">99999999999999999999</span> are all stored as strings. The rule
+    exists so that decoding an integer entry reproduces the original string byte for byte.
+  </p>
+</div>
 
-        function visualizeListpack() {
-            const input = stringInput.value.trim();
-            if (!input) {
-                welcomeMessage.style.display = 'block';
-                visualizationOutput.innerHTML = '';
-                visualizationOutput.appendChild(welcomeMessage);
-                explanationDiv.classList.add('hidden');
-                interactiveControls.classList.add('hidden');
-                hexDumpContainer.classList.add('hidden');
-                encodingAnalysisContainer.classList.add('hidden');
-                return;
-            }
-            
-            welcomeMessage.style.display = 'none';
-            explanationDiv.classList.remove('hidden');
-            interactiveControls.classList.remove('hidden');
-            encodingAnalysisContainer.classList.remove('hidden');
+</div>
 
-            currentElements = input.split(',').map(s => s.trim()).filter(s => s.length > 0);
-            const listpack = createListpack(currentElements);
-            
-            allBytes = listpack.allBytes;
-            
-            renderListpack(listpack);
-            renderHexDump(listpack.allBytes);
-            calculateMemorySavings(currentElements, listpack.totalBytes);
-            resetTraversal();
-            
-            const analysisMarkdown = generateManualAnalysis(currentElements);
-            encodingAnalysisOutput.innerHTML = marked.parse(analysisMarkdown);
-        }
-        
-        const charPools = {
-            english: 'abcdefghijklmnopqrstuvwxyz',
-            korean: '가나다라마바사아자차카타파하최석원',
-            japanese: 'あいうえおかきくけこさしすせそ',
-            emoji: '😀🚀✨❤️👍😊👋'
-        };
+<script>
+'use strict';
 
-        const randomChoice = (arr) => arr[Math.floor(Math.random() * arr.length)];
-        const makeString = (len, pool) => {
-            let text = '';
-            for (let i = 0; i < len; i++) text += randomChoice(pool);
-            return text;
-        };
-        
-        const generators = [
-            () => Math.floor(Math.random() * 128), // 7-bit int
-            () => -Math.floor(Math.random() * 4096), // 13-bit int
-            () => Math.floor(Math.random() * 65535) - 32768, // 16-bit int
-            () => makeString(Math.floor(Math.random() * 5) + 3, charPools.english), // short ascii
-            () => makeString(Math.floor(Math.random() * 4) + 2, charPools.korean + charPools.japanese), // short CJK
-            () => makeString(Math.floor(Math.random() * 3) + 2, charPools.emoji), // short emoji
-            () => makeString(Math.floor(Math.random() * 30) + 65, charPools.english + ' '), // long string
-            () => (Math.floor(Math.random() * 4294967295) - 2147483648).toString() // 32-bit int
-        ];
-        
-        function getRandomElement() {
-            return randomChoice(generators)();
-        }
+const LP_HDR_SIZE = 6;
+const LP_EOF = 0xFF;
+const LP_HDR_NUMELE_UNKNOWN = 65535;
+const MAX_RENDER = 120;          // entries drawn as byte cells, head and tail
+const DATA_PREVIEW = 8;          // data bytes shown at each end of a long element
+const MAX_ELEMENTS = 50000;
 
-        function suggestTestCases() {
-            const shuffled = [...generators].sort(() => 0.5 - Math.random());
-            const numElements = Math.floor(Math.random() * 3) + 5; // 5 to 7 elements
-            const results = shuffled.slice(0, numElements).map(gen => gen());
-            stringInput.value = results.join(', ');
-            visualizeListpack();
-        }
-        
-        function generateBySize() {
-            const targetSize = parseInt(targetSizeInput.value, 10);
-            if (isNaN(targetSize) || targetSize < 50) {
-                alert("Please enter a valid target size of at least 50 bytes.");
-                return;
-            }
+const $ = (id) => document.getElementById(id);
+const hex = (b) => b.toString(16).toUpperCase().padStart(2, '0');
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const utf8 = (s) => Array.from(new TextEncoder().encode(s));
 
-            generateBySizeBtn.disabled = true;
-            generateBySizeBtn.innerHTML = '<div class="spinner"></div>';
+/* ---------------------------------------------------------------- encode */
 
-            setTimeout(() => {
-                let elements = [];
-                let currentSize = 0;
-                let safetyCounter = 0;
-                const maxElements = 50000;
+// listpack.c:176-238. Strict on purpose: the string must round-trip.
+function lpStringToInt64(s, slen) {
+  if (slen === 0 || slen >= 21) return null;                 // :183
+  if (slen === 1 && s === '0') return 0n;                    // :186
+  let i = 0, negative = false;
+  if (s[0] === '-') { negative = true; i = 1; if (i === slen) return null; }  // :191-197
+  const d0 = s.charCodeAt(i);
+  if (!(d0 >= 49 && d0 <= 57)) return null;                  // :200-206
+  let v = BigInt(d0 - 48); i++;
+  const U64 = (1n << 64n) - 1n;
+  while (i < slen) {
+    const c = s.charCodeAt(i);
+    if (c < 48 || c > 57) break;
+    if (v > U64 / 10n) return null;                          // :210
+    v *= 10n;
+    const dig = BigInt(c - 48);
+    if (v > U64 - dig) return null;                          // :214
+    v += dig; i++;
+  }
+  if (i < slen) return null;                                 // :221
+  if (negative) return v > (1n << 63n) ? null : -v;          // :226
+  return v > (1n << 63n) - 1n ? null : v;                    // :230
+}
 
-                while (currentSize < targetSize && safetyCounter < maxElements) {
-                    elements.push(getRandomElement());
-                    // Rough estimation to avoid re-calculating the whole listpack in the loop
-                    currentSize += String(elements[elements.length-1]).length + 3; // +3 for avg encoding/backlen
-                    safetyCounter++;
-                }
+// listpack.c:267-321
+function encodeInteger(v) {
+  const lo = (x, n) => Number((x >> BigInt(n * 8)) & 0xffn);
+  if (v >= 0n && v <= 127n) return { bytes: [Number(v)], name: '7-bit uint', width: 7 };
+  if (v >= -4096n && v <= 4095n) {
+    const x = v < 0n ? (1n << 13n) + v : v;
+    return { bytes: [Number(x >> 8n) | 0xC0, Number(x & 0xffn)], name: '13-bit int', width: 13 };
+  }
+  if (v >= -32768n && v <= 32767n) {
+    const x = v < 0n ? (1n << 16n) + v : v;
+    return { bytes: [0xF1, lo(x, 0), lo(x, 1)], name: '16-bit int', width: 16 };
+  }
+  if (v >= -8388608n && v <= 8388607n) {
+    const x = v < 0n ? (1n << 24n) + v : v;
+    return { bytes: [0xF2, lo(x, 0), lo(x, 1), lo(x, 2)], name: '24-bit int', width: 24 };
+  }
+  if (v >= -2147483648n && v <= 2147483647n) {
+    const x = v < 0n ? (1n << 32n) + v : v;
+    return { bytes: [0xF3, lo(x, 0), lo(x, 1), lo(x, 2), lo(x, 3)], name: '32-bit int', width: 32 };
+  }
+  const x = v < 0n ? (1n << 64n) + v : v;
+  const b = [0xF4];
+  for (let i = 0; i < 8; i++) b.push(lo(x, i));
+  return { bytes: b, name: '64-bit int', width: 64 };
+}
 
-                stringInput.value = elements.join(', ');
-                visualizeListpack();
+// listpack.c:403-419
+function encodeStringHead(len) {
+  if (len < 64) return { bytes: [len | 0x80], name: '6-bit string' };
+  if (len < 4096) return { bytes: [(len >> 8) | 0xE0, len & 0xff], name: '12-bit string' };
+  return {
+    bytes: [0xF0, len & 0xff, (len >> 8) & 0xff, (len >> 16) & 0xff, (len >> 24) & 0xff],
+    name: '32-bit string',
+  };
+}
 
-                generateBySizeBtn.disabled = false;
-                generateBySizeBtn.innerHTML = 'Generate by Size';
-            }, 10);
-        }
+// listpack.c:347-384. High group first, 0x80 on every byte but the first.
+function encodeBacklen(l) {
+  if (l <= 127) return [l];
+  if (l < 16383) return [l >> 7, (l & 127) | 128];
+  if (l < 2097151) return [l >> 14, ((l >> 7) & 127) | 128, (l & 127) | 128];
+  if (l < 268435455) return [l >> 21, ((l >> 14) & 127) | 128, ((l >> 7) & 127) | 128, (l & 127) | 128];
+  return [l >> 28, ((l >> 21) & 127) | 128, ((l >> 14) & 127) | 128, ((l >> 7) & 127) | 128, (l & 127) | 128];
+}
 
-        function getAnalysisMarkdownForElement(el) {
-            let markdown = '';
-            const isInteger = /^-?\d+$/.test(String(el));
+// listpack.c:386-399. Starts at the LAST byte and walks left.
+function decodeBacklen(bytes, last) {
+  let val = 0, shift = 0, p = last, used = 0;
+  for (;;) {
+    if (p < 0) return null;
+    val += (bytes[p] & 127) * Math.pow(2, shift);
+    used++;
+    if (!(bytes[p] & 128)) break;
+    shift += 7; p--;
+    if (shift > 28) return null;
+  }
+  return { value: val, used };
+}
 
-            if (isInteger) {
-                const value = BigInt(el);
-                let encodingType = '', explanation = '';
-                if (value >= 0 && value <= 127) {
-                    encodingType = '7-bit Unsigned Integer';
-                    explanation = `The value \`${value}\` fits within the 0-127 range, making this the most compact integer encoding (1 byte).`;
-                } else if (value >= -4096 && value <= 4095) {
-                    encodingType = '13-bit Signed Integer';
-                    explanation = `The value \`${value}\` is outside the 7-bit range but fits within the -4096 to 4095 range of a 13-bit integer. This encoding uses 2 bytes.`;
-                } else if (value >= -32768 && value <= 32767) {
-                    encodingType = '16-bit Signed Integer';
-                    explanation = `The value \`${value}\` exceeds the 13-bit range but fits within the -32,768 to 32,767 range of a 16-bit integer (3 bytes).`;
-                } else if (value >= -8388608 && value <= 8388607) {
-                    encodingType = '24-bit Signed Integer';
-                    explanation = `The value \`${value}\` exceeds the 16-bit range but fits within the -8,388,608 to 8,388,607 range of a 24-bit integer (4 bytes).`;
-                } else if (value >= -2147483648 && value <= 2147483647) {
-                    encodingType = '32-bit Signed Integer';
-                    explanation = `The value \`${value}\` exceeds the 24-bit range but fits within the standard 32-bit signed integer range (5 bytes).`;
-                } else {
-                    encodingType = '64-bit Signed Integer';
-                    explanation = `The value \`${value}\` is very large and requires a full 64-bit signed integer representation (9 bytes).`;
-                }
-                markdown += `* **Value**: \`${value}\`\n* **Encoding Type**: ${encodingType}\n\n**Explanation**: ${explanation}\n\n`;
-            } else { // It's a string
-                const byteLength = new TextEncoder().encode(el).length;
-                let encodingType = '', explanation = '', totalSize = 0;
-                if (byteLength < 64) {
-                    encodingType = '6-bit String Length';
-                    totalSize = 1 + byteLength;
-                    explanation = `The string has a UTF-8 byte length of ${byteLength}. Since ${byteLength} is less than 64, listpack chooses the most compact 6-bit string encoding. This uses a single prefix byte to store the length, followed by the ${byteLength} data bytes.`;
-                } else if (byteLength < 4096) {
-                    encodingType = '12-bit String Length';
-                    totalSize = 2 + byteLength;
-                    explanation = `The string's byte length of ${byteLength} is greater than 63 but less than 4096. It fits the 12-bit string encoding, which uses a two-byte prefix for the length.`;
-                } else {
-                    encodingType = '32-bit String Length';
-                    totalSize = 5 + byteLength;
-                    explanation = `With a byte length of ${byteLength}, this long string requires the 32-bit string encoding, which uses a five-byte prefix to store the length.`;
-                }
-                markdown += `* **Value**: \`"${String(el).substring(0, 30)}${String(el).length > 30 ? '...' : ''}"\`\n* **Byte Length**: ${byteLength} bytes\n* **Encoding Type**: ${encodingType}\n\n**Explanation**: ${explanation} Total size for this entry's content is ${totalSize} bytes.\n\n`;
-            }
-            return markdown;
-        }
+function encodeElement(raw) {
+  const s = String(raw);
+  const data = utf8(s);
+  const v = lpStringToInt64(s, data.length);
+  if (v !== null) {
+    const e = encodeInteger(v);
+    return { value: s, encBytes: e.bytes, dataBytes: [], kind: e.name, isInt: true, note: `value ${v}` };
+  }
+  const h = encodeStringHead(data.length);
+  return { value: s, encBytes: h.bytes, dataBytes: data, kind: h.name, isInt: false, note: `${data.length} data byte${data.length === 1 ? '' : 's'}` };
+}
 
-        function generateManualAnalysis(elements) {
-            let markdown = '';
-            
-            if (elements.length > MAX_RENDER_ENTRIES) {
-                const firstChunk = elements.slice(0, 5);
-                const lastChunk = elements.slice(elements.length - 5);
-                markdown += `*NOTE: Analysis is truncated for performance. Showing the first 5 and last 5 of ${elements.length} entries.*\n\n`;
+/* The one place a backlen is computed. Everything else reads entry.backBytes. */
+function buildListpack(values) {
+  const bytes = [0, 0, 0, 0];
+  const numEleField = Math.min(values.length, LP_HDR_NUMELE_UNKNOWN);
+  bytes.push(numEleField & 0xff, (numEleField >> 8) & 0xff);
+  const entries = [];
+  for (const raw of values) {
+    const e = encodeElement(raw);
+    const enclen = e.encBytes.length + e.dataBytes.length;
+    const backBytes = encodeBacklen(enclen);      // listpack.c:831 — this entry's own length
+    e.off = bytes.length;
+    e.enclen = enclen;
+    e.backBytes = backBytes;
+    e.entryLen = enclen + backBytes.length;
+    for (const b of e.encBytes) bytes.push(b);
+    for (const b of e.dataBytes) bytes.push(b);
+    for (const b of backBytes) bytes.push(b);
+    entries.push(e);
+  }
+  bytes.push(LP_EOF);
+  const total = bytes.length;
+  bytes[0] = total & 0xff;
+  bytes[1] = (total >> 8) & 0xff;
+  bytes[2] = (total >> 16) & 0xff;
+  bytes[3] = (total >> 24) & 0xff;
+  return { bytes, entries, total, numEleField, numElements: values.length };
+}
 
-                firstChunk.forEach((el, index) => {
-                    markdown += `### Element ${index + 1}: "${String(el).substring(0, 30)}${String(el).length > 30 ? '...' : ''}"\n\n`;
-                    markdown += getAnalysisMarkdownForElement(el);
-                });
+/* ------------------------------------------------------------- validate */
 
-                markdown += `### ... (${elements.length - 10} more entries) ...\n\n`;
+// listpack.c:428-443
+function encodedSizeUnsafe(b, p) {
+  const c = b[p];
+  if ((c & 0x80) === 0x00) return 1;
+  if ((c & 0xC0) === 0x80) return 1 + (c & 0x3F);
+  if ((c & 0xE0) === 0xC0) return 2;
+  if (c === 0xF1) return 3;
+  if (c === 0xF2) return 4;
+  if (c === 0xF3) return 5;
+  if (c === 0xF4) return 9;
+  if ((c & 0xF0) === 0xE0) return 2 + (((c & 0x0F) << 8) | b[p + 1]);
+  if (c === 0xF0) return 5 + (b[p + 1] | (b[p + 2] << 8) | (b[p + 3] << 16) | (b[p + 4] * 0x1000000));
+  if (c === LP_EOF) return 1;
+  return 0;
+}
 
-                lastChunk.forEach((el, i) => {
-                    const index = elements.length - 5 + i;
-                    markdown += `### Element ${index + 1}: "${String(el).substring(0, 30)}${String(el).length > 30 ? '...' : ''}"\n\n`;
-                    markdown += getAnalysisMarkdownForElement(el);
-                });
-            } else {
-                 elements.forEach((el, index) => {
-                    markdown += `### Element ${index + 1}: "${String(el).substring(0, 30)}${String(el).length > 30 ? '...' : ''}"\n\n`;
-                    markdown += getAnalysisMarkdownForElement(el);
-                });
-            }
-            return markdown;
-        }
+// Mirrors lpValidateNext, listpack.c:1292-1338.
+function selfCheck(lp) {
+  const out = [];
+  let ok = true;
+  const say = (cls, text) => out.push({ cls, text });
 
-        function createListpack(elements) {
-            let finalEntries = [];
-            for(const el of elements){
-                finalEntries.push(encodeEntry(el));
-            }
-            let allBytes = [];
-            allBytes.push(...toLittleEndian(0,4));
-            allBytes.push(...toLittleEndian(finalEntries.length, 2));
-            let prevTotalEntrySize = 0;
-            for(const entry of finalEntries){
-                const entryContentSize = entry.encodingBytes.length + entry.dataBytes.length;
-                const backlenBytes = encodeBacklen(prevTotalEntrySize);
-                allBytes.push(...entry.encodingBytes);
-                allBytes.push(...entry.dataBytes);
-                allBytes.push(...backlenBytes);
-                prevTotalEntrySize = entryContentSize + backlenBytes.length;
-            }
-            allBytes.push(LP_EOF);
-            const finalTotalBytes = allBytes.length;
-            const totalBytesHeader = toLittleEndian(finalTotalBytes, 4);
-            for(let i=0; i<4; i++) allBytes[i] = totalBytesHeader[i];
-            return { totalBytes: finalTotalBytes, numElements:finalEntries.length, entries: finalEntries, allBytes: allBytes };
-        }
+  const total = lp.bytes[0] | (lp.bytes[1] << 8) | (lp.bytes[2] << 16) | (lp.bytes[3] * 0x1000000);
+  if (total !== lp.bytes.length) { ok = false; say('hit', `total-bytes says ${total}, buffer is ${lp.bytes.length}`); }
+  else say('good', `total-bytes ${total} matches the buffer`);
 
-        function encodeEntry(el) {
-            let encodingBytes = [], dataBytes = [], encodingType = '', notes = '';
-            const isInteger = /^-?\d+$/.test(String(el));
-            let value = isInteger ? BigInt(el) : 0;
+  let p = LP_HDR_SIZE, count = 0;
+  while (p < lp.bytes.length && lp.bytes[p] !== LP_EOF) {
+    const enclen = encodedSizeUnsafe(lp.bytes, p);
+    if (!enclen) { ok = false; say('hit', `offset ${p}: byte 0x${hex(lp.bytes[p])} is not a valid encoding`); break; }
+    const encodedBacklen = encodeBacklen(enclen).length;
+    const entrylen = enclen + encodedBacklen;
+    if (p + entrylen > lp.bytes.length - 1) { ok = false; say('hit', `offset ${p}: entry runs past the terminator`); break; }
+    const dec = decodeBacklen(lp.bytes, p + entrylen - 1);
+    if (!dec) { ok = false; say('hit', `offset ${p}: backlen does not terminate within 5 bytes`); break; }
+    if (dec.value + encodedBacklen !== entrylen) {
+      ok = false;
+      say('hit', `entry ${count + 1} at ${p}: prevlen ${dec.value} + ${encodedBacklen} != entrylen ${entrylen}`);
+      break;
+    }
+    count++;
+    p += entrylen;
+  }
 
-            if (isInteger && value >= 0 && value <= 127) {
-                encodingType = "7-bit Unsigned Int"; encodingBytes = [Number(value)]; notes = `Value ${value} fits in 7 bits.`;
-            } else if (isInteger && value >= -4096 && value <= 4095) {
-                encodingType = "13-bit Signed Int"; let val = value < 0 ? (BigInt(1) << BigInt(13)) + value : value; encodingBytes = [(Number(val >> BigInt(8)) | LP_ENCODING_13BIT_INT), Number(val & BigInt(0xff))]; notes = `Value ${value} fits in 13 bits.`;
-            } else if (isInteger && value >= -32768 && value <= 32767) {
-                encodingType = "16-bit Signed Int"; let val = value < 0 ? (BigInt(1) << BigInt(16)) + value : value; encodingBytes = [LP_ENCODING_16BIT_INT, Number(val & BigInt(0xff)), Number((val >> BigInt(8)) & BigInt(0xff))]; notes = `Value ${value} fits in 16 bits.`;
-            } else if (isInteger && value >= -8388608 && value <= 8388607) {
-                encodingType = "24-bit Signed Int"; let val = value < 0 ? (BigInt(1) << BigInt(24)) + value : value; encodingBytes = [LP_ENCODING_24BIT_INT, Number(val & BigInt(0xff)), Number((val >> BigInt(8)) & BigInt(0xff)), Number((val >> BigInt(16)) & BigInt(0xff))]; notes = `Value ${value} fits in 24 bits.`;
-            } else if (isInteger && value >= -2147483648 && value <= 2147483647) {
-                 encodingType = "32-bit Signed Int"; let val = value < 0 ? (BigInt(1) << BigInt(32)) + value : value; encodingBytes = [LP_ENCODING_32BIT_INT]; for (let i = 0; i < 4; i++) encodingBytes.push(Number((val >> BigInt(i * 8)) & BigInt(0xff))); notes = `Value ${value} fits in 32 bits.`;
-            } else if (isInteger) {
-                encodingType = "64-bit Signed Int"; let val = value; encodingBytes = [LP_ENCODING_64BIT_INT]; for (let i = 0; i < 8; i++) encodingBytes.push(Number((val >> BigInt(i * 8)) & BigInt(0xff))); notes = `Value ${value} requires 64 bits.`;
-            } else {
-                dataBytes = Array.from(new TextEncoder().encode(String(el))); const len = dataBytes.length;
-                if (len < 64) {
-                    encodingType = "6-bit String"; encodingBytes = [len | LP_ENCODING_6BIT_STR]; notes = `String length ${len} fits in 6 bits.`;
-                } else if (len < 4096) {
-                    encodingType = "12-bit String"; encodingBytes = [(len >> 8) | LP_ENCODING_12BIT_STR, len & 0xff]; notes = `String length ${len} fits in 12 bits.`;
-                } else {
-                    encodingType = "32-bit String"; encodingBytes = [LP_ENCODING_32BIT_STR, len & 0xff, (len >> 8) & 0xff, (len >> 16) & 0xff, (len >> 24) & 0xff]; notes = `String length ${len} requires 32 bits.`;
-                }
-            }
-            return { original: el, encodingType, notes, encodingBytes, dataBytes, totalLength: encodingBytes.length + dataBytes.length };
-        }
-        
-        function encodeBacklen(len) {
-            if (len === 0) return [0];
-            if (len <= 127) return [len];
-            if (len < 16383) return [len >> 7, (len & 127) | 128];
-            if (len < 2097151) return [len >> 14, ((len >> 7) & 127) | 128, (len & 127) | 128];
-            if (len < 268435455) return [len >> 21, ((len >> 14) & 127) | 128, ((len >> 7) & 127) | 128, (len & 127) | 128];
-            return [len >> 28, ((len >> 21) & 127) | 128, ((len >> 14) & 127) | 128, ((len >> 7) & 127) | 128, (len & 127) | 128];
-        }
+  if (ok) {
+    if (lp.bytes[p] !== LP_EOF) { ok = false; say('hit', `offset ${p}: expected 0xFF, found 0x${hex(lp.bytes[p] ?? 0)}`); }
+    else if (p !== lp.bytes.length - 1) { ok = false; say('hit', `terminator at ${p}, buffer ends at ${lp.bytes.length - 1}`); }
+    else say('good', `${count} entr${count === 1 ? 'y' : 'ies'} walked, prevlen + encodedBacklen == entrylen held every time`);
+  }
 
-        function renderListpack(listpack) {
-            visualizationOutput.innerHTML = '';
-            entryDomElements = [];
+  if (ok) {
+    const field = lp.bytes[4] | (lp.bytes[5] << 8);
+    if (field === LP_HDR_NUMELE_UNKNOWN && lp.numElements >= LP_HDR_NUMELE_UNKNOWN)
+      say('good', `num-elements pinned at 65535 (LP_HDR_NUMELE_UNKNOWN); lpLength would scan, finding ${lp.numElements}`);
+    else if (field !== count) { ok = false; say('hit', `num-elements says ${field}, the walk found ${count}`); }
+    else say('good', `num-elements ${field} matches the walk`);
+  }
 
-            const summaryDiv = document.createElement('div');
-            summaryDiv.className = 'text-center mb-4';
-            summaryDiv.innerHTML = `<p class="text-xl font-bold text-white">Total Size: <span class="mono text-blue-400">${listpack.totalBytes} bytes</span></p>`;
-            visualizationOutput.appendChild(summaryDiv);
+  return { ok, lines: out };
+}
 
-            const container = document.createElement('div');
-            container.className = 'flex flex-wrap gap-1 p-2 bg-gray-900/50 rounded-lg';
-            
-            const headerContainer = document.createElement('div');
-            headerContainer.className = 'w-full flex flex-wrap gap-1 items-center';
-            headerContainer.appendChild(createSectionLabel('Header', 'bg-green-800 text-green-200'));
-            const totalBytesLE = toLittleEndian(listpack.totalBytes, 4);
-            const numElementsLE = toLittleEndian(listpack.numElements, 2);
-            totalBytesLE.forEach((byte, i) => headerContainer.appendChild(createByteBox(byte, 'Total Bytes', 'bg-green-600', `Value: ${listpack.totalBytes} (Little Endian)`)));
-            numElementsLE.forEach((byte, i) => headerContainer.appendChild(createByteBox(byte, 'Num Elements', 'bg-green-500', `Value: ${listpack.numElements} (Little Endian)`)));
-            container.appendChild(headerContainer);
+/* ---------------------------------------------------------------- render */
 
-            let prevTotalEntrySize = 0;
-            
-            const renderEntry = (entry, i) => {
-                 const isLong = entry.dataBytes.length > COLLAPSE_THRESHOLD;
-                const entryContainer = document.createElement('div');
-                entryContainer.className = `w-full flex flex-wrap gap-1 items-center entry-container transition-all duration-300 ${isLong ? 'collapsed' : ''}`;
-                entryContainer.dataset.index = i;
-                
-                const label = createSectionLabel(`Entry ${i+1}: "${entry.original}"`, 'bg-blue-800 text-blue-200', isLong);
-                if (String(entry.original).length > 40) {
-                    label.title = entry.original;
-                }
-                entryContainer.appendChild(label);
-                
-                entry.encodingBytes.forEach(byte => entryContainer.appendChild(createByteBox(byte, 'Encoding', 'bg-blue-600', entry.encodingType + ' - ' + entry.notes)));
-                
-                if (entry.dataBytes.length > 0) {
-                     if (isLong) {
-                        for (let j = 0; j < VISIBLE_BYTES_EACH_SIDE; j++) {
-                            entryContainer.appendChild(createByteBox(entry.dataBytes[j], 'Data', 'bg-blue-500', `Char: '${String.fromCharCode(entry.dataBytes[j])}'`));
-                        }
-                        const hiddenCount = entry.dataBytes.length - (VISIBLE_BYTES_EACH_SIDE * 2);
-                        if (hiddenCount > 0) {
-                            entryContainer.appendChild(createEllipsisBox(hiddenCount));
-                            for (let j = VISIBLE_BYTES_EACH_SIDE; j < entry.dataBytes.length - VISIBLE_BYTES_EACH_SIDE; j++) {
-                                const box = createByteBox(entry.dataBytes[j], 'Data', 'bg-blue-500', `Char: '${String.fromCharCode(entry.dataBytes[j])}'`);
-                                box.classList.add('hidden-byte');
-                                entryContainer.appendChild(box);
-                            }
-                        }
-                        for (let j = Math.max(VISIBLE_BYTES_EACH_SIDE, entry.dataBytes.length - VISIBLE_BYTES_EACH_SIDE); j < entry.dataBytes.length; j++) {
-                            entryContainer.appendChild(createByteBox(entry.dataBytes[j], 'Data', 'bg-blue-500', `Char: '${String.fromCharCode(entry.dataBytes[j])}'`));
-                        }
-                    } else {
-                        entry.dataBytes.forEach(byte => entryContainer.appendChild(createByteBox(byte, 'Data', 'bg-blue-500', `Char: '${String.fromCharCode(byte)}'`)));
-                    }
-                }
-                
-                const backlenBytes = encodeBacklen(prevTotalEntrySize);
-                backlenBytes.forEach(byte => entryContainer.appendChild(createByteBox(byte, 'Backlen', 'bg-purple-600', `Length of previous entry: ${prevTotalEntrySize} bytes`)));
-                
-                const entryContentSize = entry.encodingBytes.length + entry.dataBytes.length;
-                prevTotalEntrySize += entryContentSize + backlenBytes.length;
+let lp = null;
+let cursor = -1;
+let rendered = new Map();    // entry index -> element
+let animating = false;
 
-                container.appendChild(entryContainer);
-                entryDomElements.push(entryContainer);
-            }
+function byteCell(value, cls, tip) {
+  return `<span class="byte ${cls} tip" tabindex="0">${hex(value)}<span class="tip__body">${esc(tip)}</span></span>`;
+}
 
-            if (listpack.entries.length > MAX_RENDER_ENTRIES) {
-                const head = listpack.entries.slice(0, MAX_RENDER_ENTRIES / 2);
-                const tail = listpack.entries.slice(listpack.entries.length - MAX_RENDER_ENTRIES / 2);
-                let currentPrevSize = 0;
+function dataTip(b) {
+  if (b >= 0x20 && b <= 0x7E) return `data 0x${hex(b)} '${String.fromCharCode(b)}'`;
+  if ((b & 0xC0) === 0x80) return `data 0x${hex(b)} UTF-8 continuation byte`;
+  if (b >= 0xC2) return `data 0x${hex(b)} UTF-8 lead byte`;
+  return `data 0x${hex(b)} not printable ASCII`;
+}
 
-                head.forEach((entry, i) => {
-                    renderEntry(entry, i);
-                    // This is still an approximation for the visualizer but much better
-                    const entryContentSize = entry.encodingBytes.length + entry.dataBytes.length;
-                    const backlenBytes = encodeBacklen(currentPrevSize);
-                    currentPrevSize += entryContentSize + backlenBytes.length;
-                });
+function renderHeader() {
+  const b = lp.bytes;
+  let h = '';
+  for (let i = 0; i < 4; i++) h += byteCell(b[i], 'byte--hdr', `total-bytes[${i}] of 4, little-endian, value ${lp.total}`);
+  for (let i = 0; i < 2; i++) h += byteCell(b[4 + i], 'byte--hdr', `num-elements[${i}] of 2, little-endian, value ${lp.numEleField}`);
+  $('hdr-row').innerHTML = h;
+  $('eof-row').innerHTML = byteCell(LP_EOF, 'byte--eof', 'LP_EOF, listpack.c:97 — one byte, always the last');
+}
 
-                const placeholder = document.createElement('div');
-                placeholder.className = 'w-full text-center py-4 text-gray-500 mono';
-                placeholder.textContent = `... ${listpack.entries.length - MAX_RENDER_ENTRIES} more entries not rendered for performance ...`;
-                container.appendChild(placeholder);
+function renderEntry(e, i) {
+  const el = document.createElement('div');
+  el.className = 'entry';
+  el.dataset.i = String(i);
 
-                // Recalculate prevTotalEntrySize for the tail chunk to be accurate
-                let sizeUpToTail = LP_HDR_SIZE;
-                let prevSizeForTail = 0;
-                for(let i=0; i<listpack.entries.length - (MAX_RENDER_ENTRIES / 2); i++) {
-                     const entry = listpack.entries[i];
-                     const entryContentSize = entry.encodingBytes.length + entry.dataBytes.length;
-                     const backlenBytes = encodeBacklen(prevSizeForTail);
-                     prevSizeForTail += entryContentSize + backlenBytes.length;
-                }
-                prevTotalEntrySize = prevSizeForTail; // Set the correct starting backlen for the tail
+  const label = e.value.length > 42 ? e.value.slice(0, 39) + '...' : e.value;
+  el.innerHTML =
+    `<div class="entry__head"><b>#${i + 1}</b><span>${esc(label)}</span>` +
+    `<span>${esc(e.kind)}</span><span>offset ${e.off}</span>` +
+    `<span>enc+data ${e.enclen}</span><span>backlen ${e.backBytes.length}B</span>` +
+    `<span>entry ${e.entryLen}B</span></div>`;
 
-                tail.forEach((entry, i) => {
-                    renderEntry(entry, listpack.entries.length - (MAX_RENDER_ENTRIES / 2) + i);
-                });
-                
-            } else {
-                listpack.entries.forEach(renderEntry);
-            }
+  let h = '';
+  e.encBytes.forEach((b, k) => {
+    h += byteCell(b, 'byte--enc', k === 0 ? `${e.kind} — ${e.note}` : `${e.kind} — payload byte ${k}, little-endian`);
+  });
+  const d = e.dataBytes;
+  if (d.length > DATA_PREVIEW * 2 + 1) {
+    for (let k = 0; k < DATA_PREVIEW; k++) h += byteCell(d[k], 'byte--data', dataTip(d[k]));
+    h += `<span class="ell">+${d.length - DATA_PREVIEW * 2}</span>`;
+    for (let k = d.length - DATA_PREVIEW; k < d.length; k++) h += byteCell(d[k], 'byte--data', dataTip(d[k]));
+  } else {
+    for (const b of d) h += byteCell(b, 'byte--data', dataTip(b));
+  }
+  e.backBytes.forEach((b, k) => {
+    const part = e.backBytes.length === 1
+      ? `the whole backlen`
+      : (k === 0 ? `high group, no 0x80` : `group ${k}, 0x80 set so the reader keeps walking left`);
+    h += byteCell(b, 'byte--back', `backlen — ${part}; this entry is ${e.enclen} bytes of encoding+data`);
+  });
 
+  const row = document.createElement('div');
+  row.className = 'bytes';
+  row.innerHTML = h;
+  el.appendChild(row);
+  return el;
+}
 
-            const eofContainer = document.createElement('div');
-            eofContainer.className = 'w-full flex flex-wrap gap-1 items-center';
-            eofContainer.appendChild(createSectionLabel('EOF', 'bg-red-800 text-red-200'));
-            eofContainer.appendChild(createByteBox(LP_EOF, 'End of Listpack', 'bg-red-600', 'Marks the termination of the listpack.'));
-            container.appendChild(eofContainer);
+function renderEntries() {
+  const host = $('entries');
+  host.textContent = '';
+  rendered = new Map();
+  const n = lp.entries.length;
+  const draw = (i) => { const el = renderEntry(lp.entries[i], i); rendered.set(i, el); host.appendChild(el); };
 
-            visualizationOutput.appendChild(container);
+  if (n <= MAX_RENDER) {
+    for (let i = 0; i < n; i++) draw(i);
+  } else {
+    const half = MAX_RENDER / 2;
+    for (let i = 0; i < half; i++) draw(i);
+    const gap = document.createElement('p');
+    gap.className = 'note';
+    gap.textContent = `${n - MAX_RENDER} entries between here and the tail are not drawn; they are in the hex dump and the self-check.`;
+    host.appendChild(gap);
+    for (let i = n - half; i < n; i++) draw(i);
+  }
+}
 
-             visualizationOutput.querySelectorAll('.collapsible-label').forEach(label => {
-                label.addEventListener('click', e => {
-                    e.stopPropagation();
-                    e.currentTarget.closest('.entry-container')?.classList.toggle('collapsed');
-                });
-            });
-        }
-        
-        function renderHexDump(bytes) {
-            let output = '';
-            const MAX_LINES = 200; // Truncate hex dump as well
-            if (bytes.length > MAX_LINES * 16) {
-                for (let i = 0; i < 100 * 16; i += 16) {
-                    const chunk = bytes.slice(i, i + 16);
-                    const offset = i.toString(16).toUpperCase().padStart(8, '0');
-                    const hexPart = chunk.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
-                    const asciiPart = chunk.map(b => (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.').join('');
-                    output += `${offset}  ${hexPart.padEnd(16 * 3 - 1)}  |${asciiPart.padEnd(16)}|\n`;
-                }
-                output += `... (${bytes.length - 200 * 16} more bytes not shown) ...\n`;
-                 for (let i = bytes.length - 100*16; i < bytes.length; i += 16) {
-                    const chunk = bytes.slice(i, i + 16);
-                    if(chunk.length === 0) continue;
-                    const offset = i.toString(16).toUpperCase().padStart(8, '0');
-                    const hexPart = chunk.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
-                    const asciiPart = chunk.map(b => (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.').join('');
-                    output += `${offset}  ${hexPart.padEnd(16 * 3 - 1)}  |${asciiPart.padEnd(16)}|\n`;
-                }
-            } else {
-                 for (let i = 0; i < bytes.length; i += 16) {
-                    const chunk = bytes.slice(i, i + 16);
-                    const offset = i.toString(16).toUpperCase().padStart(8, '0');
-                    const hexPart = chunk.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
-                    const asciiPart = chunk.map(b => (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.').join('');
-                    output += `${offset}  ${hexPart.padEnd(16 * 3 - 1)}  |${asciiPart.padEnd(16)}|\n`;
-                }
-            }
-            hexDumpOutput.textContent = output;
-            hexDumpContainer.classList.remove('hidden');
-        }
+function renderDump() {
+  const b = lp.bytes;
+  const lines = [];
+  const emit = (i) => {
+    const chunk = b.slice(i, i + 16);
+    const asc = chunk.map((x) => (x >= 32 && x <= 126 ? String.fromCharCode(x) : '.')).join('');
+    lines.push(
+      i.toString(16).toUpperCase().padStart(8, '0') + '  ' +
+      chunk.map(hex).join(' ').padEnd(47) + '  |' + esc(asc.padEnd(16)) + '|',
+    );
+  };
+  if (b.length <= 16 * 64) {
+    for (let i = 0; i < b.length; i += 16) emit(i);
+  } else {
+    for (let i = 0; i < 16 * 24; i += 16) emit(i);
+    lines.push(`... ${b.length - 16 * 48} bytes omitted ...`);
+    for (let i = Math.floor((b.length - 16 * 24) / 16) * 16; i < b.length; i += 16) emit(i);
+  }
+  $('dump').innerHTML = lines.join('\n');
+}
 
-        function downloadBinary() {
-            if (allBytes.length === 0) return;
-            const uint8Bytes = new Uint8Array(allBytes);
-            const blob = new Blob([uint8Bytes], { type: 'application/octet-stream' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'listpack.bin';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }
+function renderStats() {
+  const enc = lp.entries.reduce((a, e) => a + e.encBytes.length, 0);
+  const data = lp.entries.reduce((a, e) => a + e.dataBytes.length, 0);
+  const back = lp.entries.reduce((a, e) => a + e.backBytes.length, 0);
+  $('s-hdr').textContent = `${LP_HDR_SIZE} B`;
+  $('s-enc').textContent = `${enc} B`;
+  $('s-data').textContent = `${data} B`;
+  $('s-back').textContent = `${back} B`;
+  $('s-eof').textContent = '1 B';
+  $('s-total').textContent = `${lp.total} B`;
+  $('size-pill').textContent = `${lp.total} bytes, ${lp.numElements} element${lp.numElements === 1 ? '' : 's'}`;
+  $('numele-note').textContent = lp.numElements >= LP_HDR_NUMELE_UNKNOWN
+    ? 'num-elements is pinned at 65535 (LP_HDR_NUMELE_UNKNOWN, listpack.c:49); lpLength reads that as unknown and scans instead.'
+    : '';
+}
 
-        function createByteBox(byte, type, bgColor, tooltipText = '') {
-            const box = document.createElement('div');
-            const typeClass = type.toLowerCase().split(' ')[0];
-            box.dataset.type = typeClass;
-            box.className = `relative byte-box w-20 h-20 rounded-lg flex flex-col items-center justify-center text-white font-bold shadow-lg ${bgColor} text-center p-1`;
-            const hex = byte.toString(16).toUpperCase().padStart(2, '0');
-            box.innerHTML = `<span class="mono text-2xl">0x${hex}</span><span class="text-xs font-medium uppercase tracking-wider opacity-80">${type}</span>`;
-            if (tooltipText) {
-                const tooltip = document.createElement('div');
-                tooltip.className = 'tooltip w-48 p-2 bg-gray-900 text-white text-xs rounded-md shadow-lg border border-gray-700';
-                tooltip.textContent = tooltipText;
-                box.appendChild(tooltip);
-            }
-            return box;
-        }
-        
-        function createEllipsisBox(hiddenCount) {
-            const box = document.createElement('div');
-            box.className = 'ellipsis-byte w-20 h-20 rounded-lg flex flex-col items-center justify-center text-white font-bold bg-gray-600 text-center p-1';
-            box.innerHTML = `<span class="text-2xl">...</span><span class="text-xs font-medium">${hiddenCount} more</span>`;
-            return box;
-        }
+function renderAnalysis() {
+  const rows = [];
+  const show = lp.entries.length <= 60
+    ? lp.entries.map((e, i) => [e, i])
+    : [...lp.entries.slice(0, 30).map((e, i) => [e, i]), ...lp.entries.slice(-30).map((e, k) => [e, lp.entries.length - 30 + k])];
+  for (const [e, i] of show) {
+    const label = e.value.length > 32 ? e.value.slice(0, 29) + '...' : e.value;
+    const why = e.isInt
+      ? `${e.note}, accepted by lpStringToInt64`
+      : `${e.note}; lpStringToInt64 rejected it, so it is stored as a string`;
+    rows.push(`<p><span class="t">#${i + 1}</span>${esc(label)} &mdash; ${esc(e.kind)}, ${esc(why)}. ` +
+      `encoding ${e.encBytes.length}B + data ${e.dataBytes.length}B = ${e.enclen}, backlen ${e.backBytes.length}B, entry ${e.entryLen}B.</p>`);
+  }
+  if (lp.entries.length > 60) rows.splice(30, 0, `<p class="t">&hellip; ${lp.entries.length - 60} elements omitted &hellip;</p>`);
+  $('analysis').innerHTML = rows.join('') || '<p>no elements</p>';
+}
 
-        function createSectionLabel(text, bgColor, isCollapsible = false) {
-            const label = document.createElement('div');
-            label.className = `w-full my-2 py-1 px-3 rounded-md text-sm font-semibold ${bgColor} flex items-center justify-between`;
-            const shortText = text.length > 50 ? text.substring(0, 47) + '...' : text;
-            
-            let content = `<span>${shortText}</span>`;
-            if (isCollapsible) {
-                label.classList.add('collapsible-label');
-                const iconSVG = `
-                    <svg class="toggle-icon w-5 h-5 text-blue-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                    </svg>`;
-                content += iconSVG;
-            }
-            label.innerHTML = content;
-            return label;
-        }
+function renderCheck() {
+  const r = selfCheck(lp);
+  const pill = $('check-pill');
+  pill.textContent = r.ok ? 'valid listpack' : 'invalid';
+  pill.className = 'pill ' + (r.ok ? 'pill--ok' : 'pill--fail');
+  $('check-log').innerHTML = r.lines.map((l) => `<p class="${l.cls}">${esc(l.text)}</p>`).join('');
+}
 
-        function toLittleEndian(val, bytes) {
-            const arr = [];
-            for (let i = 0; i < bytes; i++) arr.push((val >> (i * 8)) & 0xff);
-            return arr;
-        }
+/* -------------------------------------------------------------- traverse */
 
-        function calculateMemorySavings(elements, listpackBytes) {
-            const jsonString = JSON.stringify(elements);
-            const jsonBytes = new TextEncoder().encode(jsonString).length;
-            const savings = jsonBytes - listpackBytes;
-            const savingsPercent = jsonBytes > 0 ? (savings / jsonBytes * 100).toFixed(1) : 0;
-            memorySavingsDiv.innerHTML = `<h3 class="text-xl font-bold text-white mb-3">Memory Efficiency</h3><p class="mono text-lg"><span class="text-blue-400">Listpack:</span> ${listpackBytes} bytes</p><p class="mono text-lg"><span class="text-gray-400">JSON Array:</span> ${jsonBytes} bytes</p><p class="mt-4 text-2xl font-bold ${savings > 0 ? 'text-green-400' : 'text-red-400'}">${savings > 0 ? `Saved ${savings} bytes (${savingsPercent}%)` : `Used ${-savings} more bytes`}</p>`;
-        }
-        
-        function resetTraversal() {
-            currentElementIndex = -1;
-            highlightElement(-1);
-        }
-        
-        function setAllTraversalButtonsDisabled(state) {
-            btnFirst.disabled = state;
-            btnPrev.disabled = state;
-            btnNext.disabled = state;
-            btnLast.disabled = state;
-        }
+function setCursor(i, note) {
+  if (!lp.entries.length) return;
+  cursor = Math.max(0, Math.min(i, lp.entries.length - 1));
+  for (const el of rendered.values()) el.classList.remove('is-active');
+  const el = rendered.get(cursor);
+  if (el) { el.classList.add('is-active'); el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+  const e = lp.entries[cursor];
+  $('cursor').textContent = `#${cursor + 1} at offset ${e.off}`;
+  if (note) log(note);
+  $('first').disabled = cursor === 0;
+  $('prev').disabled = cursor === 0;
+  $('next').disabled = cursor === lp.entries.length - 1;
+  $('last').disabled = cursor === lp.entries.length - 1;
+}
 
-        async function handlePrevClick() {
-            if (currentElementIndex <= 0 || isAnimating) return;
+function log(html) {
+  const p = document.createElement('p');
+  p.innerHTML = html;
+  const box = $('walk-log');
+  box.appendChild(p);
+  box.scrollTop = box.scrollHeight;
+}
 
-            isAnimating = true;
-            setAllTraversalButtonsDisabled(true);
+async function stepPrev() {
+  if (animating || cursor <= 0) return;
+  animating = true;
+  const here = lp.entries[cursor];
+  const back = lp.entries[cursor - 1];          // its backlen is the run of bytes left of `here`
+  const dec = decodeBacklen(lp.bytes, here.off - 1);
 
-            const fromIndex = currentElementIndex;
-            const toIndex = currentElementIndex - 1;
-            
-            const fromElement = entryDomElements.find(el => parseInt(el.dataset.index, 10) === fromIndex);
-            const toElement = entryDomElements.find(el => parseInt(el.dataset.index, 10) === toIndex);
+  const cells = rendered.get(cursor - 1)?.querySelectorAll('.byte--back');
+  if (cells && cells.length) {
+    cells[cells.length - 1].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    cells.forEach((c) => c.classList.add('is-lit'));
+  }
+  log(`<span class="t">lpPrev</span>at offset ${here.off}, step one byte left to ${here.off - 1}`);
+  log(`<span class="t">read</span>walk left from 0x${hex(lp.bytes[here.off - 1])}, ` +
+      `${dec.used} byte${dec.used === 1 ? '' : 's'} consumed, prevlen = <span class="good">${dec.value}</span>`);
+  await new Promise((r) => setTimeout(r, 900));
+  if (cells) cells.forEach((c) => c.classList.remove('is-lit'));
 
-            if (!fromElement || !toElement) {
-                // This can happen if one of the elements is not rendered
-                updateTraversal(toIndex);
-                isAnimating = false;
-                return;
-            }
+  const jump = dec.value + dec.used;
+  log(`<span class="t">jump</span>back ${dec.value} + ${dec.used} = ${jump} bytes, landing on offset ` +
+      `<span class="hit">${here.off - jump}</span> (entry #${cursor})`);
+  setCursor(cursor - 1);
+  animating = false;
+}
 
-            fromElement.classList.remove('active-entry');
+function stepNext() {
+  if (animating || cursor >= lp.entries.length - 1) return;
+  const here = lp.entries[cursor];
+  log(`<span class="t">lpSkip</span>from ${here.off}, over ${here.enclen} + ${here.backBytes.length} = ` +
+      `${here.entryLen} bytes to offset <span class="hit">${here.off + here.entryLen}</span>`);
+  setCursor(cursor + 1);
+}
 
-            const backlenBoxes = fromElement.querySelectorAll('[data-type="backlen"]');
-            backlenBoxes.forEach(box => {
-                box.classList.add('pulse-animation');
-                box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            });
-            
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            backlenBoxes.forEach(box => box.classList.remove('pulse-animation'));
+/* ------------------------------------------------------------------ run */
 
-            toElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            toElement.classList.add('pulse-animation');
-            
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            toElement.classList.remove('pulse-animation');
-            
-            updateTraversal(toIndex);
-            isAnimating = false;
-        }
+function build(values) {
+  lp = buildListpack(values.slice(0, MAX_ELEMENTS));
+  renderHeader();
+  renderEntries();
+  renderDump();
+  renderStats();
+  renderAnalysis();
+  renderCheck();
+  $('walk-log').textContent = '';
+  cursor = -1;
+  if (lp.entries.length) setCursor(0);
+  else {
+    $('cursor').textContent = 'empty';
+    for (const id of ['first', 'prev', 'next', 'last']) $(id).disabled = true;
+  }
+}
 
-        function updateTraversal(newIndex) {
-            if (isAnimating) return;
-            if (newIndex >= 0 && newIndex < currentElements.length) {
-                currentElementIndex = newIndex;
-            } else if (newIndex < 0) {
-                 currentElementIndex = 0;
-            } else if (newIndex >= currentElements.length) {
-                currentElementIndex = currentElements.length -1;
-            }
-            highlightElement(currentElementIndex);
-        }
+function parseInput() {
+  return $('src-input').value.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+}
 
-        function highlightElement(index) {
-            entryDomElements.forEach(el => el.classList.remove('active-entry'));
-            if (index >= 0 && index < currentElements.length) {
-                const targetElement = entryDomElements.find(el => parseInt(el.dataset.index, 10) === index);
-                if (targetElement) {
-                    targetElement.classList.add('active-entry');
-                    targetElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
-                }
-            }
+function go() {
+  const v = parseInput();
+  if (!v.length) { $('src-input').value = 'hello'; return go(); }
+  build(v);
+}
 
-            const visibleEntries = entryDomElements.map(el => parseInt(el.dataset.index, 10));
-            const firstVisible = visibleEntries[0];
-            const lastVisible = visibleEntries[visibleEntries.length - 1];
+const pools = {
+  ascii: 'abcdefghijklmnopqrstuvwxyz',
+  accent: 'aeiouacefnoue',
+  emoji: ['\u{1F680}', '✨', '\u{1F41B}', '\u{1F4E6}'],
+};
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+const word = (n, pool) => Array.from({ length: n }, () => pick(pool)).join('');
 
-            const atStart = index <= 0;
-            const atEnd = index >= currentElements.length - 1;
-            
-            btnFirst.disabled = atStart;
-            btnPrev.disabled = atStart;
-            btnNext.disabled = atEnd;
-            btnLast.disabled = atEnd;
-        }
-        
-        // Initial example
-        stringInput.value = 'hello, 12345, -99, this is a very long string that should definitely be collapsed by default, 안녕하세요';
-        visualizeListpack();
+const makers = [
+  () => String(Math.floor(Math.random() * 128)),
+  () => String(-Math.floor(Math.random() * 4096)),
+  () => String(Math.floor(Math.random() * 65536) - 32768),
+  () => String(Math.floor(Math.random() * 4294967296) - 2147483648),
+  () => word(3 + Math.floor(Math.random() * 6), pools.ascii),
+  () => word(2 + Math.floor(Math.random() * 3), pools.emoji),
+  () => word(64 + Math.floor(Math.random() * 30), pools.ascii),
+  () => '0' + String(Math.floor(Math.random() * 900) + 100),   // leading zero: stays a string
+];
 
-    </script>
+function randomExample() {
+  const n = 5 + Math.floor(Math.random() * 3);
+  const shuffled = [...makers].sort(() => Math.random() - 0.5).slice(0, n);
+  $('src-input').value = shuffled.map((m) => m()).join(', ');
+  go();
+}
+
+function fillToSize() {
+  const target = parseInt($('size-input').value, 10);
+  if (!Number.isFinite(target) || target < 16) { $('size-input').value = '512'; return fillToSize(); }
+  const values = [];
+  let size = LP_HDR_SIZE + 1;
+  while (size < target && values.length < MAX_ELEMENTS) {
+    const v = pick(makers)();
+    values.push(v);
+    const e = encodeElement(v);
+    const enclen = e.encBytes.length + e.dataBytes.length;
+    size += enclen + encodeBacklen(enclen).length;
+  }
+  $('src-input').value = values.join(', ');
+  build(values);
+}
+
+function download() {
+  if (!lp) return;
+  const blob = new Blob([new Uint8Array(lp.bytes)], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'listpack.bin';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+$('go').addEventListener('click', go);
+$('rand').addEventListener('click', randomExample);
+$('grow').addEventListener('click', fillToSize);
+$('dl').addEventListener('click', download);
+$('src-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+$('size-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') fillToSize(); });
+$('first').addEventListener('click', () => setCursor(0));
+$('last').addEventListener('click', () => setCursor(lp.entries.length - 1));
+$('prev').addEventListener('click', stepPrev);
+$('next').addEventListener('click', stepNext);
+document.addEventListener('keydown', (e) => {
+  const t = document.activeElement;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+  if (e.key === 'ArrowLeft') { e.preventDefault(); stepPrev(); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); stepNext(); }
+});
+
+$('src-input').value = 'hello, 12345, -99, café, 007, this is a very long string that should definitely be collapsed by default';
+$('size-input').value = '512';
+go();
+</script>
 </body>
 </html>
-
