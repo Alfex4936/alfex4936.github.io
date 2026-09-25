@@ -443,8 +443,8 @@ function checkLimits() {
 
 // closeClientOnOutputBufferLimitReached, networking.c:3940
 function closeClientOnOutputBufferLimitReached(async) {
+  if (s.reply_bytes === 0) return 0                  // :3945 nothing on the list, never compared
   s.dimBuf = true
-  if (s.reply_bytes === 0) return 0                  // :3945
   if (s.asap) return 0                               // :3946
   const lim = limits()
   if (lim[0] === 0 && lim[1] === 0) {
