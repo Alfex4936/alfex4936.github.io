@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Redis Pub/Sub Visualizer</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
-<link rel="stylesheet" href="viz.css?v=2" />
+<link rel="stylesheet" href="viz.css?v=3" />
 <style>
   /* Page-specific only: viz.css has no client cards, no third accent colour. */
   :root { --shard: #9d86ff; }
@@ -91,7 +91,6 @@
   .client--pass  { border-left-color: var(--faint); }
 
   /* .pill sets display, which would otherwise beat the UA's [hidden] rule. */
-  .pill[hidden] { display: none; }
 
   .inbox:empty { margin-top: 0; }
   .inbox .push--new { animation: land 0.34s linear both; }

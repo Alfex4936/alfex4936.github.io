@@ -41,6 +41,14 @@
   box-sizing: border-box;
 }
 
+/* Every display: rule below outranks the UA's [hidden] on equal specificity,
+   so a hidden .pill stays visible — which shipped as "missed 0 pushes" on a
+   client that had missed nothing. !important is the point: it has to beat
+   anything this file or a page sets. */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   padding: 32px 24px 64px;
