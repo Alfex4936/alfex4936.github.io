@@ -264,8 +264,11 @@
           Memory is counted in keys, not bytes, so one key is always exactly the amount a single overflowing write
           needs to free; the real loop compares <code>mem_freed</code> against a computed <code>mem_tofree</code>
           (src/evict.c:573). There is one database here, so the per-database round-robin at src/evict.c:594&ndash;600
-          and src/evict.c:640&ndash;650 collapses to a single pass. Sampling is modelled as uniform random draws with
-          replacement. Expiry removes a key the moment its TTL passes rather than through the active expire cycle.
+          and src/evict.c:640&ndash;650 collapses to a single pass. Sampling is modelled as uniform random draws,
+          distinct within one call; the real <code>dictGetSomeKeys</code> walks the hash table instead, so its
+          spread is its own. Nothing dedupes the pool either way (src/evict.c:191&ndash;215), so a key sampled on two
+          separate rounds holds two slots with two different scores &mdash; you will see that happen.
+          Expiry removes a key the moment its TTL passes rather than through the active expire cycle.
           Each command advances the simulated clock 250&nbsp;ms so you do not have to wait in real time, which means
           four consecutive commands land in the same LRU second and are genuinely indistinguishable to
           <code>allkeys-lru</code> &mdash; that tie is not an artefact, it is what
@@ -392,16 +395,25 @@
   function showScore(v, o) {
     if (isLRU()) return 'idle ' + Math.round(v / 1000) + 's'
     if (isLFU()) return 'score ' + v
-    return 'exp ' + Math.max(0, Math.round((o.expireAt - simMs) / 1000)) + 's'
+    // The absolute expire time, which is what the score is built from. Seconds
+    // remaining would shift with the clock and make the sorted pool look unsorted.
+    return 'exp ' + fmtClock(o.expireAt)
   }
 
   // ---- the pool ------------------------------------------------------------
-  // Modelled on dictGetSomeKeys(sampledict, samples, maxmemory_samples) at
-  // evict.c:150: uniform random draws with replacement, so the same key can be
-  // sampled twice and land in two slots.
+  // Stands in for dictGetSomeKeys(sampledict, samples, maxmemory_samples) at
+  // evict.c:150: up to `count` distinct keys per call. Across calls the same key
+  // is sampled again and inserted again — nothing dedupes the pool — so one key
+  // can hold several slots at once.
   function sampleKeys(d, count) {
+    const n = Math.min(count, d.length)
+    const idx = d.map((_, i) => i)
     const out = []
-    for (let i = 0; i < count && d.length; i++) out.push(d[(Math.random() * d.length) | 0])
+    for (let i = 0; i < n; i++) {
+      const j = i + ((Math.random() * (idx.length - i)) | 0)
+      const t = idx[i]; idx[i] = idx[j]; idx[j] = t
+      out.push(d[idx[i]])
+    }
     return out
   }
 
@@ -545,8 +557,8 @@
     while (el.log.children.length > 120) el.log.lastChild.remove()
   }
 
-  function fmtClock() {
-    const s = unixtime()
+  function fmtClock(ms) {
+    const s = Math.floor((ms === undefined ? simMs : ms) / 1000)
     return 'T+' + String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0')
   }
 
