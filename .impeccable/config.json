@@ -20,6 +20,14 @@
         ],
         "createdAt": "2026-09-22T07:12:32.704Z",
         "reason": "verified: 0 em-dashes in prose. 11 true U+2014 are 1 title separator + 10 aria-labels; the rest of the count is <!-- --> comments, BEM (scene--cluster), --i custom props, and the page's ASCII diagrams"
+      },
+      {
+        "rule": "nested-cards",
+        "value": "*",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-09-25T04:07:34.983Z"
       }
     ]
   },
