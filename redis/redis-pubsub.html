@@ -1,997 +1,841 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Redis Pub/Sub Visualizer</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --dark-bg: #111827;
-            --panel-bg: #1f2937;
-            --border-color: #374151;
-            --text-main: #e5e7eb;
-            --text-muted: #9ca3af;
-            --accent-color: #ef4444; /* Red, now reserved for errors */
-            --green-light: #22c55e;
-            --blue-light: #3b82f6;
-            --purple-light: #a855f7;
-            --success-flash-color: #fde047; /* Bright yellow for success */
-        }
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--dark-bg);
-            color: var(--text-main);
-            overscroll-behavior: none;
-        }
-        .fira-code {
-            font-family: 'Fira Code', monospace;
-        }
-        .client-card, .server-panel {
-            background-color: var(--panel-bg);
-            border: 1px solid var(--border-color);
-            transition: all 0.2s ease-in-out;
-            position: relative;
-            z-index: 10;
-        }
-        .client-card:hover {
-            box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
-            border-color: rgba(239, 68, 68, 0.5);
-        }
-        .btn-icon {
-            background-color: #374151;
-            color: #d1d5db;
-        }
-        .btn-icon:hover {
-            background-color: #4b5563;
-            color: white;
-        }
-        .pattern-key-hint {
-            cursor: help;
-            text-decoration: underline dotted;
-            text-underline-offset: 3px;
-        }
-        .pattern-key-hint:hover {
-            background-color: rgba(59, 130, 246, 0.1);
-        }
-        .hint-container:hover .hint-popover {
-            opacity: 1;
-            visibility: visible;
-            z-index: 60;
-        }
-        /* Stacking fix for tooltips */
-        #server-channels { z-index: 30; }
-        #server-patterns { z-index: 20; }
-        
-        .flag {
-            transition: all 0.3s ease;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background-color: #4b5563; /* Off state */
-        }
-        .flag.active {
-            box-shadow: 0 0 8px 2px currentColor;
-        }
-        .flag-pubsub.active { background-color: var(--green-light); color: var(--green-light); }
-        .flag-pushing.active { background-color: var(--blue-light); color: var(--blue-light); }
-        
-        #console-output {
-            background-color: #0d1117; /* Darker terminal style */
-        }
-        #console-output > div {
-            padding-top: 0.3rem;
-            padding-bottom: 0.3rem;
-            border-bottom: 1px solid rgba(55, 65, 81, 0.6);
-        }
-        #console-output > div:last-child {
-            border-bottom: none;
-        }
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Redis Pub/Sub Visualizer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+<link rel="stylesheet" href="viz.css" />
+<style>
+  /* Page-specific only: viz.css has no client cards, no third accent colour. */
+  :root { --shard: #9d86ff; }
 
-        .input-error {
-            box-shadow: 0 0 8px 1px var(--accent-color);
-            border-color: var(--accent-color) !important;
-        }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .row > input { flex: 1 1 14ch; min-width: 0; }
+  .stack { display: grid; gap: 12px; min-width: 0; }
+  .field { display: grid; gap: 4px; min-width: 0; }
 
-        /* Message Animation */
-        .message-dot {
-            position: fixed;
-            z-index: 50;
-            width: 12px;
-            height: 12px;
-            background-color: var(--accent-color);
-            border-radius: 50%;
-            box-shadow: 0 0 10px var(--accent-color);
-            opacity: 0;
-            transition: transform 1s ease-in-out, opacity 0.2s ease-in-out;
-            pointer-events: none;
-        }
+  /* Anything holding a channel name the reader typed. */
+  .brk { overflow-wrap: anywhere; word-break: break-word; }
 
-        /* SVG lines */
-        #connection-svg line {
-            stroke-width: 2;
-            transition: all 0.3s ease;
-        }
+  .client { padding: 10px 0; }
+  .client + .client { border-top: 1px solid var(--rule); }
+  .client__head {
+    display: flex; flex-wrap: wrap; gap: 6px 10px;
+    align-items: baseline; justify-content: space-between; margin-bottom: 8px;
+  }
+  .client__name { font: 600 13px/1.5 var(--mono); }
+  .client--off .client__name { color: var(--faint); }
+  .client__head .row { gap: 6px; }
 
-        /* Scrollbar styling */
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: var(--dark-bg);
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #4b5563;
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #6b7280;
-        }
-    </style>
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+    padding: 2px 4px 2px 8px; font: 400 11px/1.7 var(--mono);
+    border: 1px solid var(--rule); border-radius: 999px; color: var(--dim);
+  }
+  .chip b { font-weight: 400; overflow-wrap: anywhere; }
+  .chip button { padding: 0 5px; border: 0; font-size: 12px; line-height: 1.3; }
+  .chip--ch  { color: var(--ok);    border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+  .chip--pat { color: var(--warn);  border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+  .chip--sh  { color: var(--shard); border-color: color-mix(in srgb, var(--shard) 45%, transparent); }
+
+  .inbox { margin-top: 8px; display: grid; gap: 3px; font: 400 11.5px/1.65 var(--mono); }
+  .inbox div { overflow-wrap: anywhere; color: var(--dim); }
+  .inbox .k { color: var(--faint); }
+  .push--message  .v { color: var(--ok); }
+  .push--pmessage .v { color: var(--warn); }
+  .push--smessage .v { color: var(--shard); }
+
+  .dict { display: grid; gap: 3px; font: 400 12px/1.7 var(--mono); }
+  .dict div { overflow-wrap: anywhere; }
+  .dict .key--ch  { color: var(--ok); }
+  .dict .key--pat { color: var(--warn); }
+  .dict .key--sh  { color: var(--shard); }
+  .dict .empty { color: var(--faint); }
+
+  .kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 12px;
+        font: 400 12px/1.7 var(--mono); }
+  .kv dt { color: var(--faint); }
+  .kv dd { margin: 0; color: var(--dim); overflow-wrap: anywhere; }
+
+  .note { margin-top: 10px; color: var(--dim); font-size: 13px; }
+  .note + .note { margin-top: 8px; }
+  .sim { color: var(--faint); font-size: 12px; }
+  b.ch { color: var(--ok); font-weight: 400; }
+  b.pat { color: var(--warn); font-weight: 400; }
+  b.sh { color: var(--shard); font-weight: 400; }
+</style>
 </head>
-<body class="min-h-screen p-4 lg:p-6 select-none">
-    
-    <main class="relative z-10 flex flex-col h-[calc(100vh-2rem)] lg:h-[calc(100vh-3rem)]">
-        <header class="flex-shrink-0 mb-4 text-center">
-            <h1 class="text-2xl lg:text-3xl font-bold text-red-500 flex items-center justify-center gap-3">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8"><path d="M21.5 12c0-5.25-4.25-9.5-9.5-9.5S2.5 6.75 2.5 12s4.25 9.5 9.5 9.5c.23 0 .46-.01.68-.03"></path><path d="M12 15c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3"></path><path d="M12 4v2"></path><path d="M12 18v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M4 12H2"></path><path d="M20 12h2"></path><path d="m4.93 19.07 1.41-1.41"></path><path d="m17.66 6.34 1.41-1.41"></path></svg>
-                Redis Pub/Sub Visualizer
-            </h1>
-            <p class="text-sm text-gray-400 mt-1">An interactive simulation of Redis's Publish/Subscribe mechanism.</p>
-        </header>
+<body>
+<div class="wrap">
 
-        <div class="flex-grow grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-0 relative">
-            <!-- SVG layer for connections -->
-            <svg id="connection-svg" class="absolute top-0 left-0 w-full h-full pointer-events-none z-0"></svg>
-            <!-- Clients Column -->
-            <section class="flex flex-col gap-4 min-h-0">
-                <div class="flex-shrink-0 flex items-center justify-between">
-                    <h2 class="text-xl font-semibold">Clients</h2>
-                    <div class="flex items-center gap-2">
-                         <button id="remove-all-clients-btn" class="flex items-center justify-center w-10 h-10 rounded-full bg-gray-600 hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed" title="Remove All Clients">
-                            <i class="fas fa-trash-alt w-4 h-4"></i>
-                        </button>
-                        <button id="add-client-btn" class="flex items-center justify-center w-10 h-10 rounded-full bg-red-600 hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed" title="Add New Client (long press for chaos)">
-                            <i class="fas fa-plus w-4 h-4"></i>
-                        </button>
-                    </div>
-                </div>
-                <div id="clients-container" class="flex-grow overflow-y-auto pr-2 space-y-4 relative">
-                    <div id="no-clients-placeholder" class="absolute inset-0 flex flex-col items-center justify-center text-gray-500">
-                        <i class="fas fa-ghost fa-3x mb-2"></i>
-                        <p>There are no clients yet.</p>
-                    </div>
-                    <!-- Client cards will be injected here -->
-                </div>
-            </section>
+  <a class="back" href="../index.html">&larr; index</a>
+  <h1>Redis Pub/Sub</h1>
+  <p class="src">Modelled on <a href="https://github.com/redis/redis/blob/7.2.14/src/pubsub.c">src/pubsub.c</a>, Redis 7.2.14. Pattern matching is a line-for-line port of <code>stringmatchlen()</code> from <code>src/util.c</code>; hash slots use the XMODEM CRC-16 of <code>src/crc16.c</code>.</p>
 
-            <!-- Server Column -->
-            <section class="flex flex-col gap-4 min-h-0">
-                <h2 class="flex-shrink-0 text-xl font-semibold text-center relative z-5">Redis Server Internals</h2>
-                <div class="flex-grow flex flex-col gap-4 overflow-y-auto pr-2">
-                    <div id="server-channels" class="server-panel rounded-lg p-3">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <h3 class="font-semibold fira-code text-green-400">server.pubsub_channels</h3>
-                                <div class="text-sm text-gray-400 italic">Data Type: `dict` (channel -> list of clients)</div>
-                            </div>
-                            <div class="relative hint-container flex-shrink-0 ml-2">
-                                <i class="fas fa-info-circle text-gray-500 hover:text-gray-300 transition-colors cursor-help"></i>
-                                <div class="hint-popover absolute top-full right-0 mt-2 w-64 bg-gray-900 text-gray-300 text-xs rounded-lg shadow-lg p-3 border border-gray-700 pointer-events-none opacity-0 invisible transition-opacity duration-200">
-                                    <strong class="font-semibold text-gray-100">Purpose:</strong> Maps an exact channel name to a list of subscribed clients. This is the core engine for standard Pub/Sub. Used by `SUBSCRIBE` and `PUBLISH`.
-                                </div>
-                            </div>
-                        </div>
-                        <div id="channels-list" class="mt-2 space-y-1 fira-code text-sm"></div>
-                    </div>
-                    <div id="server-patterns" class="server-panel rounded-lg p-3">
-                        <div class="flex justify-between items-start">
-                             <div>
-                                <h3 class="font-semibold fira-code text-blue-400">server.pubsub_patterns</h3>
-                                <div class="text-sm text-gray-400 italic">Data Type: `dict` (pattern -> list of clients)</div>
-                            </div>
-                             <div class="relative hint-container flex-shrink-0 ml-2">
-                                <i class="fas fa-info-circle text-gray-500 hover:text-gray-300 transition-colors cursor-help"></i>
-                                <div class="hint-popover absolute top-full right-0 mt-2 w-72 bg-gray-900 text-gray-300 text-xs rounded-lg shadow-lg p-3 border border-gray-700 pointer-events-none opacity-0 invisible transition-opacity duration-200">
-                                    <strong class="font-semibold text-gray-100 block mb-1">Purpose & Use Case:</strong>
-                                    <span>Maps glob-style patterns to clients. Use this for flexible, category-based subscriptions (e.g., all events for a specific user ID). Be aware that on every `PUBLISH`, Redis iterates through *all* patterns, which has a higher performance cost than direct channel matching.</span>
-                                    <div class="mt-2 pt-2 border-t border-gray-700">
-                                        <strong class="font-semibold text-gray-100 block mb-1">Supported Glob Patterns:</strong>
-                                        <div class="fira-code space-y-1">
-                                            <div><span class="text-blue-300 w-16 inline-block">*</span> &rarr; any chars</div>
-                                            <div><span class="text-blue-300 w-16 inline-block">?</span> &rarr; one char</div>
-                                            <div><span class="text-blue-300 w-16 inline-block">[...]</span> &rarr; any char in set</div>
-                                        </div>
-                                        <div class="mt-2 text-gray-400 fira-code text-[0.7rem] bg-gray-800/50 p-2 rounded">
-                                            <div>e.g., <span class="text-blue-300">log:[we]</span> matches <span class="text-green-300">'log:w'</span> & <span class="text-green-300">'log:e'</span>.</div>
-                                            <div class="mt-1">e.g., <span class="text-blue-300">log:[^i]</span> matches <span class="text-green-300">'log:w'</span> but not <span class="text-red-400">'log:i'</span>.</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div id="patterns-list" class="mt-2 space-y-1 fira-code text-sm"></div>
-                    </div>
-                     <div id="server-shard-channels" class="server-panel rounded-lg p-3">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <h3 class="font-semibold fira-code text-purple-400">server.pubsubshard_channels</h3>
-                                <div class="text-sm text-gray-400 italic">Data Type: `dict` (shardchannel -> list of clients)</div>
-                            </div>
-                             <div class="relative hint-container flex-shrink-0 ml-2">
-                                <i class="fas fa-info-circle text-gray-500 hover:text-gray-300 transition-colors cursor-help"></i>
-                                <div class="hint-popover absolute top-full right-0 mt-2 w-64 bg-gray-900 text-gray-300 text-xs rounded-lg shadow-lg p-3 border border-gray-700 pointer-events-none opacity-0 invisible transition-opacity duration-200">
-                                    <strong class="font-semibold text-gray-100">Purpose:</strong> (Redis 7.0+) For Pub/Sub in a Redis Cluster. Messages are only propagated within a single shard, reducing network traffic. Used by `SSUBSCRIBE` and `SPUBLISH`.
-                                </div>
-                            </div>
-                        </div>
-                        <div id="shard-channels-list" class="mt-2 space-y-1 fira-code text-sm"></div>
-                    </div>
-                </div>
-            </section>
-            
-            <!-- Logs Column -->
-            <section class="flex flex-col gap-4 min-h-0">
-                <div class="flex-shrink-0 flex items-center justify-center relative">
-                    <h2 class="text-xl font-semibold text-center">Command Log</h2>
-                    <button id="clear-log-btn" class="absolute right-0 p-2 text-gray-500 hover:text-red-500 rounded-full transition-colors" title="Clear Log">
-                        <i class="fas fa-trash-alt w-4 h-4"></i>
-                    </button>
-                </div>
-                <div id="console-output" class="flex-grow server-panel rounded-lg p-3 overflow-y-auto fira-code text-sm flex flex-col-reverse">
-                    <!-- Log entries will be prepended here -->
-                </div>
-            </section>
+  <p class="lede">
+    Two facts about Pub/Sub cost people production incidents. The first: a client subscribed to
+    a channel <em>and</em> to a pattern that matches it receives the message <b>twice</b> &mdash;
+    once as <code>message</code>, once as <code>pmessage</code> &mdash; and <code>PUBLISH</code>
+    counts both (pubsub.c:485-490 then pubsub.c:510-516, with no de-duplication between them).
+    The second: delivery is attempted exactly once against whoever is connected at that instant.
+    Nothing is stored, nothing is replayed, nothing is acknowledged. Take a subscriber offline
+    below and publish; the message is gone.
+  </p>
 
+  <section class="panel">
+    <div class="panel__head">
+      <h2>Connection</h2>
+      <span class="cite">server.c:4077-4094 &middot; cluster.c:7380 getNodeByQuery</span>
+    </div>
+    <div class="row">
+      <label for="resp">Protocol (all clients)</label>
+      <select id="resp">
+        <option value="3">RESP3</option>
+        <option value="2">RESP2</option>
+      </select>
+      <label for="cluster" style="margin-left:6px">
+        <input type="checkbox" id="cluster" style="vertical-align:-1px" /> cluster mode
+      </label>
+      <span id="wire-note" class="cite"></span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel__head">
+      <h2>Publish</h2>
+      <span class="cite">pubsub.c:470 pubsubPublishMessageInternal</span>
+    </div>
+    <div class="row">
+      <label for="pub-from">from</label>
+      <select id="pub-from" aria-label="Publishing client"></select>
+      <input id="pub-ch" type="text" spellcheck="false" aria-label="Channel" placeholder="channel" value="news" />
+      <input id="pub-msg" type="text" spellcheck="false" aria-label="Message" placeholder="message" value="hello" />
+      <button id="pub" class="btn btn--go">PUBLISH</button>
+      <button id="spub" class="btn">SPUBLISH</button>
+    </div>
+    <p class="note" id="pub-result">&nbsp;</p>
+  </section>
+
+  <div class="grid grid--side">
+    <div class="stack">
+
+      <section class="panel">
+        <div class="panel__head">
+          <h2>Clients</h2>
+          <span class="cite">pubsub.c:246 subscribe &middot; networking.c:1566 freeClient</span>
         </div>
-    </main>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const clientsContainer = document.getElementById('clients-container');
-            const addClientBtn = document.getElementById('add-client-btn');
-            const channelsList = document.getElementById('channels-list');
-            const patternsList = document.getElementById('patterns-list');
-            const shardChannelsList = document.getElementById('shard-channels-list');
-            const consoleOutput = document.getElementById('console-output');
-            const svgContainer = document.getElementById('connection-svg');
-            const clearLogBtn = document.getElementById('clear-log-btn');
-            const removeAllClientsBtn = document.getElementById('remove-all-clients-btn');
-
-            let clientIdCounter = 0;
-            const state = {
-                clients: new Map(),
-                server: {
-                    pubsub_channels: new Map(),
-                    pubsub_patterns: new Map(),
-                    pubsubshard_channels: new Map(),
-                }
-            };
-
-            const globToRegex = (glob) => {
-                let regex = '^';
-                for (let i = 0; i < glob.length; i++) {
-                    const c = glob[i];
-                    switch (c) {
-                        case '*':
-                            regex += '.*';
-                            break;
-                        case '?':
-                            regex += '.';
-                            break;
-                        case '[': {
-                            // Find the closing bracket for the character set
-                            let end = glob.indexOf(']', i);
-                            if (end === -1) { // Malformed pattern, treat '[' as literal
-                                regex += '\\[';
-                                break;
-                            }
-                            // Extract the character set content
-                            let charSet = glob.substring(i, end + 1);
-                            // It's already a valid regex character set, so just append it.
-                            // We don't need to escape characters inside a valid set.
-                            regex += charSet;
-                            i = end; // Move index past the processed set
-                            break;
-                        }
-                        // Escape other special regex characters
-                        case '.': case '+': case '(': case ')': case '{': case '}': case '|': case '\\': case '$': case '^':
-                             regex += '\\' + c;
-                             break;
-                        default:
-                            regex += c;
-                    }
-                }
-                return new RegExp(regex + '$');
-            };
-
-            const generateExampleForPattern = (pattern) => {
-                let example = '';
-                const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-                const words = ['user', 'event', 'prod', 'status', 'login', '1a2b3c', 'update', 'build'];
-                const randomChar = () => chars[Math.floor(Math.random() * chars.length)];
-                const randomWord = () => words[Math.floor(Math.random() * words.length)];
-
-                for (let i = 0; i < pattern.length; i++) {
-                    const char = pattern[i];
-                    switch (char) {
-                        case '*':
-                            example += randomWord();
-                            break;
-                        case '?':
-                            example += randomChar();
-                            break;
-                        case '[':
-                            const end = pattern.indexOf(']', i);
-                            if (end === -1) {
-                                example += '[';
-                                break;
-                            }
-                            const setContent = pattern.substring(i + 1, end);
-                            if (setContent.startsWith('^')) {
-                                const negatedChars = new Set(setContent.substring(1));
-                                let availableChars = [...chars].filter(c => !negatedChars.has(c));
-                                example += availableChars[Math.floor(Math.random() * availableChars.length)];
-                            } else {
-                                example += setContent[Math.floor(Math.random() * setContent.length)];
-                            }
-                            i = end;
-                            break;
-                        default:
-                            example += char;
-                    }
-                }
-                return example;
-            };
-
-            const log = (message, type = 'info') => {
-                const entry = document.createElement('div');
-                let colorClass = 'text-gray-400';
-                let prefix = '>&nbsp;';
-                if (type === 'cmd') {
-                    colorClass = 'text-cyan-400';
-                } else if (type === 'resp') {
-                    colorClass = 'text-yellow-400';
-                    prefix = '>&nbsp;<span class="text-gray-500">└─</span>&nbsp;';
-                } else if (type === 'event') {
-                    colorClass = 'text-purple-400';
-                    prefix = '/*&nbsp;';
-                }
-                entry.innerHTML = `<span class="text-gray-600">${new Date().toLocaleTimeString()}</span> ${prefix}<span class="${colorClass}">${message}</span>${type === 'event' ? ' */' : ''}`;
-                consoleOutput.prepend(entry);
-            };
-
-            const updateAllViews = () => {
-                state.clients.forEach(client => renderClient(client.id));
-                renderServer();
-                // Use a double requestAnimationFrame to ensure the DOM has been painted
-                // before we try to measure elements for line drawing.
-                requestAnimationFrame(() => {
-                    requestAnimationFrame(drawConnections);
-                });
-            };
-            
-            const animateMessage = (fromElem, toElem, onComplete) => {
-                if (!fromElem || !toElem) {
-                    if (onComplete) onComplete();
-                    return;
-                }
-                const startRect = fromElem.getBoundingClientRect();
-                const endRect = toElem.getBoundingClientRect();
-
-                const dot = document.createElement('div');
-                dot.className = 'message-dot';
-                document.body.appendChild(dot);
-                
-                const startX = startRect.left + startRect.width / 2;
-                const startY = startRect.top + startRect.height / 2;
-                const endX = endRect.left + endRect.width / 2;
-                const endY = endRect.top + endRect.height / 2;
-                
-                dot.style.transform = `translate(${startX}px, ${startY}px)`;
-                dot.style.opacity = '1';
-
-                requestAnimationFrame(() => {
-                    dot.style.transform = `translate(${endX}px, ${endY}px)`;
-                });
-
-                dot.addEventListener('transitionend', () => {
-                    dot.remove();
-                    if (onComplete) onComplete();
-                }, { once: true });
-            };
-
-            const flashConnectionLine = (clientId, targetId, originalColor) => {
-                const line = document.getElementById(`line-client-${clientId}-to-${targetId}`);
-                if (!line) return;
-
-                line.setAttribute('stroke', 'var(--success-flash-color)');
-                line.style.strokeWidth = '4px';
-                line.style.strokeDasharray = 'none';
-
-                setTimeout(() => {
-                    line.setAttribute('stroke', originalColor);
-                    line.style.strokeWidth = '2';
-                    line.style.strokeDasharray = '5, 5';
-                }, 600); // Duration of the flash
-            };
-
-
-            const handlePublish = (clientId, channel, message, isShard = false) => {
-                const publisher = state.clients.get(clientId);
-                if (!publisher) return;
-                
-                const command = isShard ? 'SPUBLISH' : 'PUBLISH';
-                log(`${command} ${channel} "${message}"`, 'cmd');
-
-                publisher.flags.PUSHING = true;
-                renderClient(clientId);
-
-                let receivers = 0;
-                const notifiedClients = new Set();
-                const fromElem = document.querySelector(`[data-client-id="${clientId}"] .publish-btn[data-shard="${isShard}"]`);
-
-                const pubSubType = isShard ? state.server.pubsubshard_channels : state.server.pubsub_channels;
-
-                // 1. Direct channel subscribers
-                if (pubSubType.has(channel)) {
-                    const subscribers = pubSubType.get(channel);
-                    subscribers.forEach(subId => {
-                        if (notifiedClients.has(subId)) return;
-                        const client = state.clients.get(subId);
-                        const toElem = document.querySelector(`[data-client-id="${subId}"]`);
-
-                        const targetId = isShard ? 'shard-channels' : 'channels';
-                        const originalColor = isShard ? 'var(--purple-light)' : 'var(--green-light)';
-                        flashConnectionLine(subId, targetId, originalColor);
-
-                        animateMessage(fromElem, toElem, () => {
-                            client.inbox.unshift({ type: 'message', channel, message });
-                            if (document.querySelector(`[data-client-id="${subId}"]`)) renderClient(subId);
-                        });
-                        notifiedClients.add(subId);
-                        receivers++;
-                    });
-                }
-
-                // 2. Pattern subscribers (only for non-sharded)
-                if (!isShard) {
-                    state.server.pubsub_patterns.forEach((subscribers, pattern) => {
-                        const patternRegex = globToRegex(pattern);
-                        if (patternRegex.test(channel)) {
-                            subscribers.forEach(subId => {
-                                if (notifiedClients.has(subId)) return;
-                                const client = state.clients.get(subId);
-                                const toElem = document.querySelector(`[data-client-id="${subId}"]`);
-
-                                flashConnectionLine(subId, 'patterns', 'var(--blue-light)');
-
-                                animateMessage(fromElem, toElem, () => {
-                                    client.inbox.unshift({ type: 'pmessage', pattern, channel, message });
-                                    if (document.querySelector(`[data-client-id="${subId}"]`)) renderClient(subId);
-                                });
-                                notifiedClients.add(subId);
-                                receivers++;
-                            });
-                        }
-                    });
-                }
-
-                setTimeout(() => {
-                    publisher.flags.PUSHING = false;
-                    if (document.querySelector(`[data-client-id="${clientId}"]`)) renderClient(clientId);
-                    log(`(integer) ${receivers}`, 'resp');
-                }, 1000); // Duration of animation
-            };
-            
-            const handleSubscription = (clientId, channel, type) => {
-                const client = state.clients.get(clientId);
-                if (!client || !channel) return;
-
-                log(`${type} ${channel}`, 'cmd');
-
-                const totalSubscriptions = client.subscriptions.size + client.patterns.size + client.shardSubscriptions.size;
-                if (totalSubscriptions >= 10) {
-                    log('SIMULATION LIMIT: Max 10 subscriptions reached. In production Redis, the `client-query-buffer-limit` for pubsub clients is the key configuration to prevent a single subscriber from consuming too much server memory.', 'event');
-                    return;
-                }
-                
-                let clientSubs, serverPubSub;
-                switch (type) {
-                    case 'SUBSCRIBE': clientSubs = client.subscriptions; serverPubSub = state.server.pubsub_channels; break;
-                    case 'PSUBSCRIBE': clientSubs = client.patterns; serverPubSub = state.server.pubsub_patterns; break;
-                    case 'SSUBSCRIBE': clientSubs = client.shardSubscriptions; serverPubSub = state.server.pubsubshard_channels; break;
-                }
-
-                if (clientSubs.has(channel)) {
-                    log('Client already subscribed', 'event');
-                    return;
-                }
-
-                client.flags.PUBSUB = true;
-                clientSubs.add(channel);
-
-                if (!serverPubSub.has(channel)) {
-                    serverPubSub.set(channel, new Set());
-                }
-                serverPubSub.get(channel).add(clientId);
-
-                // Educational performance warning for PSUBSCRIBE
-                if (type === 'PSUBSCRIBE' && serverPubSub.size === 5) {
-                    log('PERFORMANCE HINT: You have 5+ active patterns. In a real Redis server, every PUBLISH must check against every pattern (O(N) complexity). Use patterns judiciously in high-throughput systems.', 'event');
-                }
-
-                log(`1) "${type.toLowerCase()}" 2) "${channel}" 3) (integer) ${client.subscriptions.size + client.patterns.size + client.shardSubscriptions.size}`, 'resp');
-                updateAllViews();
-            };
-
-            const handleUnsubscription = (clientId, channel, type, silent = false) => {
-                const client = state.clients.get(clientId);
-                 if (!client || !channel) return;
-
-                let clientSubs, serverPubSub;
-                 switch (type) {
-                    case 'UNSUBSCRIBE': clientSubs = client.subscriptions; serverPubSub = state.server.pubsub_channels; break;
-                    case 'PUNSUBSCRIBE': clientSubs = client.patterns; serverPubSub = state.server.pubsub_patterns; break;
-                    case 'SUNSUBSCRIBE': clientSubs = client.shardSubscriptions; serverPubSub = state.server.pubsubshard_channels; break;
-                }
-                
-                if (!silent) log(`${type} ${channel}`, 'cmd');
-                if (!clientSubs.has(channel)) {
-                     if (!silent) log('Not subscribed to this channel/pattern', 'event');
-                     return;
-                }
-
-                clientSubs.delete(channel);
-                const subscribers = serverPubSub.get(channel);
-                if (subscribers) {
-                    subscribers.delete(clientId);
-                    if (subscribers.size === 0) {
-                        serverPubSub.delete(channel);
-                    }
-                }
-
-                if (client.subscriptions.size === 0 && client.patterns.size === 0 && client.shardSubscriptions.size === 0) {
-                    client.flags.PUBSUB = false;
-                }
-                
-                if (!silent) log(`1) "${type.toLowerCase()}" 2) "${channel}" 3) (integer) ${client.subscriptions.size + client.patterns.size + client.shardSubscriptions.size}`, 'resp');
-                updateAllViews();
-            };
-
-            // --- UI RENDERING ---
-
-            const updateClientControls = () => {
-                const noClientsPlaceholder = document.getElementById('no-clients-placeholder');
-                const clientCount = state.clients.size;
-                noClientsPlaceholder.style.display = clientCount === 0 ? 'flex' : 'none';
-                removeAllClientsBtn.disabled = clientCount === 0;
-                addClientBtn.disabled = clientCount >= 10;
-            };
-
-            const createClient = (silent = false) => {
-                if (state.clients.size >= 10) {
-                    if (!silent) log('SIMULATION LIMIT: Max 10 clients reached.', 'event');
-                    return;
-                }
-                // Educational hint for maxclients
-                if (state.clients.size === 9 && !silent) {
-                    log('SIMULATION HINT: You now have 10 clients. In production Redis, the `maxclients` setting (default: 10,000) limits total connections to protect server resources.', 'event');
-                }
-
-                clientIdCounter++;
-                const clientId = clientIdCounter;
-                const newClient = {
-                    id: clientId,
-                    flags: { PUBSUB: false, PUSHING: false },
-                    subscriptions: new Set(),
-                    patterns: new Set(),
-                    shardSubscriptions: new Set(),
-                    inbox: [],
-                };
-                state.clients.set(clientId, newClient);
-                renderClient(clientId, true);
-                if (!silent) log(`New client connected: client-${clientId}`, 'event');
-                updateClientControls();
-                return clientId;
-            };
-
-            const renderClient = (clientId, isNew = false) => {
-                const client = state.clients.get(clientId);
-                if (!client) return;
-                
-                let clientEl = document.querySelector(`[data-client-id="${clientId}"]`);
-                if (!clientEl) {
-                    clientEl = document.createElement('div');
-                    clientEl.className = 'client-card rounded-lg p-3 space-y-3';
-                    clientEl.dataset.clientId = clientId;
-                    clientsContainer.prepend(clientEl);
-                }
-                
-                const subscriptionsHTML = (subs, type, color) => Array.from(subs).map(s => `
-                    <div class="flex items-center justify-between bg-gray-800 px-2 py-1 rounded-md">
-                        <span class="text-${color}-400">${s}</span>
-                        <button class="btn-icon p-1 rounded-full unsubscribe-btn" data-channel="${s}" data-type="${type}" title="Unsubscribe">
-                            <i class="fas fa-times w-3 h-3 pointer-events-none"></i>
-                        </button>
-                    </div>`).join('');
-
-                const inboxHTML = client.inbox.slice(0, 5).map(msg => {
-                    let content;
-                    switch (msg.type) {
-                        case 'message': content = `<span class="text-green-400">[${msg.channel}]</span>: ${msg.message}`; break;
-                        case 'pmessage': content = `<span class="text-blue-400">{${msg.pattern}}</span> -> <span class="text-green-400">[${msg.channel}]</span>: ${msg.message}`; break;
-                    }
-                    return `<div class="bg-gray-900/50 p-1.5 rounded text-xs truncate">${content}</div>`;
-                }).join('');
-
-                clientEl.innerHTML = `
-                    <div class="flex items-center justify-between">
-                        <h4 class="font-bold text-lg">Client-${clientId}</h4>
-                        <div class="flex items-center gap-3 text-xs">
-                            <div class="flex items-center gap-1.5" title="CLIENT_PUBSUB: Client is in Pub/Sub mode. (1<<18)">
-                                <div class="flag flag-pubsub ${client.flags.PUBSUB ? 'active' : ''}"></div>
-                                <span>PUBSUB</span>
-                            </div>
-                             <div class="flex items-center gap-1.5" title="CLIENT_PUSHING: This client is pushing notifications. (1ULL<<46)">
-                                <div class="flag flag-pushing ${client.flags.PUSHING ? 'active' : ''}"></div>
-                                <span>PUSHING</span>
-                            </div>
-                            <button class="remove-client-btn p-1 text-gray-500 hover:text-red-500 rounded-full transition-colors" title="Disconnect Client">
-                               <i class="fas fa-times-circle w-4 h-4 pointer-events-none"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Actions -->
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                        <div class="space-y-1">
-                            <label class="font-semibold">Publish</label>
-                            <input type="text" placeholder="channel" class="w-full bg-gray-700 p-1.5 rounded border border-transparent focus:border-red-500 focus:outline-none focus:ring-0 channel-input">
-                            <input type="text" placeholder="message" class="w-full bg-gray-700 p-1.5 rounded border border-transparent focus:border-red-500 focus:outline-none focus:ring-0 message-input">
-                             <div class="flex gap-1">
-                                <button class="w-full btn-icon p-1.5 rounded publish-btn" data-shard="false" title="PUBLISH">
-                                    <i class="fas fa-paper-plane w-4 h-4 mx-auto pointer-events-none"></i>
-                                </button>
-                                <button class="w-full btn-icon p-1.5 rounded publish-btn bg-purple-800/50 hover:bg-purple-700/50" data-shard="true" title="SPUBLISH">
-                                     <i class="fas fa-share-nodes w-4 h-4 mx-auto pointer-events-none"></i>
-                                </button>
-                             </div>
-                        </div>
-                        <div class="space-y-1">
-                            <label class="font-semibold">Subscribe</label>
-                            <input type="text" placeholder="channel / pattern" class="w-full bg-gray-700 p-1.5 rounded border border-transparent focus:border-red-500 focus:outline-none focus:ring-0 sub-input">
-                            <div class="flex gap-1">
-                                <button class="w-full btn-icon p-1.5 rounded subscribe-btn" data-type="SUBSCRIBE" title="SUBSCRIBE">
-                                    <i class="fas fa-satellite-dish w-4 h-4 mx-auto pointer-events-none"></i>
-                                </button>
-                                <button class="w-full btn-icon p-1.5 rounded subscribe-btn" data-type="PSUBSCRIBE" title="PSUBSCRIBE">
-                                    <i class="fas fa-filter w-4 h-4 mx-auto pointer-events-none"></i>
-                                </button>
-                                <button class="w-full btn-icon p-1.5 rounded subscribe-btn bg-purple-800/50 hover:bg-purple-700/50" data-type="SSUBSCRIBE" title="SSUBSCRIBE">
-                                    <i class="fas fa-circle-nodes w-4 h-4 mx-auto pointer-events-none"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Subscriptions & Inbox -->
-                    <div class="space-y-2 text-sm">
-                        ${(client.subscriptions.size > 0 || client.patterns.size > 0 || client.shardSubscriptions.size > 0) ? `
-                        <div>
-                            <h5 class="font-semibold text-gray-400 text-xs mb-1">Subscriptions</h5>
-                            <div class="fira-code text-xs space-y-1">
-                                ${subscriptionsHTML(client.subscriptions, 'UNSUBSCRIBE', 'green')}
-                                ${subscriptionsHTML(client.patterns, 'PUNSUBSCRIBE', 'blue')}
-                                ${subscriptionsHTML(client.shardSubscriptions, 'SUNSUBSCRIBE', 'purple')}
-                            </div>
-                        </div>` : ''}
-
-                        ${client.inbox.length > 0 ? `
-                        <div>
-                            <h5 class="font-semibold text-gray-400 text-xs mb-1 flex items-center gap-1.5" title="Simulation Only: This log shows recent messages for clarity. Standard Redis Pub/Sub does not store messages; they are 'fire-and-forget'. For persistent message history, use Redis Streams.">
-                                Recent Messages (Simulation)
-                                <i class="fas fa-info-circle text-gray-500"></i>
-                            </h5>
-                            <div class="fira-code space-y-1">${inboxHTML}</div>
-                        </div>` : ''}
-                    </div>
-                `;
-                if(isNew) {
-                    clientEl.style.opacity = 0;
-                    clientEl.style.transform = 'translateX(-20px)';
-                    
-                    // CRITICAL FIX: Wait for the animation to finish before drawing lines
-                    // to ensure we get the final, correct position of the element.
-                    clientEl.addEventListener('transitionend', drawConnections, { once: true });
-
-                    requestAnimationFrame(() => {
-                        clientEl.style.transition = 'opacity 0.3s, transform 0.3s';
-                        clientEl.style.opacity = 1;
-                        clientEl.style.transform = 'translateX(0)';
-                    });
-                }
-            };
-            
-            const renderServer = () => {
-                const renderDict = (map, color) => Array.from(map.entries()).map(([key, clients]) => {
-                    const isPattern = color === 'blue';
-                    const keyHtml = isPattern 
-                        ? `<span class="pattern-key-hint" data-pattern="${key}" title="Click to see matching examples">'${key}'</span>`
-                        : `'${key}'`;
-                    
-                    return `<div>
-                        <span class="text-${color}-400">${keyHtml}</span>: [${Array.from(clients).map(id => `client-${id}`).join(', ')}]
-                    </div>`;
-                }).join('') || '<div class="text-gray-500">{empty}</div>';
-
-                channelsList.innerHTML = renderDict(state.server.pubsub_channels, 'green');
-                patternsList.innerHTML = renderDict(state.server.pubsub_patterns, 'blue');
-                shardChannelsList.innerHTML = renderDict(state.server.pubsubshard_channels, 'purple');
-            };
-
-            const drawConnections = () => {
-                svgContainer.innerHTML = '';
-                const gridContainer = svgContainer.parentElement;
-                if (!gridContainer) return;
-                const gridRect = gridContainer.getBoundingClientRect();
-                
-                const serverChannelEl = document.getElementById('server-channels');
-                const serverPatternEl = document.getElementById('server-patterns');
-                const serverShardEl = document.getElementById('server-shard-channels');
-                
-                if(!serverChannelEl || !serverPatternEl || !serverShardEl) return;
-
-                const serverChannelRect = serverChannelEl.getBoundingClientRect();
-                const serverPatternRect = serverPatternEl.getBoundingClientRect();
-                const serverShardRect = serverShardEl.getBoundingClientRect();
-                const clientsContainerRect = clientsContainer.getBoundingClientRect();
-
-                state.clients.forEach(client => {
-                    const clientEl = document.querySelector(`[data-client-id="${client.id}"]`);
-                    if (!clientEl) return;
-                    const clientRect = clientEl.getBoundingClientRect();
-
-                    // Don't draw lines for clients scrolled out of view
-                    if (clientRect.bottom < clientsContainerRect.top || clientRect.top > clientsContainerRect.bottom) {
-                        return;
-                    }
-
-                    const drawLine = (targetRect, color, clientId, targetId) => {
-                        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                        line.id = `line-client-${clientId}-to-${targetId}`;
-                        
-                        // Calculate coordinates relative to the grid container
-                        const x1 = (clientRect.left + clientRect.width / 2) - gridRect.left;
-                        const y1 = (clientRect.top + clientRect.height / 2) - gridRect.top;
-                        const x2 = (targetRect.left + targetRect.width / 2) - gridRect.left;
-                        const y2 = (targetRect.top + targetRect.height / 2) - gridRect.top;
-
-                        line.setAttribute('x1', x1);
-                        line.setAttribute('y1', y1);
-                        line.setAttribute('x2', x2);
-                        line.setAttribute('y2', y2);
-                        line.setAttribute('stroke', `var(--${color}-light)`);
-                        line.style.strokeDasharray = '5, 5';
-                        svgContainer.appendChild(line);
-                    }
-
-                    if (client.subscriptions.size > 0) drawLine(serverChannelRect, 'green', client.id, 'channels');
-                    if (client.patterns.size > 0) drawLine(serverPatternRect, 'blue', client.id, 'patterns');
-                    if (client.shardSubscriptions.size > 0) drawLine(serverShardRect, 'purple', client.id, 'shard-channels');
-                });
-            };
-
-            // --- EVENT LISTENERS ---
-            
-            let longPressTimer;
-            let isLongPress = false;
-
-            clientsContainer.addEventListener('scroll', drawConnections);
-
-            addClientBtn.addEventListener('mousedown', () => {
-                isLongPress = false;
-                addClientBtn.style.transform = 'scale(0.95)';
-                longPressTimer = setTimeout(() => {
-                    isLongPress = true;
-                    addClientBtn.style.transform = 'scale(1.1)';
-                    triggerChaosMode();
-                }, 1000);
-            });
-
-            addClientBtn.addEventListener('mouseup', () => {
-                clearTimeout(longPressTimer);
-                addClientBtn.style.transform = 'scale(1)';
-                if (!isLongPress) {
-                    createClient();
-                }
-            });
-
-            addClientBtn.addEventListener('mouseleave', () => {
-                clearTimeout(longPressTimer);
-                 addClientBtn.style.transform = 'scale(1)';
-            });
-
-            removeAllClientsBtn.addEventListener('click', () => {
-                if (state.clients.size === 0) {
-                    log('No clients to remove.', 'event');
-                    return;
-                }
-
-                log(`Disconnecting all ${state.clients.size} clients.`, 'event');
-
-                // Silent unsubscribe for all clients
-                state.clients.forEach((client, clientId) => {
-                    [...client.subscriptions].forEach(ch => handleUnsubscription(clientId, ch, 'UNSUBSCRIBE', true));
-                    [...client.patterns].forEach(p => handleUnsubscription(clientId, p, 'PUNSUBSCRIBE', true));
-                    [...client.shardSubscriptions].forEach(sh => handleUnsubscription(clientId, sh, 'SUNSUBSCRIBE', true));
-                });
-
-                // Clear state
-                state.clients.clear();
-                
-                // Clear UI of client cards specifically
-                document.querySelectorAll('.client-card').forEach(card => card.remove());
-                
-                // Refresh server view, connection lines, and controls
-                updateAllViews();
-                updateClientControls();
-            });
-
-            clearLogBtn.addEventListener('click', () => {
-                consoleOutput.innerHTML = '';
-                log('Log cleared.', 'event');
-            });
-
-            const flashInputError = (input) => {
-                input.classList.add('input-error');
-                setTimeout(() => input.classList.remove('input-error'), 500);
-            };
-
-            clientsContainer.addEventListener('click', e => {
-                const button = e.target.closest('button');
-                if (!button) return;
-
-                const card = button.closest('.client-card');
-                if (!card) return;
-                const clientId = parseInt(card.dataset.clientId);
-
-                if (button.classList.contains('publish-btn')) {
-                    const channelInput = card.querySelector('.channel-input');
-                    const messageInput = card.querySelector('.message-input');
-                    const channel = channelInput.value.trim();
-                    const message = messageInput.value.trim();
-                    const isShard = button.dataset.shard === 'true';
-
-                    if (!channel) { flashInputError(channelInput); return; }
-                    if (!message) { flashInputError(messageInput); return; }
-
-                    handlePublish(clientId, channel, message, isShard);
-                    channelInput.value = '';
-                    messageInput.value = '';
-                }
-                else if (button.classList.contains('subscribe-btn')) {
-                    const subInput = card.querySelector('.sub-input');
-                    const channel = subInput.value.trim();
-                    if (!channel) { flashInputError(subInput); return; }
-
-                    handleSubscription(clientId, channel, button.dataset.type);
-                    subInput.value = '';
-                }
-                else if (button.classList.contains('unsubscribe-btn')) {
-                    const channel = button.dataset.channel;
-                    handleUnsubscription(clientId, channel, button.dataset.type);
-                }
-                else if (button.classList.contains('remove-client-btn')) {
-                    const client = state.clients.get(clientId);
-                    // Unsubscribe silently from everything
-                    [...client.subscriptions].forEach(ch => handleUnsubscription(clientId, ch, 'UNSUBSCRIBE', true));
-                    [...client.patterns].forEach(p => handleUnsubscription(clientId, p, 'PUNSUBSCRIBE', true));
-                    [...client.shardSubscriptions].forEach(sh => handleUnsubscription(clientId, sh, 'SUNSUBSCRIBE', true));
-                    
-                    state.clients.delete(clientId);
-                    card.style.transition = 'opacity 0.3s, transform 0.3s';
-                    card.style.opacity = 0;
-                    card.style.transform = 'translateX(20px)';
-                    card.addEventListener('transitionend', () => {
-                         card.remove();
-                         updateAllViews();
-                         updateClientControls();
-                    });
-                    log(`Client-${clientId} disconnected`, 'event');
-                }
-            });
-
-            document.getElementById('server-patterns').addEventListener('click', e => {
-                const hintEl = e.target.closest('.pattern-key-hint');
-                if (hintEl) {
-                    const pattern = hintEl.dataset.pattern;
-                    log(`DEV HINT for pattern '${pattern}'`, 'event');
-                    log(`└─ Example 1: '${generateExampleForPattern(pattern)}'`, 'event');
-                    log(`└─ Example 2: '${generateExampleForPattern(pattern)}'`, 'event');
-                }
-            });
-
-            const triggerChaosMode = () => {
-                log('EASTER EGG: Chaos mode activated!', 'event');
-                addClientBtn.disabled = true;
-                
-                const randomBetween = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-
-                const channels = ['logs:prod', 'metrics:cpu', 'events:user:login', 'cache:invalidate:product:1234', 'notifications:global', 'api:v1:users', 'api:v2:users', 'alerts:region:us-west', 'session:user1234:login:mobile'];
-                const patterns = [
-                    'logs:*', 
-                    'events:user:*', 
-                    'cache:invalidate:product:????', // Uses ?
-                    'metrics:?pu', // Uses ?
-                    'api:v[12]:*', // Uses [...] and *
-                    'alerts:region:[^eu]*', // Uses [^...] and *
-                    'session:*:*:[^d]*' // Mixed with * and [^...]
-                ];
-                const shardChannels = ['shard:user-activity', 'shard:payments'];
-                const allSubTypes = [
-                    { type: 'SUBSCRIBE', options: channels },
-                    { type: 'PSUBSCRIBE', options: patterns },
-                    { type: 'SSUBSCRIBE', options: shardChannels }
-                ];
-                const messages = ['{ "status": "ok" }', 'CPU at 90%', 'User 123 logged in', 'Product 456 invalidated'];
-
-                const clientsToCreate = randomBetween(5, 8);
-                const newClientIds = [];
-
-                for (let i = 0; i < clientsToCreate; i++) {
-                    const clientId = createClient(true);
-                    newClientIds.push(clientId);
-                }
-
-                // Subscribe them randomly
-                newClientIds.forEach(clientId => {
-                    const subsToCreate = randomBetween(1, 4);
-                    const usedSubs = new Set();
-                    for (let i = 0; i < subsToCreate; i++) {
-                        const subTypeData = allSubTypes[randomBetween(0, allSubTypes.length - 1)];
-                        const channel = subTypeData.options[randomBetween(0, subTypeData.options.length - 1)];
-                        if (!usedSubs.has(channel)) {
-                            handleSubscription(clientId, channel, subTypeData.type);
-                            usedSubs.add(channel);
-                        }
-                    }
-                });
-
-                // Publish some messages
-                let publishCount = 0;
-                const publishInterval = setInterval(() => {
-                    if (publishCount >= 10 || state.clients.size === 0) {
-                        clearInterval(publishInterval);
-                        addClientBtn.disabled = false; // Re-enable button after chaos
-                        return;
-                    }
-                    
-                    const allClients = Array.from(state.clients.keys());
-                    const publisherId = allClients[randomBetween(0, allClients.length - 1)];
-                    const isShard = Math.random() > 0.7;
-                    const channel = isShard 
-                        ? shardChannels[randomBetween(0, shardChannels.length - 1)]
-                        : channels[randomBetween(0, channels.length - 1)];
-                    const message = messages[randomBetween(0, messages.length - 1)];
-
-                    handlePublish(publisherId, channel, message, isShard);
-                    publishCount++;
-                }, 300);
-            };
-            
-            new ResizeObserver(drawConnections).observe(document.body);
-
-            // Initial state
-            createClient();
-            createClient();
-            log('Visualizer ready. Add clients or interact with existing ones.', 'event');
-            renderServer();
-            updateClientControls();
-        });
-    </script>
+        <div class="row">
+          <button id="add">Connect a client</button>
+          <button id="reset-all">Reset</button>
+        </div>
+        <div id="clients"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <h2>Pattern matcher</h2>
+          <span class="cite">util.c:56-190 stringmatchlen_impl</span>
+        </div>
+        <p class="note">
+          Glob, not regular expressions. There is no alternation, no quantifier, no anchor and no
+          <code>\d</code>-style class: a backslash simply means &ldquo;the next byte, literally&rdquo;.
+        </p>
+        <div class="row" style="margin-top:10px">
+          <input id="m-pat" type="text" spellcheck="false" aria-label="Pattern" placeholder="pattern" value="news:[a-c]*" />
+          <input id="m-ch" type="text" spellcheck="false" aria-label="Channel" placeholder="channel" value="news:beta" />
+          <span id="m-out" class="pill">&nbsp;</span>
+        </div>
+        <dl class="kv" style="margin-top:12px">
+          <dt><code>*</code></dt><dd>any run of bytes, including none (util.c:64)</dd>
+          <dt><code>?</code></dt><dd>exactly one byte, any byte (util.c:93)</dd>
+          <dt><code>[abc]</code></dt><dd>one byte from the set (util.c:97)</dd>
+          <dt><code>[^abc]</code></dt><dd>one byte not in the set (util.c:103)</dd>
+          <dt><code>[a-z]</code></dt><dd>one byte in the range; reversed endpoints are swapped (util.c:121-138)</dd>
+          <dt><code>\x</code></dt><dd>the byte <code>x</code> literally, inside a set or out (util.c:110, util.c:159)</dd>
+        </dl>
+        <p class="note sim">
+          Ported as-is, minus the case-insensitive path: <code>PUBLISH</code> calls
+          <code>stringmatchlen(&hellip;, 0)</code> at pubsub.c:508, so matching is always
+          case-sensitive. Assumes ASCII channel names &mdash; the C compares bytes, JavaScript
+          compares UTF-16 units.
+        </p>
+      </section>
+
+    </div>
+
+    <div class="stack">
+
+      <section class="panel">
+        <div class="panel__head"><h2>Server state</h2><span class="cite">pubsub.c:75-96</span></div>
+
+        <h3 style="margin-top:4px">pubsub_channels</h3>
+        <div class="dict" id="d-ch"></div>
+
+        <h3 style="margin-top:12px">pubsub_patterns</h3>
+        <div class="dict" id="d-pat"></div>
+
+        <h3 style="margin-top:12px">pubsubshard_channels</h3>
+        <div class="dict" id="d-sh"></div>
+
+        <p class="note sim" style="margin-top:12px">
+          Each is a <code>dict</code> from name to a <em>list</em> of clients. Every
+          <code>PUBLISH</code> walks <code>pubsub_patterns</code> in full and runs the matcher per
+          entry (pubsub.c:499-517), so patterns cost O(N) in the number of distinct patterns, not
+          O(1) like a channel lookup.
+        </p>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head"><h2>Log</h2><button id="clear-log">Clear</button></div>
+        <div class="log" id="log"></div>
+      </section>
+
+    </div>
+  </div>
+
+  <section class="panel">
+    <div class="panel__head"><h2>What each push looks like</h2><span class="cite">pubsub.c:107-203</span></div>
+    <pre>subscribe    3 elements   1) "subscribe"    2) channel   3) (integer) channels + patterns
+unsubscribe  3 elements   1) "unsubscribe"  2) channel   3) (integer) channels + patterns
+psubscribe   3 elements   1) "psubscribe"   2) pattern   3) (integer) channels + patterns
+ssubscribe   3 elements   1) "ssubscribe"   2) channel   3) (integer) shard channels only
+message      3 elements   1) "message"      2) channel   3) payload
+smessage     3 elements   1) "smessage"     2) channel   3) payload
+pmessage     <b>4</b> elements   1) "pmessage"     2) <b>pattern</b>   3) channel   4) payload</pre>
+    <p class="note">
+      The integer is not a total. For <code>SUBSCRIBE</code>, <code>PSUBSCRIBE</code> and their
+      un-subscribes it is <code>clientSubscriptionsCount()</code> &mdash; channels plus patterns,
+      shard channels excluded (pubsub.c:221-223). For <code>SSUBSCRIBE</code> and
+      <code>SUNSUBSCRIBE</code> it is <code>clientShardSubscriptionsCount()</code> &mdash; shard
+      channels only (pubsub.c:226-228). The two namespaces never mix; only the internal
+      <code>CLIENT_PUBSUB</code> flag is cleared on the sum of both (pubsub.c:240-242).
+    </p>
+    <p class="note">
+      A redundant <code>SUBSCRIBE</code>, or an <code>UNSUBSCRIBE</code> for something the client
+      never held, still gets the full three-element push with the count unchanged. The reply is
+      emitted outside the <code>dictAdd</code> / <code>dictDelete</code> branch (pubsub.c:267,
+      pubsub.c:304-306), so there is no &ldquo;already subscribed&rdquo; error and no silent
+      no-op &mdash; a client library can count replies against commands sent.
+    </p>
+  </section>
+
+  <section class="panel">
+    <div class="panel__head"><h2>RESP2 puts the connection in a corner</h2><span class="cite">server.c:4077-4094</span></div>
+    <p class="note">
+      On a RESP2 connection, once <code>CLIENT_PUBSUB</code> is set the server rejects everything
+      except <code>SUBSCRIBE</code>, <code>SSUBSCRIBE</code>, <code>PSUBSCRIBE</code>, their three
+      un-subscribes, <code>PING</code>, <code>QUIT</code> and <code>RESET</code>. That is why the
+      old advice is &ldquo;one connection to subscribe, another to publish&rdquo;. RESP3 lifts the
+      restriction entirely, because pushes arrive on their own frame type
+      (<code>&gt;3</code> rather than <code>*3</code>, pubsub.c:110-113) and can no longer be
+      mistaken for a command reply. Flip the protocol above and try to publish from a subscribed
+      client.
+    </p>
+  </section>
+
+  <section class="panel">
+    <div class="panel__head"><h2>Shard channels and slots</h2><span class="cite">pubsub.c:711 &middot; cluster.c:3957 &middot; cluster.c:1380</span></div>
+    <p class="note">
+      Shard channels are a separate namespace, added in 7.0. <code>SSUBSCRIBE</code> never sees a
+      pattern: shard publishing returns before the pattern loop is reached (pubsub.c:493-496), so
+      <code>PSUBSCRIBE n*</code> will not pick up <code>SPUBLISH news</code>.
+    </p>
+    <p class="note">
+      In cluster mode the shard channel <em>name</em> is hashed exactly like a key &mdash;
+      <code>crc16(name) &amp; 0x3FFF</code>, honouring a <code>{hashtag}</code> (cluster.c:1380-1399)
+      &mdash; and the command is routed on that slot (key specs at commands.def:4656 and 4681).
+      Address the wrong node and you get <code>MOVED &lt;slot&gt; &lt;host&gt;:&lt;port&gt;</code>
+      (cluster.c:7587-7590); name two shard channels in one <code>SSUBSCRIBE</code> that hash
+      differently and you get <code>CROSSSLOT</code> (cluster.c:7569-7570). Plain
+      <code>SUBSCRIBE</code> and <code>PUBLISH</code> skip this layer and work on any node
+      (cluster.c:7397).
+    </p>
+    <p class="note">
+      The propagation is the whole point. <code>PUBLISH</code> is broadcast to every node in the
+      cluster whether or not that node has a subscriber &mdash; <code>clusterBroadcastMessage</code>
+      at cluster.c:3960-3964. <code>SPUBLISH</code> goes only to the nodes of its own shard
+      (cluster.c:3969-3977). Either way the integer you get back is counted <em>before</em>
+      propagation (pubsub.c:601 then pubsub.c:603): it is the number of receivers on the node that
+      handled the command, never a cluster-wide total, and it excludes replica subscribers reached
+      by the replication link (pubsub.c:615-616).
+    </p>
+  </section>
+
+  <section class="panel">
+    <div class="panel__head"><h2>Fire and forget</h2><span class="cite">pubsub.c:470-522 &middot; networking.c:1634-1636</span></div>
+    <p class="note">
+      <code>pubsubPublishMessageInternal</code> walks the live subscriber lists and appends to each
+      client's output buffer. There is no log, no offset, no acknowledgement and no retry anywhere
+      in that function or its callers. When the last subscriber of a channel leaves, the channel's
+      entry is deleted outright (pubsub.c:291-295), so there is not even a place a replay could
+      come from. A subscriber that is disconnected during a <code>PUBLISH</code> has missed the
+      message permanently; <code>freeClient</code> has already torn down all three of its
+      subscription sets (networking.c:1634-1636), so on reconnect it must subscribe again and
+      starts from silence. If you need history, that is what Streams are for.
+    </p>
+    <p class="note">
+      A subscriber that stays connected but stops reading is a different failure: it is cut off by
+      <code>client-output-buffer-limit pubsub</code>, whose default is
+      <code>32mb 8mb 60</code> (config.c:172, enforced at networking.c:3896-3917). That is the
+      knob, not <code>client-query-buffer-limit</code> &mdash; that one bounds the
+      <em>inbound</em> command buffer (config.c:3247) and does nothing for a slow reader.
+    </p>
+  </section>
+
+</div>
+
+<script>
+// ---------------------------------------------------------------- model ---
+// Pure: no DOM, no globals from the page. Ported from the 7.2.14 source.
+
+/* util.c:56-190 stringmatchlen_impl, with the nocase branch dropped:
+ * PUBLISH passes nocase = 0 (pubsub.c:508). */
+function stringmatch(pattern, string, st, nesting) {
+  st = st || { skip: false };
+  nesting = nesting || 0;
+  if (nesting > 1000) return 0;
+  let p = 0, s = 0, pl = pattern.length, sl = string.length;
+  while (pl && sl) {
+    switch (pattern[p]) {
+      case '*':
+        while (pl && pattern[p + 1] === '*') { p++; pl--; }
+        if (pl === 1) return 1;
+        while (sl) {
+          if (stringmatch(pattern.slice(p + 1), string.slice(s), st, nesting + 1)) return 1;
+          if (st.skip) return 0;
+          s++; sl--;
+        }
+        st.skip = true;
+        return 0;
+      case '?':
+        s++; sl--; break;
+      case '[': {
+        p++; pl--;
+        const not = pattern[p] === '^';
+        if (not) { p++; pl--; }
+        let match = 0;
+        for (;;) {
+          if (pattern[p] === '\\' && pl >= 2) {
+            p++; pl--;
+            if (pattern[p] === string[s]) match = 1;
+          } else if (pattern[p] === ']') {
+            break;
+          } else if (pl === 0) {
+            p--; pl++; break;
+          } else if (pl >= 3 && pattern[p + 1] === '-') {
+            let a = pattern.charCodeAt(p), b = pattern.charCodeAt(p + 2);
+            if (a > b) { const t = a; a = b; b = t; }
+            p += 2; pl -= 2;
+            const c = string.charCodeAt(s);
+            if (c >= a && c <= b) match = 1;
+          } else if (pattern[p] === string[s]) {
+            match = 1;
+          }
+          p++; pl--;
+        }
+        if (not) match = match ? 0 : 1;
+        if (!match) return 0;
+        s++; sl--;
+        break;
+      }
+      case '\\':
+        if (pl >= 2) { p++; pl--; }
+        /* falls through */
+      default:
+        if (pattern[p] !== string[s]) return 0;
+        s++; sl--; break;
+    }
+    p++; pl--;
+    if (sl === 0) { while (pattern[p] === '*') { p++; pl--; } break; }
+  }
+  return pl === 0 && sl === 0 ? 1 : 0;
+}
+
+/* crc16.c: XMODEM, poly 0x1021, init 0x0000. crc16.c:44 gives 31C3 for "123456789". */
+function crc16(str) {
+  let crc = 0;
+  for (let i = 0; i < str.length; i++) {
+    crc ^= (str.charCodeAt(i) & 0xff) << 8;
+    for (let j = 0; j < 8; j++) crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
+  }
+  return crc;
+}
+
+/* cluster.c:1380-1399 keyHashSlot. */
+function keyHashSlot(key) {
+  const s = key.indexOf('{');
+  if (s !== -1) {
+    const e = key.indexOf('}', s + 1);
+    if (e !== -1 && e !== s + 1) return crc16(key.slice(s + 1, e)) & 0x3fff;
+  }
+  return crc16(key) & 0x3fff;
+}
+
+const newServer = () => ({ channels: new Map(), patterns: new Map(), shard: new Map() });
+const newClient = (id) => ({
+  id, online: true,
+  channels: new Set(), patterns: new Set(), shard: new Set(),
+  inbox: [], missed: 0,
+});
+
+// pubsub.c:221-223 — channels + patterns. Shard channels are NOT counted.
+const subCount = (c) => c.channels.size + c.patterns.size;
+// pubsub.c:226-228 — shard channels only.
+const shardCount = (c) => c.shard.size;
+// pubsub.c:240-242 — only used to decide when CLIENT_PUBSUB clears.
+const totalCount = (c) => subCount(c) + shardCount(c);
+
+const KIND = {
+  channel: { set: 'channels', dict: 'channels', sub: 'subscribe', unsub: 'unsubscribe', count: subCount },
+  pattern: { set: 'patterns', dict: 'patterns', sub: 'psubscribe', unsub: 'punsubscribe', count: subCount },
+  shard:   { set: 'shard',    dict: 'shard',    sub: 'ssubscribe', unsub: 'sunsubscribe', count: shardCount },
+};
+
+/* pubsub.c:246-269 / pubsub.c:343-365. The reply is emitted whether or not the
+ * dictAdd succeeded, so a redundant SUBSCRIBE still gets its push. */
+function subscribe(server, client, name, kind) {
+  const k = KIND[kind];
+  const cset = client[k.set], dict = server[k.dict];
+  let added = 0;
+  if (!cset.has(name)) {
+    cset.add(name);
+    added = 1;
+    if (!dict.has(name)) dict.set(name, []);
+    dict.get(name).push(client.id); // listAddNodeTail, pubsub.c:264
+  }
+  return { added, reply: [k.sub, name, k.count(client)] };
+}
+
+/* pubsub.c:273-309 / pubsub.c:369-395. Same: the push always goes out. */
+function unsubscribe(server, client, name, kind) {
+  const k = KIND[kind];
+  const cset = client[k.set], dict = server[k.dict];
+  let removed = 0;
+  if (cset.has(name)) {
+    cset.delete(name);
+    removed = 1;
+    const list = dict.get(name);
+    if (list) {
+      const i = list.indexOf(client.id);
+      if (i !== -1) list.splice(i, 1);
+      // pubsub.c:291-295 — last subscriber out, the entry is dropped entirely.
+      if (list.length === 0) dict.delete(name);
+    }
+  }
+  return { removed, reply: [k.unsub, name, k.count(client)] };
+}
+
+/* pubsub.c:470-522. Channel subscribers first, then every pattern in the dict.
+ * A client on both lists is delivered to twice and counted twice: there is no
+ * de-duplication anywhere in this function. */
+function publish(server, channel, message, sharded) {
+  const deliveries = [];
+  let receivers = 0;
+
+  const direct = (sharded ? server.shard : server.channels).get(channel);
+  if (direct) {
+    for (const id of direct) {
+      deliveries.push({ id, push: [sharded ? 'smessage' : 'message', channel, message] });
+      receivers++; // pubsub.c:489
+    }
+  }
+
+  if (sharded) return { receivers, deliveries }; // pubsub.c:493-496
+
+  for (const [pattern, subs] of server.patterns) { // pubsub.c:499-517
+    if (!stringmatch(pattern, channel)) continue;
+    for (const id of subs) {
+      deliveries.push({ id, push: ['pmessage', pattern, channel, message] });
+      receivers++; // pubsub.c:515
+    }
+  }
+  return { receivers, deliveries };
+}
+
+// --------------------------------------------------------------- /model ---
+
+(() => {
+  // Three primaries, the first of which is "us". Enough to show MOVED.
+  const NODES = [
+    { from: 0,     to: 5460,  addr: '127.0.0.1:7000', shard: 'A' },
+    { from: 5461,  to: 10922, addr: '127.0.0.1:7001', shard: 'B' },
+    { from: 10923, to: 16383, addr: '127.0.0.1:7002', shard: 'C' },
+  ];
+  const MYSELF = NODES[0];
+  const nodeForSlot = (slot) => NODES.find((n) => slot >= n.from && slot <= n.to);
+
+  const server = newServer();
+  const clients = new Map();
+  // Simulator bookkeeping only: Redis keeps nothing about a client that is gone.
+  const remembered = new Map();
+  let nextId = 0;
+  let resp = 3;
+  let clusterOn = false;
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) =>
+    String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+
+  // ------------------------------------------------------------------ log
+  const logEl = $('log');
+  const stamp = () => new Date().toLocaleTimeString();
+
+  function logCmd(text) {
+    const d = document.createElement('div');
+    d.className = 'brk';
+    d.innerHTML = `<span class="t">${stamp()}</span>${esc(text)}`;
+    logEl.append(d);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  function logReply(text, cls) {
+    const p = document.createElement('p');
+    p.className = `brk${cls ? ' ' + cls : ''}`;
+    p.textContent = text;
+    logEl.append(p);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  const fmtReply = (arr) =>
+    arr.map((v, i) => `${i + 1}) ${typeof v === 'number' ? `(integer) ${v}` : `"${v}"`}`).join(' ');
+
+  // -------------------------------------------------------------- routing
+  // cluster.c:7380 getNodeByQuery, for the shard-pubsub case only.
+  function routeShard(names) {
+    if (!clusterOn) return { ok: true };
+    const slots = names.map(keyHashSlot);
+    if (new Set(slots).size > 1) {
+      return { ok: false, err: 'CROSSSLOT Keys in request don’t hash to the same slot' };
+    }
+    const slot = slots[0];
+    const node = nodeForSlot(slot);
+    if (node !== MYSELF) return { ok: false, err: `MOVED ${slot} ${node.addr}` };
+    return { ok: true, slot };
+  }
+
+  // --------------------------------------------------------------- client
+  function connectClient() {
+    const c = newClient(++nextId);
+    clients.set(c.id, c);
+    logCmd(`# client-${c.id} connected`);
+    render();
+    return c;
+  }
+
+  // networking.c:1566 freeClient -> networking.c:1634-1636: every subscription set
+  // is torn down. We stash a copy so "reconnect" has something to replay.
+  function goOffline(c) {
+    remembered.set(c.id, {
+      channels: [...c.channels], patterns: [...c.patterns], shard: [...c.shard],
+    });
+    for (const n of [...c.channels]) unsubscribe(server, c, n, 'channel');
+    for (const n of [...c.patterns]) unsubscribe(server, c, n, 'pattern');
+    for (const n of [...c.shard]) unsubscribe(server, c, n, 'shard');
+    c.online = false;
+    logCmd(`# client-${c.id} disconnected — freeClient() dropped all of its subscriptions`);
+  }
+
+  function goOnline(c) {
+    c.online = true;
+    const was = remembered.get(c.id);
+    if (was) {
+      for (const n of was.channels) subscribe(server, c, n, 'channel');
+      for (const n of was.patterns) subscribe(server, c, n, 'pattern');
+      for (const n of was.shard) subscribe(server, c, n, 'shard');
+      remembered.delete(c.id);
+    }
+    logCmd(`# client-${c.id} reconnected and re-subscribed — nothing it missed is replayed`);
+  }
+
+  function disconnect(c) {
+    if (c.online) goOffline(c);
+    clients.delete(c.id);
+    remembered.delete(c.id);
+    logCmd(`# client-${c.id} gone`);
+    render();
+  }
+
+  // ------------------------------------------------------------ commands
+  function doSubscribe(c, raw, kind) {
+    const names = raw.split(/[\s,]+/).filter(Boolean);
+    if (!names.length) return;
+    const verb = KIND[kind].sub.toUpperCase();
+    logCmd(`client-${c.id}: ${verb} ${names.join(' ')}`);
+
+    if (kind === 'shard') {
+      const r = routeShard(names);
+      if (!r.ok) return logReply(`(error) ${r.err}`, 'hit');
+    }
+    for (const n of names) {
+      const { added, reply } = subscribe(server, c, n, kind);
+      // The push goes out either way — pubsub.c:267, pubsub.c:363.
+      logReply(fmtReply(reply), added ? null : 'good');
+      if (!added) logReply(`   ^ already subscribed; Redis replies anyway, count unchanged`, 'good');
+    }
+    render();
+  }
+
+  function doUnsubscribe(c, name, kind) {
+    logCmd(`client-${c.id}: ${KIND[kind].unsub.toUpperCase()} ${name}`);
+    const { removed, reply } = unsubscribe(server, c, name, kind);
+    logReply(fmtReply(reply), removed ? null : 'good');
+    if (!removed) logReply(`   ^ was not subscribed; Redis replies anyway`, 'good');
+    render();
+  }
+
+  function doPublish(sharded) {
+    const from = clients.get(Number($('pub-from').value));
+    const channel = $('pub-ch').value.trim();
+    const message = $('pub-msg').value.trim();
+    const verb = sharded ? 'SPUBLISH' : 'PUBLISH';
+    const out = $('pub-result');
+
+    if (!from) { out.innerHTML = '<span class="faint">Connect a client first.</span>'; return; }
+    if (!channel || !message) { out.innerHTML = '<span class="faint">Channel and message are both required.</span>'; return; }
+
+    logCmd(`client-${from.id}: ${verb} ${channel} "${message}"`);
+
+    // server.c:4079-4094 — RESP2 only, and only once CLIENT_PUBSUB is set.
+    if (resp === 2 && totalCount(from) > 0) {
+      const err = `Can't execute '${verb.toLowerCase()}': only (P|S)SUBSCRIBE / (P|S)UNSUBSCRIBE / PING / QUIT / RESET are allowed in this context`;
+      logReply(`(error) ${err}`, 'hit');
+      out.innerHTML = `<span class="pill pill--fail">rejected</span> client-${from.id} holds ${totalCount(from)} subscription(s) and the connection is RESP2. <span class="cite">server.c:4079-4094</span>`;
+      return;
+    }
+
+    if (sharded) {
+      const r = routeShard([channel]);
+      if (!r.ok) {
+        logReply(`(error) ${r.err}`, 'hit');
+        out.innerHTML = `<span class="pill pill--fail">rejected</span> <span class="mono brk">${esc(r.err)}</span> <span class="cite">cluster.c:7587-7590</span>`;
+        return;
+      }
+    }
+
+    const { receivers, deliveries } = publish(server, channel, message, sharded);
+    for (const d of deliveries) clients.get(d.id).inbox.unshift(d.push);
+
+    // Simulator bookkeeping: what an absent subscriber would have got.
+    let missedBy = 0;
+    for (const [id, was] of remembered) {
+      if (!clients.has(id)) continue;
+      let n = 0;
+      if (sharded) n += was.shard.filter((s) => s === channel).length;
+      else {
+        n += was.channels.filter((s) => s === channel).length;
+        n += was.patterns.filter((p) => stringmatch(p, channel)).length;
+      }
+      if (n) { clients.get(id).missed += n; missedBy++; }
+    }
+
+    logReply(`(integer) ${receivers}`);
+
+    const dupes = new Map();
+    for (const d of deliveries) dupes.set(d.id, (dupes.get(d.id) ?? 0) + 1);
+    const doubled = [...dupes].filter(([, n]) => n > 1);
+
+    const bits = [`<span class="pill ${receivers ? 'pill--ok' : ''}">(integer) ${receivers}</span>`];
+    if (doubled.length) {
+      bits.push(
+        `<b class="ch">${doubled.map(([id, n]) => `client-${id} received ${n} pushes`).join(', ')}</b> — once for the channel, once per matching pattern. No de-duplication: pubsub.c:485-490 and pubsub.c:510-516 each increment <code>receivers</code>.`,
+      );
+    }
+    if (missedBy) {
+      bits.push(`<b class="pat">${missedBy} offline subscriber(s) missed it.</b> Nothing was stored; reconnecting will not bring it back.`);
+    }
+    if (clusterOn) {
+      bits.push(
+        sharded
+          ? `slot <span class="num">${keyHashSlot(channel)}</span>; sent to the nodes of this shard only (cluster.c:3969-3977). The integer counts receivers on this node.`
+          : `broadcast to all ${NODES.length} nodes whether or not they have a subscriber (cluster.c:3960-3964). The integer counts receivers on this node only — it is computed before propagation, pubsub.c:601.`,
+      );
+    }
+    out.innerHTML = bits.join(' ');
+    render();
+  }
+
+  // ----------------------------------------------------------------- view
+  function pushLine(push) {
+    const kind = push[0];
+    const body = push
+      .map((v, i) => `<span class="${i === 0 ? 'k' : 'v'}">${i + 1}) "${esc(v)}"</span>`)
+      .join(' ');
+    return `<div class="push--${kind}">${body}</div>`;
+  }
+
+  function chipRow(c, set, kind, cls) {
+    return [...set]
+      .map(
+        (n) =>
+          `<span class="chip ${cls}"><b>${esc(n)}</b>` +
+          `<button data-act="unsub" data-id="${c.id}" data-kind="${kind}" data-name="${esc(n)}" title="unsubscribe">&times;</button></span>`,
+      )
+      .join('');
+  }
+
+  function renderClients() {
+    const host = $('clients');
+    if (!clients.size) {
+      host.innerHTML = '<p class="note faint">No clients connected.</p>';
+      return;
+    }
+    host.innerHTML = [...clients.values()]
+      .map((c) => {
+        const inPubsub = totalCount(c) > 0;
+        const chips =
+          chipRow(c, c.channels, 'channel', 'chip--ch') +
+          chipRow(c, c.patterns, 'pattern', 'chip--pat') +
+          chipRow(c, c.shard, 'shard', 'chip--sh');
+        const was = remembered.get(c.id);
+        return `
+<div class="client${c.online ? '' : ' client--off'}">
+  <div class="client__head">
+    <span class="client__name">client-${c.id}</span>
+    <span class="row">
+      ${c.online ? '<span class="pill pill--ok">online</span>' : '<span class="pill">offline</span>'}
+      ${inPubsub ? '<span class="pill">CLIENT_PUBSUB</span>' : ''}
+      ${c.missed ? `<span class="pill pill--warn">missed ${c.missed} push${c.missed > 1 ? 'es' : ''}</span>` : ''}
+      <button data-act="toggle" data-id="${c.id}">${c.online ? 'Disconnect' : 'Reconnect'}</button>
+      <button data-act="drop" data-id="${c.id}">Remove</button>
+    </span>
+  </div>
+  ${
+    c.online
+      ? `<div class="row">
+      <input type="text" spellcheck="false" data-sub-for="${c.id}" placeholder="channel or pattern" aria-label="Channel or pattern for client ${c.id}" />
+      <button data-act="sub" data-kind="channel" data-id="${c.id}">SUBSCRIBE</button>
+      <button data-act="sub" data-kind="pattern" data-id="${c.id}">PSUBSCRIBE</button>
+      <button data-act="sub" data-kind="shard" data-id="${c.id}">SSUBSCRIBE</button>
+    </div>`
+      : `<p class="note sim">Disconnected. Its ${
+          was ? was.channels.length + was.patterns.length + was.shard.length : 0
+        } subscription(s) were removed from the server the moment the connection went (networking.c:1634-1636). Anything published now is lost to it for good; reconnecting re-subscribes but replays nothing.</p>`
+  }
+  ${chips ? `<div class="chips">${chips}</div>` : ''}
+  ${
+    c.online && (subCount(c) || shardCount(c))
+      ? `<p class="cite" style="margin-top:8px">reply count: ${subCount(c)} (channels + patterns) &middot; ${shardCount(c)} (shard)</p>`
+      : ''
+  }
+  ${c.inbox.length ? `<div class="inbox">${c.inbox.slice(0, 6).map(pushLine).join('')}</div>` : ''}
+</div>`;
+      })
+      .join('');
+  }
+
+  function renderDict(el, map, cls, withSlot) {
+    if (!map.size) {
+      el.innerHTML = '<div class="empty">{empty}</div>';
+      return;
+    }
+    el.innerHTML = [...map]
+      .map(([k, ids]) => {
+        const slot =
+          withSlot && clusterOn
+            ? ` <span class="faint">slot ${keyHashSlot(k)}${nodeForSlot(keyHashSlot(k)) === MYSELF ? '' : ' (not ours)'}</span>`
+            : '';
+        return `<div><span class="key--${cls}">'${esc(k)}'</span>: [${ids.map((i) => 'client-' + i).join(', ')}]${slot}</div>`;
+      })
+      .join('');
+  }
+
+  function renderPublisher() {
+    const sel = $('pub-from');
+    const keep = sel.value;
+    sel.innerHTML = [...clients.values()]
+      .map((c) => `<option value="${c.id}">client-${c.id}</option>`)
+      .join('');
+    if ([...clients.keys()].some((id) => String(id) === keep)) sel.value = keep;
+  }
+
+  function renderWireNote() {
+    $('wire-note').textContent =
+      (resp === 2
+        ? 'RESP2: a subscribed client may only (un)subscribe, PING, QUIT, RESET.'
+        : 'RESP3: pushes use their own frame type, so any command is allowed.') +
+      (clusterOn ? ` Cluster: this node serves slots ${MYSELF.from}-${MYSELF.to}.` : '');
+  }
+
+  function render() {
+    renderClients();
+    renderDict($('d-ch'), server.channels, 'ch', false);
+    renderDict($('d-pat'), server.patterns, 'pat', false);
+    renderDict($('d-sh'), server.shard, 'sh', true);
+    renderPublisher();
+    renderWireNote();
+  }
+
+  // ------------------------------------------------------------- wiring
+  $('clients').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    const c = clients.get(Number(b.dataset.id));
+    if (!c) return;
+    switch (b.dataset.act) {
+      case 'sub': {
+        const input = document.querySelector(`[data-sub-for="${c.id}"]`);
+        doSubscribe(c, input.value.trim(), b.dataset.kind);
+        input.value = '';
+        break;
+      }
+      case 'unsub': doUnsubscribe(c, b.dataset.name, b.dataset.kind); break;
+      case 'toggle': (c.online ? goOffline : goOnline)(c); render(); break;
+      case 'drop': disconnect(c); break;
+    }
+  });
+
+  $('clients').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const input = e.target.closest('[data-sub-for]');
+    if (!input) return;
+    const c = clients.get(Number(input.dataset.subFor));
+    doSubscribe(c, input.value.trim(), 'channel');
+    input.value = '';
+  });
+
+  $('add').addEventListener('click', () => connectClient());
+  $('reset-all').addEventListener('click', () => {
+    clients.clear();
+    remembered.clear();
+    server.channels.clear();
+    server.patterns.clear();
+    server.shard.clear();
+    nextId = 0;
+    logEl.innerHTML = '';
+    $('pub-result').innerHTML = '&nbsp;';
+    seed();
+  });
+  $('pub').addEventListener('click', () => doPublish(false));
+  $('spub').addEventListener('click', () => doPublish(true));
+  $('clear-log').addEventListener('click', () => { logEl.innerHTML = ''; });
+  $('resp').addEventListener('change', (e) => { resp = Number(e.target.value); render(); });
+  $('cluster').addEventListener('change', (e) => { clusterOn = e.target.checked; render(); });
+
+  const matcher = () => {
+    const pat = $('m-pat').value, ch = $('m-ch').value;
+    const out = $('m-out');
+    if (!pat || !ch) { out.className = 'pill'; out.textContent = '—'; return; }
+    const hit = !!stringmatch(pat, ch);
+    out.className = `pill ${hit ? 'pill--ok' : 'pill--fail'}`;
+    out.textContent = hit ? 'match' : 'no match';
+  };
+  $('m-pat').addEventListener('input', matcher);
+  $('m-ch').addEventListener('input', matcher);
+
+  // --------------------------------------------------------------- start
+  function seed() {
+    const a = connectClient();
+    subscribe(server, a, 'news', 'channel');
+    subscribe(server, a, 'n*', 'pattern');
+    const b = connectClient();
+    subscribe(server, b, 'news', 'channel');
+    logCmd('# client-1 holds both news and n*. Publish to news and watch it arrive twice.');
+    render();
+  }
+
+  seed();
+  matcher();
+})();
+</script>
 </body>
 </html>
-
