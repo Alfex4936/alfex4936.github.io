@@ -16,8 +16,12 @@ import { fileURLToPath } from 'node:url'
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const CHROME =
   process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-const PORT = 4578
-const CDP = 9578
+// Random per run: several of these can be in flight at once (one per page
+// being rewritten), and fixed ports would have them colliding or, worse,
+// attaching to each other's browser and reporting the wrong page.
+const rnd = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo))
+const PORT = rnd(4600, 4999)
+const CDP = rnd(9600, 9999)
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const TYPES = {
