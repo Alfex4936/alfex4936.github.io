@@ -1,1243 +1,1181 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Redis ACL Simulator v7+</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;700&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #111827;
-        }
-        .font-fira {
-            font-family: 'Fira Code', monospace;
-        }
-        .command-input::placeholder {
-            color: #4b5563;
-        }
-        .scrollable-area::-webkit-scrollbar {
-            width: 8px;
-        }
-        .scrollable-area::-webkit-scrollbar-track {
-            background: #1f2937;
-        }
-        .scrollable-area::-webkit-scrollbar-thumb {
-            background-color: #4b5563;
-            border-radius: 4px;
-        }
-        .user-card {
-            transition: all 0.2s ease-in-out;
-        }
-        .user-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
-        }
-        .category-button {
-            transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out, opacity 0.2s ease-in-out;
-        }
-        .category-button:active {
-            transform: scale(0.95);
-        }
-    </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Redis ACL Simulator</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+<link rel="stylesheet" href="viz.css" />
+<style>
+  /* Page-specific only: viz.css has no rule-trace table or category grid. */
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .row > input { flex: 1 1 14ch; min-width: 0; }
+  .stack { display: grid; gap: 10px; }
+  .field { display: grid; gap: 4px; }
+  .field textarea {
+    font: 400 12px/1.6 var(--mono); color: var(--fg); padding: 6px 9px;
+    background: var(--bg); border: 1px solid var(--rule); border-radius: 4px;
+    resize: vertical;
+  }
+  .field textarea:focus { outline: none; border-color: var(--faint); }
+  .cats { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 6px; }
+  .cats button { text-align: left; }
+  .cats button[data-state="+"] { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+  .cats button[data-state="-"] { color: var(--red); border-color: color-mix(in srgb, var(--red) 50%, transparent); }
+  table { width: 100%; border-collapse: collapse; font: 400 12px/1.7 var(--mono); }
+  th { text-align: left; font-weight: 500; color: var(--faint); padding: 4px 8px 4px 0; }
+  td { padding: 3px 8px 3px 0; color: var(--dim); vertical-align: top; }
+  tr + tr td { border-top: 1px solid var(--rule); }
+  td.on { color: var(--ok); }
+  td.off { color: var(--red); }
+  td.nil { color: var(--faint); }
+  .userline { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+  .userline code { color: var(--dim); word-break: break-all; }
+  .userrow { padding: 8px 0; }
+  .userrow + .userrow { border-top: 1px solid var(--rule); }
+</style>
 </head>
-<body class="text-gray-200">
+<body>
+<div class="wrap">
 
-    <div class="container mx-auto p-4 md:p-6 lg:p-8">
-        <header class="text-center mb-8">
-            <h1 class="text-3xl md:text-4xl font-bold text-red-500 mb-2">Redis ACL Simulator</h1>
-            <p class="text-gray-400">An interactive tool for testing Redis v7+ Access Control Lists</p>
-        </header>
+  <a class="back" href="../index.html">&larr; index</a>
+  <h1>Redis ACL Simulator</h1>
+  <p class="src">Modelled on <a href="https://github.com/redis/redis/blob/7.2.14/src/acl.c">src/acl.c</a>, Redis 7.2.14. Command categories and key specs are generated from that release's <code>src/commands/*.json</code>.</p>
 
-        <main class="grid grid-cols-1 lg:grid-cols-5 gap-6">
-            <!-- Left Column: Controls & User List -->
-            <div class="lg:col-span-2 space-y-6">
-                <!-- Command Input Card -->
-                <div class="bg-gray-800 p-5 rounded-xl shadow-lg">
-                    <h2 class="text-xl font-bold text-red-400 mb-4 border-b border-gray-700 pb-2 flex items-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
-                        ACL Command
-                    </h2>
-                    <div class="flex flex-col space-y-3">
-                        <input id="acl-command-input" type="text" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-4 py-2 text-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500 command-input" placeholder="e.g., SETUSER worker +@read ~app:*">
-                        <button id="run-command-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition duration-200">Execute</button>
-                    </div>
-                </div>
+  <p class="lede">
+    ACL rules are applied <b>in the order you write them</b> and the last rule that touches a
+    command wins. <code>+@all</code> and <code>-@all</code> are not ordinary rules: each one
+    rewrites the whole permission bitmap and discards every rule stated before it
+    (acl.c:1030, acl.c:1037). Type a rule set on the left, then dry-run a command to see the
+    replay that produced the answer.
+  </p>
 
-                <!-- Dry Run Card -->
-                <div class="bg-gray-800 p-5 rounded-xl shadow-lg">
-                    <h2 class="text-xl font-bold text-red-400 mb-4 border-b border-gray-700 pb-2 flex items-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M21.73 18a2.64 2.64 0 0 0-3.76 0l-1.18 1.18a2.64 2.64 0 0 0 0 3.76l1.18 1.18a2.64 2.64 0 0 0 3.76 0z"></path><path d="m2 2 7 7"></path><path d="M14.23 21.84 7 14.6l-5.18 5.18a2.64 2.64 0 0 0 0 3.76l1.18 1.18a2.64 2.64 0 0 0 3.76 0Z"></path></svg>
-                        Permission Check (DRYRUN)
-                    </h2>
-                    <div class="flex flex-col space-y-3">
-                        <select id="dryrun-user-select" class="w-full bg-gray-900 border border-gray-700 rounded-md px-4 py-2 text-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500"></select>
-                        <input id="dryrun-command-input" type="text" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-4 py-2 text-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500 command-input" placeholder="e.g., GET app:user:123">
-                        <button id="check-permission-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-200">Check Permission</button>
-                    </div>
-                </div>
+  <div class="grid grid--side">
+    <div class="stack">
 
-                <!-- User List Card -->
-                <div class="bg-gray-800 p-5 rounded-xl shadow-lg">
-                    <h2 class="text-xl font-bold text-red-400 mb-4 border-b border-gray-700 pb-2 flex items-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                        Active Users
-                    </h2>
-                    <div id="user-list" class="space-y-3 max-h-[40vh] overflow-y-auto scrollable-area pr-2"></div>
-                </div>
-            </div>
-
-            <!-- Right Column: Output Log -->
-            <div class="lg:col-span-3 bg-gray-800 p-5 rounded-xl shadow-lg">
-                <h2 class="text-xl font-bold text-red-400 mb-4 border-b border-gray-700 pb-2 flex items-center justify-between">
-                    <span>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block mr-2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                        Simulator Log & Output
-                    </span>
-                    <button id="clear-log-btn" class="text-gray-400 hover:text-white transition-colors" title="Clear Log">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                    </button>
-                </h2>
-                <div id="output-log" class="font-fira text-sm bg-gray-900 rounded-md p-4 h-[calc(100vh-12rem)] min-h-[400px] overflow-y-auto scrollable-area"></div>
-            </div>
-        </main>
-
-        <!-- Command Builder Card -->
-        <div class="mt-6 bg-gray-800 p-5 rounded-xl shadow-lg">
-            <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
-                <h2 class="text-xl font-bold text-red-400 flex items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
-                    ACL Command Builder
-                </h2>
-                <button id="builder-reset-btn" class="text-sm text-gray-400 hover:text-white transition-colors flex items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M21 21v-5h-5"></path></svg>
-                    Reset
-                </button>
-            </div>
-            <div id="command-builder" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
-                <!-- Column 1: User Details -->
-                <div class="space-y-4">
-                    <div>
-                        <label for="builder-username" class="block text-sm font-medium text-gray-300 mb-1">Username</label>
-                        <input type="text" id="builder-username" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm" placeholder="e.g., worker">
-                    </div>
-                    
-                    <div>
-                        <label for="builder-passwords" class="block text-sm font-medium text-gray-300 mb-1">Passwords (one per line)</label>
-                        <textarea id="builder-passwords" rows="2" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm transition-colors" placeholder="your-secure-password"></textarea>
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-gray-300 mb-2">Flags</label>
-                        <div class="flex items-center space-x-4">
-                            <label class="flex items-center" title="Enables the user, allowing them to authenticate."><input type="checkbox" id="builder-flag-on" class="h-4 w-4 rounded border-gray-600 bg-gray-900 text-red-600 focus:ring-red-500" checked> <span class="ml-2">on</span></label>
-                            <label class="flex items-center" title="Removes all passwords and allows authentication with any password."><input type="checkbox" id="builder-flag-nopass" class="h-4 w-4 rounded border-gray-600 bg-gray-900 text-red-600 focus:ring-red-500"> <span class="ml-2">nopass</span></label>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Column 2: Categories -->
-                <div class="lg:col-span-3 grid grid-cols-1 lg:grid-cols-3 gap-x-6 gap-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-300 mb-1">Key Patterns</label>
-                        <p class="text-xs text-gray-500 mb-2" title="`~app` = exact match. `~app:*` = prefix match.">Hint: `~` (r/w), `%R~` (read), `%W~` (write)</p>
-                        <textarea id="builder-keys" rows="5" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm transition-colors" placeholder="~app:*&#10;%R~log:*"></textarea>
-                        <p id="builder-keys-error" class="text-xs text-red-400 mt-1 h-4"></p>
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-gray-300 mb-1">Channel Patterns</label>
-                        <p class="text-xs text-gray-500 mb-2">Hint: Use `&amp;` prefix. E.g., `&amp;notifications:*`</p>
-                        <textarea id="builder-channels" rows="5" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm transition-colors" placeholder="&news:*"></textarea>
-                        <p id="builder-channels-error" class="text-xs text-red-400 mt-1 h-4"></p>
-                    </div>
-
-                    <div>
-                        <label for="builder-specific-commands" class="block text-sm font-medium text-gray-300 mb-1">Specific Command Overrides</label>
-                        <p class="text-xs text-gray-500 mb-2">Hint: For non-category rules. E.g., `+get`</p>
-                        <textarea id="builder-specific-commands" rows="5" class="font-fira w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm transition-colors" placeholder="+auth&#10;-config|set"></textarea>
-                        <p id="builder-specific-commands-error" class="text-xs text-red-400 mt-1 h-4"></p>
-                    </div>
-                </div>
-
-                <!-- Category Selector Grid -->
-                <div class="md:col-span-2 lg:col-span-4">
-                    <label class="block text-sm font-medium text-gray-300 mb-2">Category Rules</label>
-                    <div id="category-selector-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                        <!-- Category buttons will be injected here -->
-                    </div>
-                </div>
-                
-                <!-- Generated Command Output -->
-                <div class="md:col-span-2 lg:col-span-4 border-t border-gray-700 pt-4 space-y-3">
-                     <label for="builder-output" class="block text-sm font-medium text-gray-300 mb-1">Generated Command</label>
-                     <div class="flex space-x-2">
-                         <input type="text" id="builder-output" readonly class="font-fira w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm text-gray-400 cursor-not-allowed">
-                         <button id="builder-copy-btn" class="bg-gray-600 hover:bg-gray-500 text-white font-bold p-2 rounded-md transition duration-200" title="Copy to Clipboard">
-                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                         </button>
-                     </div>
-                     <button id="builder-use-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition duration-200">Use This Command</button>
-                </div>
-            </div>
+      <section class="panel">
+        <div class="panel__head"><h2>ACL command</h2><span class="cite">acl.c:2764 aclCommand</span></div>
+        <div class="row">
+          <input id="cmd-in" type="text" spellcheck="false" aria-label="ACL command"
+                 placeholder="ACL SETUSER worker on -@all +@read ~app:*" />
+          <button id="cmd-run" class="btn btn--go">Execute</button>
         </div>
+        <p class="legend"><b>Supported:</b> SETUSER · GETUSER · DELUSER · LIST · USERS · CAT · DRYRUN</p>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head"><h2>Permission check (DRYRUN)</h2><span class="cite">acl.c:3022</span></div>
+        <div class="row">
+          <select id="dry-user" aria-label="User to check"></select>
+          <input id="dry-cmd" type="text" spellcheck="false" aria-label="Command to check" placeholder="GET app:user:123" />
+          <button id="dry-run" class="btn">Check</button>
+        </div>
+        <p id="dry-verdict" style="margin-top:10px"></p>
+        <pre id="dry-msg" style="margin-top:8px;display:none"></pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <h2>Rule replay</h2>
+          <span class="cite">acl.c:1010 ACLSetSelector &middot; acl.c:1668</span>
+        </div>
+        <p class="muted" id="trace-empty">Run a check to see how each rule, in order, moved the verdict for that one command.</p>
+        <div id="trace-wrap" style="display:none">
+          <table>
+            <thead><tr><th>#</th><th>rule</th><th>effect on this command</th><th>allowed after</th></tr></thead>
+            <tbody id="trace-body"></tbody>
+          </table>
+          <p class="legend"><b>allowed after</b> = is this exact command in the selector's permitted set at that point.</p>
+          <p class="cite">
+            This replays the selector's <em>stored</em> rule list. Redis collapses input as it
+            goes: a later rule naming the same command or category replaces the earlier one
+            rather than stacking on it (acl.c:596), so <code>-get &hellip; +get</code> is kept
+            as a single <code>+get</code>.
+          </p>
+        </div>
+      </section>
+
     </div>
 
-    <script>
-        // --- START: SHA256 Implementation (for password hashing) ---
-        async function sha256(message) {
-            const msgBuffer = new TextEncoder().encode(message);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-            return hashHex;
+    <section class="panel">
+      <div class="panel__head"><h2>Users</h2><span class="cite">acl.c:2862 ACL LIST</span></div>
+      <div id="users"></div>
+    </section>
+  </div>
+
+  <section class="panel">
+    <div class="panel__head">
+      <h2>Rule builder</h2>
+      <button id="b-reset" class="btn">Reset</button>
+    </div>
+
+    <div class="grid grid--2">
+      <div class="stack">
+        <div class="field">
+          <label for="b-user">Username</label>
+          <input id="b-user" type="text" spellcheck="false" placeholder="worker" />
+        </div>
+        <div class="field">
+          <label for="b-pass">Passwords, one per line</label>
+          <textarea id="b-pass" rows="2" spellcheck="false"></textarea>
+        </div>
+        <div class="row">
+          <label><input type="checkbox" id="b-on" aria-label="on" checked /> on</label>
+          <label><input type="checkbox" id="b-nopass" aria-label="nopass" /> nopass</label>
+        </div>
+        <div class="field">
+          <label for="b-keys">Key patterns &mdash; <code>~p</code>, <code>%R~p</code>, <code>%W~p</code>, <code>%RW~p</code></label>
+          <textarea id="b-keys" rows="4" spellcheck="false" placeholder="~queues:*&#10;%R~config:global:*"></textarea>
+          <p class="cite" id="b-keys-err"></p>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="field">
+          <label for="b-chans">Channel patterns &mdash; <code>&amp;p</code></label>
+          <textarea id="b-chans" rows="4" spellcheck="false" placeholder="&amp;worker:*"></textarea>
+          <p class="cite" id="b-chans-err"></p>
+        </div>
+        <div class="field">
+          <label for="b-cmds">Command rules &mdash; <code>+get</code>, <code>-config|set</code>, <code>+select|0</code></label>
+          <textarea id="b-cmds" rows="4" spellcheck="false" placeholder="+get&#10;-config|set"></textarea>
+          <p class="cite" id="b-cmds-err"></p>
+        </div>
+        <div class="field">
+          <label for="b-sel">Selectors, one per line &mdash; <code>(+get ~cache:*)</code></label>
+          <textarea id="b-sel" rows="3" spellcheck="false" placeholder="(+get ~cache:*)"></textarea>
+          <p class="cite" id="b-sel-err"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="field" style="margin-top:12px">
+      <label>Category rules &mdash; click to cycle default &rarr; allow &rarr; deny</label>
+      <div class="cats" id="b-cats"></div>
+    </div>
+
+    <div class="field" style="margin-top:12px">
+      <label for="b-out">Generated command</label>
+      <div class="row">
+        <input id="b-out" type="text" readonly aria-label="Generated ACL SETUSER command" />
+        <button id="b-copy" class="btn">Copy</button>
+        <button id="b-use" class="btn btn--go">Use</button>
+      </div>
+      <p class="cite">
+        <code>+@all</code> / <code>-@all</code> is always emitted first: placed later it would
+        erase every category rule before it (acl.c:1030).
+      </p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel__head">
+      <h2>Log</h2>
+      <button id="log-clear" class="btn">Clear</button>
+    </div>
+    <div class="log" id="log"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel__head"><h2>What this models, and what it does not</h2></div>
+    <table>
+      <tbody>
+        <tr><td style="width:17rem">Order of checks</td><td>command bit, then keys, then channels &mdash; acl.c:1662 <code>ACLSelectorCheckCmd</code>.</td></tr>
+        <tr><td>Selectors</td><td>Each <code>(&hellip;)</code> becomes a selector. Selectors are tried in order, the root selector first, and the first one that passes wins &mdash; acl.c:1839. The reported error is the command if no selector could run it, otherwise the last key or channel no selector matched &mdash; acl.c:1828.</td></tr>
+        <tr><td><code>+@all</code> / <code>-@all</code></td><td>Fills or clears the whole bitmap and drops accumulated command rules and first-args &mdash; acl.c:1030, acl.c:1037.</td></tr>
+        <tr><td>Container commands</td><td>Allowing or blocking a container also applies to its subcommands &mdash; acl.c:608. A category rule additionally walks subcommands on their own categories &mdash; acl.c:629.</td></tr>
+        <tr><td>Commands exempt from the bitmap</td><td>Commands flagged <code>NO_AUTH</code> skip the command check entirely &mdash; acl.c:1665. In 7.2.14 those are AUTH, HELLO, RESET and QUIT.</td></tr>
+        <tr><td><code>off</code></td><td>Blocks authentication only. DRYRUN and already-authenticated connections are unaffected &mdash; acl.c:1191, and the DRYRUN path never reads the enabled flag.</td></tr>
+        <tr><td>PSUBSCRIBE</td><td>Its argument is compared to ACL channel patterns as a literal string, not glob-matched &mdash; acl.c:1630.</td></tr>
+        <tr><td>SETUSER is atomic</td><td>If any rule is invalid nothing is applied and no user is created &mdash; acl.c:2057.</td></tr>
+        <tr><td class="nil">Not modelled: SORT, SORT_RO, MIGRATE</td><td class="nil">Their later key specs are marked incomplete in the command table; real Redis resolves them with a command-specific function. Only the keys their complete specs describe are checked here.</td></tr>
+        <tr><td class="nil">Not modelled: BITFIELD</td><td class="nil">Its key spec carries <code>VARIABLE_FLAGS</code> and the read/write decision is made by a C helper this page has not reproduced, so its key is not checked. SET's variable flags <em>are</em> modelled, from db.c:2501.</td></tr>
+        <tr><td class="nil">Not modelled</td><td class="nil">ACL LOG, ACL SAVE/LOAD, modules, and cluster or sentinel specifics.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+</div>
+
+<script>
+"use strict";
+
+/* ---------------------------------------------------------------- data */
+/* Category order is acl.c:66-86. Command data is generated from
+ * src/commands/*.json plus the implicit categories in server.c:2961-2979. */
+const CATS = ["keyspace","read","write","set","sortedset","list","hash","string","bitmap",
+  "hyperloglog","geo","stream","pubsub","admin","fast","slow","blocking","dangerous",
+  "connection","transaction","scripting"];
+
+const CMDS = {"llen":{"c":16418,"k":[[0,0,1,0,0,0,1,0,0]],"a":2},"module|unload":{"c":172032,"a":3,"p":1},"readonly":{"c":278528,"a":1},"brpoplpush":{"c":98340,"k":[[3,0,1,0,0,0,1,0,0],[2,0,2,0,0,0,1,0,0]],"a":4},"wait":{"c":294912,"a":3},"msetnx":{"c":32900,"k":[[2,0,1,0,0,-1,2,0,0]],"a":-3},"sdiffstore":{"c":32780,"k":[[2,0,1,0,0,0,1,0,0],[1,0,2,0,0,-1,1,0,0]],"a":-3},"georadius":{"c":33796,"k":[[1,0,1,0,0,0,1,0,0],[2,1,"STORE",6,0,0,1,0,0],[2,1,"STOREDIST",6,0,0,1,0,0]],"a":-6},"psync":{"c":172032,"a":-3},"bzpopmin":{"c":81940,"k":[[3,0,1,0,0,-2,1,0,0]],"a":-3},"sentinel|master":{"c":172032,"a":3,"p":1},"cluster|myid":{"c":32768,"a":2,"p":1},"zpopmax":{"c":16404,"k":[[3,0,1,0,0,0,1,0,0]],"a":-2},"lmpop":{"c":32804,"k":[[3,0,1,0,1,0,1,1,0]],"a":-4},"dump":{"c":32771,"k":[[1,0,1,0,0,0,1,0,0]],"a":2},"acl|whoami":{"c":32768,"a":2,"p":1},"function|flush":{"c":1081348,"a":-2,"p":1},"function|list":{"c":1081344,"a":-2,"p":1},"xgroup|help":{"c":34816,"a":2,"p":1},"pttl":{"c":16387,"k":[[1,0,1,0,0,0,1,0,0]],"a":2},"discard":{"c":540672,"a":1},"geohash":{"c":33794,"k":[[1,0,1,0,0,0,1,0,0]],"a":-2},"getex":{"c":16516,"k":[[3,0,1,0,0,0,1,0,0]],"a":-2},"hexists":{"c":16450,"k":[[0,0,1,0,0,0,1,0,0]],"a":3},"cluster|addslots":{"c":172032,"a":-3,"p":1},"xclaim":{"c":18436,"k":[[2,0,1,0,0,0,1,0,0]],"a":-6},"sentinel|simulate-failure":{"c":172032,"a":-3,"p":1},"xinfo|groups":{"c":34818,"k":[[1,0,2,0,0,0,1,0,0]],"a":3,"p":1},"get":{"c":16514,"k":[[1,0,1,0,0,0,1,0,0]],"a":2},"sscan":{"c":32778,"k":[[1,0,1,0,0,0,1,0,0]],"a":-3},"touch":{"c":16387,"k":[[0,0,1,0,0,-1,1,0,0]],"a":-2},"incrbyfloat":{"c":16516,"k":[[3,0,1,0,0,0,1,0,0]],"a":3},"mset":{"c":32900,"k":[[2,0,1,0,0,-1,2,0,0]],"a":-3},"function":{"c":32768,"a":-2,"sub":1},"cluster|keyslot":{"c":32768,"a":3,"p":1},"xreadgroup":{"c":100356,"k":[[1,1,"STREAMS",4,0,-1,1,2,0]],"a":-7},"zremrangebyscore":{"c":32788,"k":[[2,0,1,0,0,0,1,0,0]],"a":4},"xinfo|consumers":{"c":34818,"k":[[1,0,2,0,0,0,1,0,0]],"a":4,"p":1},"bitcount":{"c":33026,"k":[[1,0,1,0,0,0,1,0,0]],"a":-2},"mget":{"c":16514,"k":[[1,0,1,0,0,-1,1,0,0]],"a":-2},"set":{"c":32900,"k":[[3,0,1,0,0,0,1,0,0]],"kv":1,"a":-3},"substr":{"c":32898,"k":[[1,0,1,0,0,0,1,0,0]],"a":4},"decrby":{"c":16516,"k":[[3,0,1,0,0,0,1,0,0]],"a":3},"sentinel|failover":{"c":172032,"a":3,"p":1},"acl|getuser":{"c":172032,"a":3,"p":1},"zrangestore":{"c":32788,"k":[[2,0,1,0,0,0,1,0,0],[1,0,2,0,0,0,1,0,0]],"a":-5},"incrby":{"c":16516,"k":[[3,0,1,0,0,0,1,0,0]],"a":3},"hvals":{"c":32834,"k":[[1,0,1,0,0,0,1,0,0]],"a":2},"cluster|forget":{"c":172032,"a":3,"p":1},"xgroup|delconsumer":{"c":34820,"k":[[2,0,2,0,0,0,1,0,0]],"a":5,"p":1},"restore":{"c":163845,"k":[[2,0,1,0,0,0,1,0,0]],"a":-4},"zinterstore":{"c":32788,"k":[[2,0,1,0,0,0,1,0,0],[1,0,2,0,1,0,1,1,0]],"a":-4},"memory|stats":{"c":32768,"a":2,"p":1},"lset":{"c":32804,"k":[[2,0,1,0,0,0,1,0,0]],"a":4},"latency|help":{"c":32768,"a":2,"p":1},"unlink":{"c":16389,"k":[[2,0,1,0,0,-1,1,0,0]],"a":-2},"ttl":{"c":16387,"k":[[1,0,1,0,0,0,1,0,0]],"a":2},"setex":{"c":32900,"k":[[2,0,1,0,0,0,1,0,0]],"a":4},"pubsub|numsub":{"c":36864,"a":-2,"p":1},"client|unblock":{"c":434176,"a":-3,"p":1},"monitor":{"c":172032,"a":1},"bgrewriteaof":{"c":172032,"a":1},"move":{"c":16389,"k":[[3,0,1,0,0,0,1,0,0]],"a":3},"object|freq":{"c":32771,"k":[[0,0,2,0,0,0,1,0,0]],"a":3,"p":1},"latency|graph":{"c":172032,"a":3,"p":1},"script":{"c":32768,"a":-2,"sub":1},"replconf":{"c":172032,"a":-1},"latency|history":{"c":172032,"a":3,"p":1},"echo":{"c":278528,"a":2},"sinterstore":{"c":32780,"k":[[2,0,1,0,0,0,1,0,0],[1,0,2,0,0,-1,1,0,0]],"a":-3},"client|id":{"c":294912,"a":2,"p":1},"xack":{"c":18436,"k":[[2,0,1,0,0,0,1,0,0]],"a":-4},"pubsub":{"c":32768,"a":-2,"sub":1},"xread":{"c":100354,"k":[[1,1,"STREAMS",1,0,-1,1,2,0]],"a":-4},"pfcount":{"c":33282,"k":[[1,0,1,0,0,-1,1,0,0]],"a":-2},"exec":{"c":557056,"a":1},"blmpop":{"c":98340,"k":[[3,0,2,0,1,0,1,1,0]],"a":-5},"zrevrangebyscore":{"c":32786,"k":[[1,0,1,0,0,0,1,0,0]],"a":-4},"flushdb":{"c":163845,"a":-1},"sentinel|replicas":{"c":172032,"a":3,"p":1},"client|setname":{"c":294912,"a":3,"p":1},"shutdown":{"c":172032,"a":-1},"hmget":{"c":16450,"k":[[1,0,1,0,0,0,1,0,0]],"a":-3},"lindex":{"c":32802,"k":[[1,0,1,0,0,0,1,0,0]],"a":3},"cluster|meet":{"c":172032,"a":-4,"p":1},"readwrite":{"c":278528,"a":1},"copy":{"c":32773,"k":[[1,0,1,0,0,0,1,0,0],[2,0,2,0,0,0,1,0,0]],"a":-3},"client|list":{"c":434176,"a":-2,"p":1},"role":{"c":155648,"a":1},"xlen":{"c":18434,"k":[[0,0,1,0,0,0,1,0,0]],"a":2},"acl|save":{"c":172032,"a":2,"p":1},"geodist":{"c":33794,"k":[[1,0,1,0,0,0,1,0,0]],"a":-4},"evalsha_ro":{"c":1081344,"k":[[1,0,2,0,1,0,1,1,0]],"a":-3},"bzpopmax":{"c":81940,"k":[[3,0,1,0,0,-2,1,0,0]],"a":-3},"zlexcount":{"c":16402,"k":[[1,0,1,0,0,0,1,0,0]],"a":4},"lpos":{"c":32802,"k":[[1,0,1,0,0,0,1,0,0]],"a":-3},"sentinel|masters":{"c":172032,"a":2,"p":1},"zrevrank":{"c":16402,"k":[[1,0,1,0,0,0,1,0,0]],"a":-3},"latency|latest":{"c":172032,"a":2,"p":1},"function|delete":{"c":1081348,"a":3,"p":1},"setbit":{"c":33028,"k":[[3,0,1,0,0,0,1,0,0]],"a":4},"latency|histogram":{"c":172032,"a":-2,"p":1},"cluster|slots":{"c":32768,"a":2,"p":1},"sentinel|myid":{"c":172032,"a":2,"p":1},"client|info":{"c":294912,"a":2,"p":1},"zpopmin":{"c":16404,"k":[[3,0,1,0,0,0,1,0,0]],"a":-2},"cluster|replicate":{"c":172032,"a":3,"p":1},"sentinel|pending-scripts":{"c":172032,"a":2,"p":1},"hmset":{"c":16452,"k":[[2,0,1,0,0,0,1,0,0]],"a":-4},"debug":{"c":172032,"a":-2},"command|getkeysandflags":{"c":294912,"a":-3,"p":1},"georadius_ro":{"c":33794,"k":[[1,0,1,0,0,0,1,0,0]],"a":-6},"zincrby":{"c":16404,"k":[[3,0,1,0,0,0,1,0,0]],"a":4},"zdiffstore":{"c":32788,"k":[[2,0,1,0,0,0,1,0,0],[1,0,2,0,1,0,1,1,0]],"a":-4},"config":{"c":32768,"a":-2,"sub":1},"acl|log":{"c":172032,"a":-2,"p":1},"getrange":{"c":32898,"k":[[1,0,1,0,0,0,1,0,0]],"a":4},"config|help":{"c":32768,"a":2,"p":1},"decr":{"c":16516,"k":[[3,0,1,0,0,0,1,0,0]],"a":2},"acl":{"c":32768,"a":-2,"sub":1},"strlen":{"c":16514,"k":[[0,0,1,0,0,0,1,0,0]],"a":2},"xtrim":{"c":34820,"k":[[2,0,1,0,0,0,1,0,0]],"a":-4},"punsubscribe":{"c":36864,"ch":4,"cr":[1,-1],"a":-1},"hincrbyfloat":{"c":16452,"k":[[3,0,1,0,0,0,1,0,0]],"a":4},"client|getname":{"c":294912,"a":2,"p":1},"zunionstore":{"c":32788,"k":[[2,0,1,0,0,0,1,0,0],[1,0,2,0,1,0,1,1,0]],"a":-4},"persist":{"c":16389,"k":[[2,0,1,0,0,0,1,0,0]],"a":2},"incr":{"c":16516,"k":[[3,0,1,0,0,0,1,0,0]],"a":2},"memory":{"c":32768,"a":-2,"sub":1},"object|refcount":{"c":32771,"k":[[0,0,2,0,0,0,1,0,0]],"a":3,"p":1},"geoadd":{"c":33796,"k":[[2,0,1,0,0,0,1,0,0]],"a":-5},"rpoplpush":{"c":32804,"k":[[3,0,1,0,0,0,1,0,0],[2,0,2,0,0,0,1,0,0]],"a":3},"function|stats":{"c":1081344,"a":2,"p":1},"function|restore":{"c":1081348,"a":-3,"p":1},"client|help":{"c":294912,"a":2,"p":1},"object|idletime":{"c":32771,"k":[[0,0,2,0,0,0,1,0,0]],"a":3,"p":1},"acl|cat":{"c":32768,"a":-2,"p":1},"cluster|links":{"c":32768,"a":2,"p":1},"scard":{"c":16394,"k":[[0,0,1,0,0,0,1,0,0]],"a":2},"expiretime":{"c":16387,"k":[[1,0,1,0,0,0,1,0,0]],"a":2},"sentinel|debug":{"c":172032,"a":-2,"p":1},"save":{"c":172032,"a":1},"geosearchstore":{"c":33796,"k":[[2,0,1,0,0,0,1,0,0],[1,0,2,0,0,0,1,0,0]],"a":-8},"zrange":{"c":32786,"k":[[1,0,1,0,0,0,1,0,0]],"a":-4},"function|load":{"c":1081348,"a":-3,"p":1},"lolwut":{"c":16386,"a":-1},"latency|reset":{"c":172032,"a":-2,"p":1},"bitop":{"c":33028,"k":[[2,0,2,0,0,0,1,0,0],[1,0,3,0,0,-1,1,0,0]],"a":-4},"sinter":{"c":32778,"k":[[1,0,1,0,0,-1,1,0,0]],"a":-2},"xrevrange":{"c":34818,"k":[[1,0,1,0,0,0,1,0,0]],"a":-4},"sunionstore":{"c":32780,"k":[[2,0,1,0,0,0,1,0,0],[1,0,2,0,0,-1,1,0,0]],"a":-3},"spublish":{"c":20480,"k":[[0,0,1,0,0,0,1,0,1]],"ch":1,"cr":[1,1],"a":3},"cluster|delslots":{"c":172032,"a":-3,"p":1},"xgroup":{"c":32768,"a":-2,"sub":1},"asking":{"c":278528,"a":1},"xinfo":{"c":32768,"a":-2,"sub":1},"zrangebyscore":{"c":32786,"k":[[1,0,1,0,0,0,1,0,0]],"a":-4},"sentinel|info-cache":{"c":172032,"a":-3,"p":1},"function|help":{"c":1081344,"a":2,"p":1},"pubsub|shardnumsub":{"c":36864,"a":-2,"p":1},"client|trackinginfo":{"c":294912,"a":2,"p":1},"hdel":{"c":16452,"k":[[2,0,1,0,0,0,1,0,0]],"a":-3},"memory|purge":{"c":32768,"a":2,"p":1},"cluster|countkeysinslot":{"c":32768,"a":3,"p":1},"script|kill":{"c":1081344,"a":2,"p":1},"command|docs":{"c":294912,"a":-2,"p":1},"acl|dryrun":{"c":172032,"a":-4,"p":1},"sentinel|remove":{"c":172032,"a":3,"p":1},"psetex":{"c":32900,"k":[[2,0,1,0,0,0,1,0,0]],"a":4},"sunion":{"c":32778,"k":[[1,0,1,0,0,-1,1,0,0]],"a":-2},"swapdb":{"c":147461,"a":3},"getset":{"c":16516,"k":[[3,0,1,0,0,0,1,0,0]],"a":3},"getbit":{"c":16642,"k":[[1,0,1,0,0,0,1,0,0]],"a":3},"client|no-evict":{"c":434176,"a":3,"p":1},"bitfield_ro":{"c":16642,"k":[[1,0,1,0,0,0,1,0,0]],"a":-2},"zdiff":{"c":32786,"k":[[1,0,1,0,1,0,1,1,0]],"a":-3},"sync":{"c":172032,"a":1},"migrate":{"c":163845,"k":[[3,0,3,0,0,0,1,0,0],[3,1,"KEYS",-2,0,-1,1,0,2]],"ki":1,"a":-6},"client|pause":{"c":434176,"a":-3,"p":1},"pfmerge":{"c":33284,"k":[[3,0,1,0,0,0,1,0,0],[1,0,2,0,0,-1,1,0,0]],"a":-2},"sentinel|is-master-down-by-addr":{"c":172032,"a":6,"p":1},"cluster|shards":{"c":32768,"a":2,"p":1},"sentinel|flushconfig":{"c":172032,"a":2,"p":1},"script|flush":{"c":1081344,"a":-2,"p":1},"acl|users":{"c":172032,"a":2,"p":1},"eval_ro":{"c":1081344,"k":[[1,0,2,0,1,0,1,1,0]],"a":-3},"hgetall":{"c":32834,"k":[[1,0,1,0,0,0,1,0,0]],"a":2},"client|reply":{"c":294912,"a":3,"p":1},"acl|setuser":{"c":172032,"a":-3,"p":1},"zscore":{"c":16402,"k":[[1,0,1,0,0,0,1,0,0]],"a":3},"zremrangebylex":{"c":32788,"k":[[2,0,1,0,0,0,1,0,0]],"a":4},"ltrim":{"c":32804,"k":[[2,0,1,0,0,0,1,0,0]],"a":4},"module|help":{"c":32768,"a":2,"p":1},"cluster|bumpepoch":{"c":172032,"a":2,"p":1},"xgroup|create":{"c":34820,"k":[[2,0,2,0,0,0,1,0,0]],"a":-5,"p":1},"lpush":{"c":16420,"k":[[2,0,1,0,0,0,1,0,0]],"a":-3},"sentinel|get-master-addr-by-name":{"c":172032,"a":3,"p":1},"acl|load":{"c":172032,"a":2,"p":1},"function|kill":{"c":1081344,"a":2,"p":1},"zrevrange":{"c":32786,"k":[[1,0,1,0,0,0,1,0,0]],"a":-4},"cluster|count-failure-reports":{"c":172032,"a":3,"p":1},"command|count":{"c":294912,"a":2,"p":1},"brpop":{"c":98340,"k":[[3,0,1,0,0,-2,1,0,0]],"a":-3},"command|help":{"c":294912,"a":2,"p":1},"waitaof":{"c":294912,"a":4},"object":{"c":32768,"a":-2,"sub":1},"evalsha":{"c":1081344,"k":[[3,0,2,0,1,0,1,1,0]],"a":-3},"acl|help":{"c":32768,"a":2,"p":1},"pubsub|shardchannels":{"c":36864,"a":-2,"p":1},"spop":{"c":16396,"k":[[3,0,1,0,0,0,1,0,0]],"a":-2},"module|load":{"c":172032,"a":-3,"p":1},"zrevrangebylex":{"c":32786,"k":[[1,0,1,0,0,0,1,0,0]],"a":-4},"slowlog":{"c":32768,"a":-2,"sub":1},"fcall":{"c":1081344,"k":[[3,0,2,0,1,0,1,1,0]],"a":-3},"xdel":{"c":18436,"k":[[2,0,1,0,0,0,1,0,0]],"a":-3},"xautoclaim":{"c":18436,"k":[[2,0,1,0,0,0,1,0,0]],"a":-6},"script|load":{"c":1081344,"a":3,"p":1},"sintercard":{"c":32778,"k":[[1,0,1,0,1,0,1,1,0]],"a":-3},"time":{"c":16384,"a":1},"cluster|myshardid":{"c":32768,"a":2,"p":1},"setrange":{"c":32900,"k":[[2,0,1,0,0,0,1,0,0]],"a":4},"hello":{"c":278528,"na":1,"a":-1},"smismember":{"c":16394,"k":[[1,0,1,0,0,0,1,0,0]],"a":-3},"config|rewrite":{"c":172032,"a":2,"p":1},"zmpop":{"c":32788,"k":[[3,0,1,0,1,0,1,1,0]],"a":-4},"georadiusbymember":{"c":33796,"k":[[1,0,1,0,0,0,1,0,0],[2,1,"STORE",5,0,0,1,0,0],[2,1,"STOREDIST",5,0,0,1,0,0]],"a":-5},"script|help":{"c":1081344,"a":2,"p":1},"cluster":{"c":32768,"a":-2,"sub":1},"linsert":{"c":32804,"k":[[2,0,1,0,0,0,1,0,0]],"a":5},"keys":{"c":163843,"a":2},"command":{"c":294912,"a":-1,"sub":1},"del":{"c":32773,"k":[[2,0,1,0,0,-1,1,0,0]],"a":-2},"lcs":{"c":32898,"k":[[1,0,1,0,0,1,1,0,0]],"a":-3},"cluster|slaves":{"c":172032,"a":3,"p":1},"xinfo|help":{"c":34816,"a":2,"p":1},"sort_ro":{"c":163898,"k":[[1,0,1,0,0,0,1,0,0]],"ki":1,"a":-2},"sentinel|config":{"c":172032,"a":-4,"p":1},"multi":{"c":540672,"a":1},"append":{"c":16516,"k":[[2,0,1,0,0,0,1,0,0]],"a":3},"cluster|addslotsrange":{"c":172032,"a":-4,"p":1},"cluster|info":{"c":32768,"a":2,"p":1},"sentinel|sentinels":{"c":172032,"a":3,"p":1},"pexpireat":{"c":16389,"k":[[2,0,1,0,0,0,1,0,0]],"a":-3},"zrank":{"c":16402,"k":[[1,0,1,0,0,0,1,0,0]],"a":-3},"quit":{"c":278528,"na":1,"a":-1},"hstrlen":{"c":16450,"k":[[0,0,1,0,0,0,1,0,0]],"a":3},"lrange":{"c":32802,"k":[[1,0,1,0,0,0,1,0,0]],"a":4},"subscribe":{"c":36864,"ch":2,"cr":[1,-1],"a":-2},"slowlog|reset":{"c":172032,"a":2,"p":1},"object|help":{"c":32769,"a":2,"p":1},"lrem":{"c":32804,"k":[[2,0,1,0,0,0,1,0,0]],"a":4},"cluster|getkeysinslot":{"c":32768,"a":4,"p":1},"sentinel|ckquorum":{"c":172032,"a":3,"p":1},"pexpiretime":{"c":16387,"k":[[1,0,1,0,0,0,1,0,0]],"a":2},"randomkey":{"c":32771,"a":1},"sentinel|monitor":{"c":172032,"a":6,"p":1},"slaveof":{"c":172032,"a":3},"smembers":{"c":32778,"k":[[1,0,1,0,0,0,1,0,0]],"a":2},"zmscore":{"c":16402,"k":[[1,0,1,0,0,0,1,0,0]],"a":-3},"xgroup|destroy":{"c":34820,"k":[[2,0,2,0,0,0,1,0,0]],"a":4,"p":1},"bzmpop":{"c":98324,"k":[[3,0,2,0,1,0,1,1,0]],"a":-5},"acl|deluser":{"c":172032,"a":-3,"p":1},"setnx":{"c":16516,"k":[[2,0,1,0,0,0,1,0,0]],"a":3},"function|dump":{"c":1081344,"a":2,"p":1},"hkeys":{"c":32834,"k":[[1,0,1,0,0,0,1,0,0]],"a":2},"client|kill":{"c":434176,"a":-3,"p":1},"watch":{"c":540672,"k":[[0,0,1,0,0,-1,1,0,0]],"a":-2},"flushall":{"c":163845,"a":-1},"script|debug":{"c":1081344,"a":3,"p":1},"config|resetstat":{"c":172032,"a":2,"p":1},"bitfield":{"c":33028,"k":[[3,0,1,0,0,0,1,0,0]],"kv":1,"a":-2},"cluster|setslot":{"c":172032,"a":-4,"p":1},"zcount":{"c":16402,"k":[[1,0,1,0,0,0,1,0,0]],"a":4},"zscan":{"c":32786,"k":[[1,0,1,0,0,0,1,0,0]],"a":-3},"latency|doctor":{"c":172032,"a":2,"p":1},"geosearch":{"c":33794,"k":[[1,0,1,0,0,0,1,0,0]],"a":-7},"rpush":{"c":16420,"k":[[2,0,1,0,0,0,1,0,0]],"a":-3},"memory|doctor":{"c":32768,"a":2,"p":1},"info":{"c":163840,"a":-1},"client|no-touch":{"c":294912,"a":3,"p":1},"rpop":{"c":16420,"k":[[3,0,1,0,0,0,1,0,0]],"a":-2},"xadd":{"c":18436,"k":[[2,0,1,0,0,0,1,0,0]],"a":-5},"cluster|delslotsrange":{"c":172032,"a":-4,"p":1},"pubsub|help":{"c":32768,"a":2,"p":1},"publish":{"c":20480,"ch":1,"cr":[1,1],"a":3},"pfadd":{"c":16900,"k":[[2,0,1,0,0,0,1,0,0]],"a":-2},"module":{"c":32768,"a":-2,"sub":1},"client|caching":{"c":294912,"a":3,"p":1},"bgsave":{"c":172032,"a":-1},"zunion":{"c":32786,"k":[[1,0,1,0,1,0,1,1,0]],"a":-3},"client|getredir":{"c":294912,"a":2,"p":1},"auth":{"c":278528,"na":1,"a":-2},"module|loadex":{"c":172032,"a":-3,"p":1},"cluster|help":{"c":32768,"a":2,"p":1},"rename":{"c":32773,"k":[[3,0,1,0,0,0,1,0,0],[2,0,2,0,0,0,1,0,0]],"a":3},"script|exists":{"c":1081344,"a":-3,"p":1},"pubsub|numpat":{"c":36864,"a":2,"p":1},"memory|help":{"c":32768,"a":2,"p":1},"cluster|failover":{"c":172032,"a":-2,"p":1},"xsetid":{"c":18436,"k":[[2,0,1,0,0,0,1,0,0]],"a":-3},"xpending":{"c":34818,"k":[[1,0,1,0,0,0,1,0,0]],"a":-3},"lpop":{"c":16420,"k":[[3,0,1,0,0,0,1,0,0]],"a":-2},"renamenx":{"c":16389,"k":[[3,0,1,0,0,0,1,0,0],[2,0,2,0,0,0,1,0,0]],"a":3},"xgroup|setid":{"c":34820,"k":[[2,0,2,0,0,0,1,0,0]],"a":-5,"p":1},"hrandfield":{"c":32834,"k":[[1,0,1,0,0,0,1,0,0]],"a":-2},"hlen":{"c":16450,"k":[[0,0,1,0,0,0,1,0,0]],"a":2},"sadd":{"c":16396,"k":[[2,0,1,0,0,0,1,0,0]],"a":-3},"unsubscribe":{"c":36864,"ch":0,"cr":[1,-1],"a":-1},"pfselftest":{"c":172544,"a":1},"acl|genpass":{"c":32768,"a":-2,"p":1},"client|setinfo":{"c":294912,"a":4,"p":1},"zrandmember":{"c":32786,"k":[[1,0,1,0,0,0,1,0,0]],"a":-2},"sentinel|slaves":{"c":172032,"a":3,"p":1},"psubscribe":{"c":36864,"ch":6,"cr":[1,-1],"a":-2},"pexpire":{"c":16389,"k":[[2,0,1,0,0,0,1,0,0]],"a":-3},"cluster|saveconfig":{"c":172032,"a":2,"p":1},"dbsize":{"c":16387,"a":1},"slowlog|get":{"c":172032,"a":-2,"p":1},"sentinel|reset":{"c":172032,"a":3,"p":1},"sdiff":{"c":32778,"k":[[1,0,1,0,0,-1,1,0,0]],"a":-2},"xinfo|stream":{"c":34818,"k":[[1,0,2,0,0,0,1,0,0]],"a":-3,"p":1},"cluster|flushslots":{"c":172032,"a":2,"p":1},"zinter":{"c":32786,"k":[[1,0,1,0,1,0,1,1,0]],"a":-3},"scan":{"c":32771,"a":-2},"type":{"c":16387,"k":[[0,0,1,0,0,0,1,0,0]],"a":2},"zadd":{"c":16404,"k":[[2,0,1,0,0,0,1,0,0]],"a":-4},"zremrangebyrank":{"c":32788,"k":[[2,0,1,0,0,0,1,0,0]],"a":4},"memory|usage":{"c":32770,"k":[[0,0,2,0,0,0,1,0,0]],"a":-3,"p":1},"unwatch":{"c":540672,"a":1},"ping":{"c":278528,"a":-1},"client|unpause":{"c":434176,"a":2,"p":1},"lmove":{"c":32804,"k":[[3,0,1,0,0,0,1,0,0],[2,0,2,0,0,0,1,0,0]],"a":5},"eval":{"c":1081344,"k":[[3,0,2,0,1,0,1,1,0]],"a":-3},"zintercard":{"c":32786,"k":[[1,0,1,0,1,0,1,1,0]],"a":-3},"command|getkeys":{"c":294912,"a":-3,"p":1},"rpushx":{"c":16420,"k":[[2,0,1,0,0,0,1,0,0]],"a":-3},"cluster|set-config-epoch":{"c":172032,"a":3,"p":1},"srem":{"c":16396,"k":[[2,0,1,0,0,0,1,0,0]],"a":-3},"sismember":{"c":16394,"k":[[0,0,1,0,0,0,1,0,0]],"a":3},"hget":{"c":16450,"k":[[1,0,1,0,0,0,1,0,0]],"a":3},"smove":{"c":16396,"k":[[3,0,1,0,0,0,1,0,0],[2,0,2,0,0,0,1,0,0]],"a":4},"latency":{"c":32768,"a":-2,"sub":1},"ssubscribe":{"c":36864,"k":[[0,0,1,0,0,-1,1,0,1]],"ch":2,"cr":[1,-1],"a":-2},"srandmember":{"c":32778,"k":[[1,0,1,0,0,0,1,0,0]],"a":-2},"command|info":{"c":294912,"a":-2,"p":1},"acl|list":{"c":172032,"a":2,"p":1},"object|encoding":{"c":32771,"k":[[0,0,2,0,0,0,1,0,0]],"a":3,"p":1},"client":{"c":32768,"a":-2,"sub":1},"exists":{"c":16387,"k":[[0,0,1,0,0,-1,1,0,0]],"a":-2},"fcall_ro":{"c":1081344,"k":[[1,0,2,0,1,0,1,1,0]],"a":-3},"xgroup|createconsumer":{"c":34820,"k":[[2,0,2,0,0,0,1,0,0]],"a":5,"p":1},"hsetnx":{"c":16452,"k":[[2,0,1,0,0,0,1,0,0]],"a":4},"geopos":{"c":33794,"k":[[1,0,1,0,0,0,1,0,0]],"a":-2},"pfdebug":{"c":172548,"k":[[1,0,2,0,0,0,1,0,0]],"a":3},"lastsave":{"c":155648,"a":1},"xrange":{"c":34818,"k":[[1,0,1,0,0,0,1,0,0]],"a":-4},"module|list":{"c":172032,"a":2,"p":1},"slowlog|help":{"c":32768,"a":2,"p":1},"hset":{"c":16452,"k":[[2,0,1,0,0,0,1,0,0]],"a":-4},"blmove":{"c":98340,"k":[[3,0,1,0,0,0,1,0,0],[2,0,2,0,0,0,1,0,0]],"a":6},"command|list":{"c":294912,"a":-2,"p":1},"sentinel":{"c":172032,"a":-2,"sub":1},"zrangebylex":{"c":32786,"k":[[1,0,1,0,0,0,1,0,0]],"a":-4},"georadiusbymember_ro":{"c":33794,"k":[[1,0,1,0,0,0,1,0,0]],"a":-5},"cluster|replicas":{"c":172032,"a":3,"p":1},"lpushx":{"c":16420,"k":[[2,0,1,0,0,0,1,0,0]],"a":-3},"expire":{"c":16389,"k":[[2,0,1,0,0,0,1,0,0]],"a":-3},"pubsub|channels":{"c":36864,"a":-2,"p":1},"blpop":{"c":98340,"k":[[3,0,1,0,0,-2,1,0,0]],"a":-3},"reset":{"c":278528,"na":1,"a":1},"zrem":{"c":16404,"k":[[2,0,1,0,0,0,1,0,0]],"a":-3},"getdel":{"c":16516,"k":[[3,0,1,0,0,0,1,0,0]],"a":2},"hincrby":{"c":16452,"k":[[3,0,1,0,0,0,1,0,0]],"a":4},"config|get":{"c":172032,"a":-3,"p":1},"bitpos":{"c":33026,"k":[[1,0,1,0,0,0,1,0,0]],"a":-3},"sentinel|help":{"c":32768,"a":2,"p":1},"client|tracking":{"c":294912,"a":-3,"p":1},"zcard":{"c":16402,"k":[[0,0,1,0,0,0,1,0,0]],"a":2},"sort":{"c":163900,"k":[[1,0,1,0,0,0,1,0,0]],"ki":1,"a":-2},"sentinel|set":{"c":172032,"a":-5,"p":1},"memory|malloc-stats":{"c":32768,"a":2,"p":1},"slowlog|len":{"c":172032,"a":2,"p":1},"restore-asking":{"c":163845,"k":[[2,0,1,0,0,0,1,0,0]],"a":-4},"hscan":{"c":32834,"k":[[1,0,1,0,0,0,1,0,0]],"a":-3},"sunsubscribe":{"c":36864,"k":[[0,0,1,0,0,-1,1,0,1]],"ch":0,"cr":[1,-1],"a":-1},"config|set":{"c":172032,"a":-4,"p":1},"expireat":{"c":16389,"k":[[2,0,1,0,0,0,1,0,0]],"a":-3},"cluster|reset":{"c":172032,"a":-2,"p":1},"select":{"c":278528,"a":2},"cluster|nodes":{"c":32768,"a":2,"p":1},"replicaof":{"c":172032,"a":3},"failover":{"c":172032,"a":-1}};
+
+const NAMES = Object.keys(CMDS);
+const SUBS = {};                       // container -> [full subcommand names]
+for (const n of NAMES) {
+  const i = n.indexOf("|");
+  if (i > 0) (SUBS[n.slice(0, i)] ||= []).push(n);
+}
+const CATBIT = {};
+CATS.forEach((c, i) => { CATBIT["@" + c] = 1 << i; });
+
+function hasCat(name, catBit) { return (CMDS[name].c & catBit) !== 0; }
+
+/* ------------------------------------------------- glob (stringmatchlen) */
+/* Reproduces src/util.c stringmatchlen: *, ?, [...] with ^ and ranges, and \ escape. */
+function globMatch(p, s) {
+  function go(pi, si) {
+    while (pi < p.length && si <= s.length) {
+      const c = p[pi];
+      if (c === "*") {
+        while (p[pi + 1] === "*") pi++;
+        if (pi + 1 === p.length) return true;
+        for (let k = si; k <= s.length; k++) if (go(pi + 1, k)) return true;
+        return false;
+      }
+      if (si >= s.length) return false;
+      if (c === "?") { si++; pi++; continue; }
+      if (c === "[") {
+        let j = pi + 1, neg = false, hit = false;
+        if (p[j] === "^") { neg = true; j++; }
+        for (;;) {
+          if (j >= p.length) break;
+          if (p[j] === "\\" && j + 1 < p.length) {
+            j++;
+            if (p[j] === s[si]) hit = true;
+          } else if (p[j] === "]") {
+            break;
+          } else if (p[j + 1] === "-" && j + 2 < p.length && p[j + 2] !== "]") {
+            let a = p[j], b = p[j + 2];
+            if (a > b) { const t = a; a = b; b = t; }
+            if (s[si] >= a && s[si] <= b) hit = true;
+            j += 2;
+          } else if (p[j] === s[si]) {
+            hit = true;
+          }
+          j++;
         }
-        // --- END: SHA256 Implementation ---
-
-        // --- START: REDIS DEFINITIONS ---
-        const categoryDescriptions = {
-            '@keyspace': 'Commands that operate on keys, not values (e.g., DEL, EXPIRE, RENAME).',
-            '@read': 'Read-only commands that retrieve data (e.g., GET, HGETALL, SMEMBERS).',
-            '@write': 'Commands that modify data (e.g., SET, HSET, SADD).',
-            '@set': 'Commands for the Set data type (e.g., SADD, SREM, SINTER).',
-            '@sortedset': 'Commands for the Sorted Set data type (e.g., ZADD, ZRANGE, ZREM).',
-            '@list': 'Commands for the List data type (e.g., LPUSH, RPOP, LRANGE).',
-            '@hash': 'Commands for the Hash data type (e.g., HSET, HGET, HDEL).',
-            '@string': 'Commands for the String data type (e.g., GET, SET, INCR).',
-            '@bitmap': 'Commands that operate on bitmaps (e.g., GETBIT, SETBIT, BITCOUNT).',
-            '@hyperloglog': 'Commands for the HyperLogLog data type (e.g., PFADD, PFCOUNT).',
-            '@geo': 'Commands for geospatial data (e.g., GEOADD, GEODIST).',
-            '@stream': 'Commands for the Stream data type (e.g., XADD, XREAD, XGROUP).',
-            '@pubsub': 'Commands related to Publish/Subscribe (e.g., PUBLISH, SUBSCRIBE).',
-            '@admin': 'Administrative commands (e.g., CONFIG, SHUTDOWN, ACL).',
-            '@fast': 'Commands that are generally fast and non-blocking.',
-            '@slow': 'Commands that can be slow or block for a long time.',
-            '@blocking': 'Commands that can block the connection (e.g., BLPOP).',
-            '@dangerous': 'Commands considered dangerous (e.g., FLUSHALL, DEBUG, SHUTDOWN).',
-            '@connection': 'Commands related to the client connection (e.g., AUTH, PING, SELECT).',
-            '@transaction': 'Commands related to transactions (e.g., MULTI, EXEC, DISCARD).',
-            '@scripting': 'Commands for executing scripts (e.g., EVAL, SCRIPT LOAD).',
-            '@all': 'Grants access to all commands, including those loaded via modules in the future.'
-        };
-
-        const redisCommandInfo = {
-            // Keyspace
-            'del': { categories: ['@keyspace', '@write'], keySpec: { type: 'w', first: 1, last: -1, step: 1 } },
-            'dump': { categories: ['@keyspace', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'exists': { categories: ['@keyspace', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: -1, step: 1 } },
-            'expire': { categories: ['@keyspace', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'keys': { categories: ['@keyspace', '@read', '@slow', '@dangerous'] },
-            'migrate': { categories: ['@keyspace', '@write', '@slow', '@dangerous'] },
-            'move': { categories: ['@keyspace', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'object': { categories: ['@keyspace', '@read', '@slow'], keySpec: { type: 'r', first: 2, last: 2, step: 1 } },
-            'persist': { categories: ['@keyspace', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'pexpire': { categories: ['@keyspace', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'pttl': { categories: ['@keyspace', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'randomkey': { categories: ['@keyspace', '@read', '@slow'] },
-            'rename': { categories: ['@keyspace', '@write'], keySpec: { type: 'w', first: 1, last: 2, step: 1 } },
-            'renamenx': { categories: ['@keyspace', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 2, step: 1 } },
-            'restore': { categories: ['@keyspace', '@write', '@slow', '@dangerous'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'scan': { categories: ['@keyspace', '@read', '@slow'] },
-            'sort': { categories: ['@keyspace', '@write', '@slow', '@dangerous'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'ttl': { categories: ['@keyspace', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'type': { categories: ['@keyspace', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'unlink': { categories: ['@keyspace', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: -1, step: 1 } },
-            'wait': { categories: ['@keyspace', '@slow'] },
-
-            // String
-            'append': { categories: ['@string', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'bitcount': { categories: ['@bitmap', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'bitfield': { categories: ['@bitmap', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'bitop': { categories: ['@bitmap', '@write', '@slow'], keySpec: { type: 'w', first: 2, last: -1, step: 1 } },
-            'bitpos': { categories: ['@bitmap', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'decr': { categories: ['@string', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'decrby': { categories: ['@string', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'get': { categories: ['@string', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'getbit': { categories: ['@bitmap', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'getrange': { categories: ['@string', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'getset': { categories: ['@string', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'incr': { categories: ['@string', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'incrby': { categories: ['@string', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'incrbyfloat': { categories: ['@string', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'mget': { categories: ['@string', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: -1, step: 1 } },
-            'mset': { categories: ['@string', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: -1, step: 2 } },
-            'msetnx': { categories: ['@string', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: -1, step: 2 } },
-            'psetex': { categories: ['@string', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'set': { categories: ['@string', '@write'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'setbit': { categories: ['@bitmap', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'setex': { categories: ['@string', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'setnx': { categories: ['@string', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'setrange': { categories: ['@string', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'strlen': { categories: ['@string', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            
-            // Hash
-            'hdel': { categories: ['@hash', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'hexists': { categories: ['@hash', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'hget': { categories: ['@hash', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'hgetall': { categories: ['@hash', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'hincrby': { categories: ['@hash', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'hincrbyfloat': { categories: ['@hash', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'hkeys': { categories: ['@hash', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'hlen': { categories: ['@hash', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'hmget': { categories: ['@hash', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'hmset': { categories: ['@hash', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'hscan': { categories: ['@hash', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'hset': { categories: ['@hash', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'hsetnx': { categories: ['@hash', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'hvals': { categories: ['@hash', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'hstrlen': { categories: ['@hash', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-
-            // List
-            'blpop': { categories: ['@list', '@write', '@slow', '@blocking'], keySpec: { type: 'w', first: 1, last: -2, step: 1 } },
-            'brpop': { categories: ['@list', '@write', '@slow', '@blocking'], keySpec: { type: 'w', first: 1, last: -2, step: 1 } },
-            'brpoplpush': { categories: ['@list', '@write', '@slow', '@blocking'], keySpec: { type: 'w', first: 1, last: 2, step: 1 } },
-            'lindex': { categories: ['@list', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'linsert': { categories: ['@list', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'llen': { categories: ['@list', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'lpop': { categories: ['@list', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'lpush': { categories: ['@list', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'lpushx': { categories: ['@list', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'lrange': { categories: ['@list', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'lrem': { categories: ['@list', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'lset': { categories: ['@list', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'ltrim': { categories: ['@list', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'rpop': { categories: ['@list', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'rpoplpush': { categories: ['@list', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 2, step: 1 } },
-            'rpush': { categories: ['@list', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'rpushx': { categories: ['@list', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-
-            // Set
-            'sadd': { categories: ['@set', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'scard': { categories: ['@set', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'sdiff': { categories: ['@set', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: -1, step: 1 } },
-            'sdiffstore': { categories: ['@set', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: -1, step: 1 } },
-            'sinter': { categories: ['@set', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: -1, step: 1 } },
-            'sinterstore': { categories: ['@set', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: -1, step: 1 } },
-            'sismember': { categories: ['@set', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'smembers': { categories: ['@set', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'smove': { categories: ['@set', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 2, step: 1 } },
-            'spop': { categories: ['@set', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'srandmember': { categories: ['@set', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'srem': { categories: ['@set', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'sunion': { categories: ['@set', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: -1, step: 1 } },
-            'sunionstore': { categories: ['@set', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: -1, step: 1 } },
-            'sscan': { categories: ['@set', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-
-            // Sorted Set
-            'zadd': { categories: ['@sortedset', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'zcard': { categories: ['@sortedset', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'zcount': { categories: ['@sortedset', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'zincrby': { categories: ['@sortedset', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'zinterstore': { categories: ['@sortedset', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'zlexcount': { categories: ['@sortedset', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'zrange': { categories: ['@sortedset', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'zrangebylex': { categories: ['@sortedset', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'zrevrangebylex': { categories: ['@sortedset', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'zrangebyscore': { categories: ['@sortedset', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'zrank': { categories: ['@sortedset', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'zrem': { categories: ['@sortedset', '@write', '@fast'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'zremrangebylex': { categories: ['@sortedset', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'zremrangebyrank': { categories: ['@sortedset', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'zremrangebyscore': { categories: ['@sortedset', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'zrevrange': { categories: ['@sortedset', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'zrevrangebyscore': { categories: ['@sortedset', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'zrevrank': { categories: ['@sortedset', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'zscore': { categories: ['@sortedset', '@read', '@fast'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-            'zunionstore': { categories: ['@sortedset', '@write', '@slow'], keySpec: { type: 'w', first: 1, last: 1, step: 1 } },
-            'zscan': { categories: ['@sortedset', '@read', '@slow'], keySpec: { type: 'r', first: 1, last: 1, step: 1 } },
-
-            // Pub/Sub
-            'publish': { categories: ['@pubsub', '@fast'], channelSpec: { type: 'p', first: 1 } },
-            'pubsub': { categories: ['@pubsub', '@slow', '@dangerous'] },
-            'psubscribe': { categories: ['@pubsub', '@slow'], channelSpec: { type: 's', first: 1, last: -1 } },
-            'punsubscribe': { categories: ['@pubsub', '@slow'] },
-            'subscribe': { categories: ['@pubsub', '@slow'], channelSpec: { type: 's', first: 1, last: -1 } },
-            'unsubscribe': { categories: ['@pubsub', '@slow'] },
-            
-            // Scripting
-            'eval': { categories: ['@scripting', '@slow', '@dangerous'] },
-            'evalsha': { categories: ['@scripting', '@slow', '@dangerous'] },
-            'script': { categories: ['@scripting', '@slow'] },
-            
-            // Connection
-            'auth': { categories: ['@connection', '@fast'] },
-            'client': { categories: ['@connection', '@slow', '@dangerous'] },
-            'echo': { categories: ['@connection', '@fast'] },
-            'ping': { categories: ['@connection', '@fast'] },
-            'quit': { categories: ['@connection'] },
-            'select': { categories: ['@connection', '@fast'] },
-
-            // Admin / Dangerous
-            'acl': { categories: ['@admin', '@dangerous'] },
-            'bgrewriteaof': { categories: ['@admin', '@dangerous'] },
-            'bgsave': { categories: ['@admin', '@dangerous'] },
-            'config': { categories: ['@admin', '@dangerous'] },
-            'cluster': { categories: ['@admin', '@dangerous'] },
-            'command': { categories: ['@admin', '@dangerous'] },
-            'dbsize': { categories: ['@admin', '@fast'] },
-            'debug': { categories: ['@admin', '@dangerous'] },
-            'flushall': { categories: ['@admin', '@write', '@slow', '@dangerous'] },
-            'flushdb': { categories: ['@admin', '@write', '@slow', '@dangerous'] },
-            'info': { categories: ['@admin', '@slow', '@dangerous'] },
-            'lastsave': { categories: ['@admin', '@fast'] },
-            'monitor': { categories: ['@admin', '@slow', '@dangerous'] },
-            'psync': { categories: ['@admin', '@dangerous'] },
-            'replconf': { categories: ['@admin', '@dangerous'] },
-            'role': { categories: ['@admin', '@slow', '@dangerous'] },
-            'save': { categories: ['@admin', '@slow', '@dangerous'] },
-            'shutdown': { categories: ['@admin', '@slow', '@dangerous'] },
-            'slaveof': { categories: ['@admin', '@slow', '@dangerous'] },
-            'slowlog': { categories: ['@admin', '@slow'] },
-            'sync': { categories: ['@admin', '@dangerous'] },
-            'time': { categories: ['@admin', '@fast'] },
-
-        };
-
-        const redisCategories = {};
-        Object.entries(redisCommandInfo).forEach(([cmd, info]) => {
-            info.categories.forEach(cat => {
-                if (!redisCategories[cat]) {
-                    redisCategories[cat] = [];
-                }
-                redisCategories[cat].push(cmd);
-            });
-        });
-        const availableCategories = Object.keys(redisCategories);
-        if (!availableCategories.includes('@all')) {
-            availableCategories.push('@all');
-        }
-        availableCategories.sort();
-        // --- END: REDIS DEFINITIONS ---
-
-        // --- START: ACL SIMULATOR CORE LOGIC ---
-        class User {
-            constructor(name) {
-                this.name = name;
-                this.flags = {
-                    on: false,
-                    off: true,
-                    nopass: false,
-                };
-                this.passwords = new Set(); // Stores plaintext, will be hashed on SETUSER
-                this.commandRules = []; // ['+@all', '-set']
-                this.keyPatterns = []; // ['~app:*', '%R~log:*']
-                this.channelPatterns = new Set(); // ['&news:*']
-            }
-        }
-
-        let Users = new Map();
-
-        function createDefaultUser() {
-            const defaultUser = new User('default');
-            defaultUser.flags.on = true;
-            defaultUser.flags.off = false;
-            defaultUser.flags.nopass = true;
-            defaultUser.commandRules.push('+@all');
-            defaultUser.keyPatterns.push('~*');
-            defaultUser.channelPatterns.add('&*');
-            Users.set('default', defaultUser);
-        }
-        
-        function globStringToRegex(glob) {
-            const specialChars = '\\^$.|?+()[]{}';
-            let regexString = '';
-            for (let i = 0; i < glob.length; i++) {
-                const char = glob[i];
-                if (char === '*') {
-                    regexString += '.*';
-                } else if (char === '?') {
-                    regexString += '.';
-                } else if (char === '\\\\') {
-                    if (i + 1 < glob.length) {
-                        regexString += '\\' + glob[i+1];
-                        i++;
-                    } else {
-                        regexString += '\\\\';
-                    }
-                }
-                else if (specialChars.includes(char)) {
-                    regexString += '\\' + char;
-                } else {
-                    regexString += char;
-                }
-            }
-            return new RegExp('^' + regexString + '$');
-        }
-
-        class ParsedUser {
-            constructor(user) {
-                this.name = user.name;
-                this.flags = {...user.flags};
-                this.passwords = new Set(user.passwords);
-                this.commandRules = [...user.commandRules];
-                this.keyPatterns = user.keyPatterns.map(p => {
-                    if (p.startsWith('%R~')) return { pattern: globStringToRegex(p.substring(3)), permissions: { r: true, w: false } };
-                    if (p.startsWith('%W~')) return { pattern: globStringToRegex(p.substring(3)), permissions: { r: false, w: true } };
-                    if (p.startsWith('~')) return { pattern: globStringToRegex(p.substring(1)), permissions: { r: true, w: true } };
-                }).filter(Boolean);
-                this.channelPatterns = new Set(Array.from(user.channelPatterns).map(p => globStringToRegex(p.substring(1))));
-                this.allKeys = user.keyPatterns.includes('~*');
-                this.allChannels = user.channelPatterns.has('&*');
-            }
-        }
-
-        async function processACLCommand(input) {
-            const parts = input.trim().split(/\s+/);
-            const command = (parts.shift() || '').toLowerCase();
-            const subcommand = (parts.shift() || '').toLowerCase();
-
-            if (command !== 'acl') {
-                logMessage(`ERROR: Unknown command '${command}'. Only ACL commands are supported.`, 'error');
-                return;
-            }
-
-            switch(subcommand) {
-                case 'setuser':
-                    await handleSetUser(parts);
-                    break;
-                case 'getuser':
-                    handleGetUser(parts);
-                    break;
-                case 'deluser':
-                    handleDelUser(parts);
-                    break;
-                case 'list':
-                    handleListUsers();
-                    break;
-                case 'users':
-                    handleListUsers(true);
-                    break;
-                 case 'dryrun':
-                    handleDryRun(parts);
-                    break;
-                default:
-                    logMessage(`ERROR: Unsupported ACL subcommand '${subcommand}'.`, 'error');
-            }
-            updateUI();
-        }
-
-        async function handleSetUser(args) {
-            if (args.length < 1) {
-                logMessage('ERROR: SETUSER requires a username.', 'error');
-                return;
-            }
-            const username = args.shift();
-            let user = Users.get(username);
-            if (!user) {
-                user = new User(username);
-                Users.set(username, user);
-                logMessage(`> Created new user '${username}'.`, 'info');
-            }
-            
-            logMessage(`> Modifying user '${username}' with rules: ${args.join(' ')}`, 'info');
-
-            for (const rule of args) {
-                if (rule === 'on') { user.flags.on = true; user.flags.off = false; }
-                else if (rule === 'off') { user.flags.on = false; user.flags.off = true; }
-                else if (rule === 'nopass') { user.flags.nopass = true; user.passwords.clear(); }
-                else if (rule === 'resetpass') { user.flags.nopass = false; user.passwords.clear(); }
-                else if (rule.startsWith('>')) {
-                    user.flags.nopass = false;
-                    const hash = await sha256(rule.substring(1));
-                    user.passwords.add(hash);
-                }
-                else if (rule.startsWith('#')) {
-                    user.flags.nopass = false;
-                    user.passwords.add(rule.substring(1));
-                }
-                else if (rule.startsWith('<')) {
-                     const hash = await sha256(rule.substring(1));
-                     user.passwords.delete(hash);
-                }
-                 else if (rule.startsWith('!')) {
-                    user.passwords.delete(rule.substring(1));
-                }
-                else if (rule === 'allkeys' || rule === '~*') { user.keyPatterns = ['~*']; }
-                else if (rule === 'resetkeys') { user.keyPatterns = []; }
-                else if (rule.startsWith('~') || rule.startsWith('%R~') || rule.startsWith('%W~')) {
-                    user.keyPatterns.push(rule);
-                }
-                else if (rule === 'allchannels' || rule === '&*') { user.channelPatterns = new Set(['&*']); }
-                else if (rule === 'resetchannels') { user.channelPatterns = new Set(); }
-                else if (rule.startsWith('&')) { user.channelPatterns.add(rule); }
-                else if (rule === 'allcommands') user.commandRules.push('+@all');
-                else if (rule === 'nocommands') user.commandRules.push('-@all');
-                else if (rule.startsWith('+') || rule.startsWith('-')) {
-                    user.commandRules.push(rule);
-                } else {
-                    logMessage(`Warning: Ignoring unknown rule modifier '${rule}' for user '${username}'.`, 'warn');
-                }
-            };
-            logMessage(`OK: User '${username}' updated.`, 'success');
-        }
-        
-        function handleListUsers(namesOnly = false) {
-             logMessage('> ACL LIST', 'info');
-             const users = Array.from(Users.values());
-             if (users.length === 0) {
-                 logMessage('(empty list)', 'info');
-                 return;
-             }
-             users.forEach(user => {
-                 if (namesOnly) {
-                     logMessage(user.name, 'data');
-                 } else {
-                     const rules = [];
-                     if(user.flags.on) rules.push('on');
-                     if(user.flags.nopass) rules.push('nopass');
-                     user.passwords.forEach(p => rules.push(`#${p.substring(0,10)}...`));
-                     rules.push(...user.commandRules);
-                     rules.push(...user.keyPatterns);
-                     rules.push(...Array.from(user.channelPatterns));
-                     
-                     logMessage(`user ${user.name} ${rules.join(' ')}`, 'data');
-                 }
-             });
-        }
-
-        function handleGetUser(args) {
-            const username = args[0];
-            logMessage(`> ACL GETUSER ${username}`, 'info');
-            const user = Users.get(username);
-            if (!user) {
-                logMessage(`(nil)`, 'data');
-                return;
-            }
-            logUserDetails(user);
-        }
-
-        function logUserDetails(user) {
-            logMessage('flags:', 'data-title');
-            const flags = Object.entries(user.flags).filter(([,v])=>v).map(([k])=>k);
-            logMessage(`  ${flags.join(' ')}`, 'data');
-            
-            logMessage('passwords:', 'data-title');
-            user.passwords.forEach(p => logMessage(`  #${p}`, 'data'));
-
-            logMessage('command rules:', 'data-title');
-            logMessage(`  ${user.commandRules.join(' ')}`, 'data');
-
-            logMessage('key patterns:', 'data-title');
-            user.keyPatterns.forEach(kp => logMessage(`  ${kp}`, 'data'));
-            
-            logMessage('channel patterns:', 'data-title');
-            user.channelPatterns.forEach(cp => logMessage(`  ${cp}`, 'data'));
-        }
-
-        function handleDelUser(args) {
-            let deletedCount = 0;
-            args.forEach(username => {
-                if (username === 'default') {
-                    logMessage(`ERROR: Cannot delete the 'default' user.`, 'error');
-                } else if (Users.has(username)) {
-                    Users.delete(username);
-                    deletedCount++;
-                    logMessage(`> Deleted user '${username}'.`, 'info');
-                }
-            });
-            logMessage(`(integer) ${deletedCount}`, 'success');
-        }
-
-        function handleDryRun(args) {
-            const username = args.shift();
-            const command = args.join(' ');
-            logMessage(`> ACL DRYRUN ${username} ${command}`, 'info');
-            checkPermissions(username, command);
-        }
-
-        function checkPermissions(username, commandString) {
-            const user = Users.get(username);
-            if (!user) {
-                logMessage(`Permission denied: User '${username}' does not exist.`, 'error');
-                return;
-            }
-            
-            const parsedUser = new ParsedUser(user);
-
-            if (!parsedUser.flags.on) {
-                logMessage(`Permission denied: User '${username}' is disabled.`, 'error');
-                return;
-            }
-
-            const parts = commandString.trim().split(/\s+/);
-            const cmd = parts[0].toLowerCase();
-            const args = parts.slice(1);
-            const cmdInfo = redisCommandInfo[cmd];
-
-            // 1. Check Command Permission
-            let allowed = false;
-            let denied = false;
-
-            const allCmdsRule = parsedUser.commandRules.find(r => r === '+@all' || r === '-@all');
-            allowed = (allCmdsRule === '+@all');
-
-            for (const rule of parsedUser.commandRules) {
-                const type = rule.charAt(0);
-                const target = rule.substring(1);
-
-                if (target.startsWith('@')) {
-                    const category = target;
-                    if (cmdInfo && cmdInfo.categories.includes(category)) {
-                        if (type === '+') allowed = true;
-                        if (type === '-') denied = true;
-                    }
-                } else {
-                    if (target === cmd) {
-                        if (type === '+') allowed = true;
-                        if (type === '-') denied = true;
-                    }
-                }
-            }
-
-            if (denied) allowed = false;
-
-            if (!allowed) {
-                logMessage(`Permission denied: User '${username}' cannot run command '${cmd}'.`, 'error');
-                return;
-            }
-
-            // 2. Check Key/Channel Permissions
-            if (cmdInfo) {
-                if (cmdInfo.keySpec) {
-                    const keys = extractKeys(args, cmdInfo.keySpec);
-                    for (const key of keys) {
-                        if (!checkKeyAccess(parsedUser, key.name, key.type)) {
-                             logMessage(`Permission denied: User '${username}' has no ${key.type === 'r' ? 'READ' : 'WRITE'} access to key '${key.name}'.`, 'error');
-                             return;
-                        }
-                    }
-                }
-                if (cmdInfo.channelSpec) {
-                    const channels = extractChannels(args, cmdInfo.channelSpec);
-                     for (const channel of channels) {
-                        if (!checkChannelAccess(parsedUser, channel)) {
-                             logMessage(`Permission denied: User '${username}' has no access to channel '${channel}'.`, 'error');
-                             return;
-                        }
-                    }
-                }
-            }
-            
-            logMessage(`OK: User '${username}' can execute '${commandString}'.`, 'success');
-        }
-
-        function checkKeyAccess(parsedUser, key, requiredAccess) { // requiredAccess: 'r' or 'w'
-            if (parsedUser.allKeys) return true;
-            for (const p of parsedUser.keyPatterns) {
-                if (p.pattern.test(key)) {
-                    if (requiredAccess === 'r' && p.permissions.r) return true;
-                    if (requiredAccess === 'w' && p.permissions.w) return true;
-                }
-            }
-            return false;
-        }
-
-        function checkChannelAccess(parsedUser, channel) {
-            if (parsedUser.allChannels) return true;
-             for (const p of parsedUser.channelPatterns) {
-                if (p.test(channel)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        function extractKeys(args, spec) {
-            const keys = [];
-            const keyType = spec.type;
-            if (spec.last === -1) {
-                for(let i = spec.first - 1; i < args.length; i += spec.step) {
-                    keys.push({name: args[i], type: keyType.includes('r') ? 'r' : 'w' });
-                }
-            } else {
-                 for(let i = spec.first - 1; i < spec.last; i += spec.step) {
-                     if (args[i]) keys.push({name: args[i], type: keyType.includes('r') ? 'r' : 'w'});
-                }
-            }
-            return keys;
-        }
-
-         function extractChannels(args, spec) {
-            const channels = [];
-            if (spec.last === -1) {
-                for(let i = spec.first - 1; i < args.length; i++) {
-                    channels.push(args[i]);
-                }
-            } else {
-                 for(let i = spec.first - 1; i < spec.last; i++) {
-                     if (args[i]) channels.push(args[i]);
-                }
-            }
-            return channels;
-        }
-        // --- END: ACL SIMULATOR CORE LOGIC ---
-
-        // --- START: UI MANAGEMENT & STATE---
-        const commandInput = document.getElementById('acl-command-input');
-        const runBtn = document.getElementById('run-command-btn');
-        const dryRunUserSelect = document.getElementById('dryrun-user-select');
-        const dryRunCommandInput = document.getElementById('dryrun-command-input');
-        const checkPermissionBtn = document.getElementById('check-permission-btn');
-        const userListDiv = document.getElementById('user-list');
-        const outputLogDiv = document.getElementById('output-log');
-        const clearLogBtn = document.getElementById('clear-log-btn');
-
-        // Command Builder UI Elements
-        const builderUsername = document.getElementById('builder-username');
-        const builderFlagOn = document.getElementById('builder-flag-on');
-        const builderFlagNopass = document.getElementById('builder-flag-nopass');
-        const builderPasswords = document.getElementById('builder-passwords');
-        const builderKeys = document.getElementById('builder-keys');
-        const builderChannels = document.getElementById('builder-channels');
-        const builderSpecificCommands = document.getElementById('builder-specific-commands');
-        const builderOutput = document.getElementById('builder-output');
-        const builderCopyBtn = document.getElementById('builder-copy-btn');
-        const builderUseBtn = document.getElementById('builder-use-btn');
-        const builderResetBtn = document.getElementById('builder-reset-btn');
-        const commandBuilderContainer = document.getElementById('command-builder');
-        const categorySelectorGrid = document.getElementById('category-selector-grid');
-        
-        const builderKeysError = document.getElementById('builder-keys-error');
-        const builderChannelsError = document.getElementById('builder-channels-error');
-        const builderSpecificCommandsError = document.getElementById('builder-specific-commands-error');
-        
-        let categoryStates = {};
-
-        function logMessage(message, type = 'info') {
-            const p = document.createElement('p');
-            const timestamp = new Date().toLocaleTimeString();
-            let colorClass = 'text-gray-400';
-            
-            const pre = document.createElement('span');
-            pre.className = 'text-gray-500 mr-2';
-            pre.textContent = `[${timestamp}]`;
-            
-            const msgSpan = document.createElement('span');
-
-            switch (type) {
-                case 'error': colorClass = 'text-red-400'; break;
-                case 'success': colorClass = 'text-green-400'; break;
-                case 'warn': colorClass = 'text-yellow-400'; break;
-                case 'data': colorClass = 'text-cyan-300'; break;
-                case 'data-title': colorClass = 'text-cyan-500 font-semibold'; break;
-            }
-            msgSpan.className = colorClass;
-            msgSpan.textContent = message;
-
-            p.appendChild(pre);
-            p.appendChild(msgSpan);
-            outputLogDiv.appendChild(p);
-            outputLogDiv.scrollTop = outputLogDiv.scrollHeight;
-        }
-        
-        function updateUserList() {
-            userListDiv.innerHTML = '';
-            if (Users.size === 0) {
-                 userListDiv.innerHTML = '<p class="text-gray-500">No users defined.</p>';
-                 return;
-            }
-            Users.forEach(user => {
-                const card = document.createElement('div');
-                card.className = 'user-card bg-gray-900 p-3 rounded-lg shadow-md border border-gray-700';
-                
-                const statusColor = user.flags.on ? 'bg-green-500' : 'bg-red-500';
-
-                const rulesSummary = user.commandRules.slice(0, 3).join(' ') + (user.commandRules.length > 3 ? '...' : '');
-
-                card.innerHTML = `
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center">
-                            <span class="w-3 h-3 rounded-full ${statusColor} mr-3"></span>
-                            <span class="font-bold text-lg text-white">${user.name}</span>
-                        </div>
-                        <div class="flex items-center space-x-2">
-                             <button class="text-gray-400 hover:text-white view-btn" data-user="${user.name}" title="View Details">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                             </button>
-                             <button class="text-gray-400 hover:text-blue-400 edit-btn" data-user="${user.name}" title="Edit User">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                             </button>
-                             ${user.name !== 'default' ? `<button class="text-gray-400 hover:text-red-400 deluser-btn" data-user="${user.name}" title="Delete User">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                             </button>` : ''}
-                        </div>
-                    </div>
-                    <div class="mt-2 text-sm text-gray-400 font-fira pl-6">${rulesSummary}</div>
-                `;
-                userListDiv.appendChild(card);
-            });
-        }
-        
-        function updateDryRunSelect() {
-            const currentVal = dryRunUserSelect.value;
-            dryRunUserSelect.innerHTML = '';
-            Users.forEach(user => {
-                const option = document.createElement('option');
-                option.value = user.name;
-                option.textContent = user.name;
-                dryRunUserSelect.appendChild(option);
-            });
-            if (Array.from(Users.keys()).includes(currentVal)) {
-                dryRunUserSelect.value = currentVal;
-            }
-        }
-
-        function updateUI() {
-            updateUserList();
-            updateDryRunSelect();
-        }
-        // --- END: UI MANAGEMENT & STATE---
-        
-        // --- START: COMMAND BUILDER LOGIC & VALIDATION ---
-        function validateBuilderInputs() {
-            let isValid = true;
-            
-            [builderKeys, builderChannels, builderSpecificCommands].forEach(el => {
-                el.classList.remove('border-red-500', 'focus:ring-red-500');
-                el.classList.add('border-gray-700', 'focus:ring-red-500');
-            });
-            [builderKeysError, builderChannelsError, builderSpecificCommandsError].forEach(el => el.textContent = '');
-
-            const keyPatterns = builderKeys.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
-            for (const pattern of keyPatterns) {
-                if (!pattern.startsWith('~') && !pattern.startsWith('%R~') && !pattern.startsWith('%W~')) {
-                    builderKeys.classList.add('border-red-500', 'focus:ring-red-500');
-                    builderKeys.classList.remove('border-gray-700');
-                    builderKeysError.textContent = `Pattern "${pattern}" is invalid.`;
-                    isValid = false;
-                    break;
-                }
-            }
-
-            const channelPatterns = builderChannels.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
-            for (const pattern of channelPatterns) {
-                if (!pattern.startsWith('&')) {
-                    builderChannels.classList.add('border-red-500', 'focus:ring-red-500');
-                    builderChannels.classList.remove('border-gray-700');
-                    builderChannelsError.textContent = `Pattern "${pattern}" must start with &.`;
-                    isValid = false;
-                    break;
-                }
-            }
-
-            const specificCommands = builderSpecificCommands.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
-            for (const rule of specificCommands) {
-                if (!rule.startsWith('+') && !rule.startsWith('-')) {
-                    builderSpecificCommands.classList.add('border-red-500', 'focus:ring-red-500');
-                    builderSpecificCommands.classList.remove('border-gray-700');
-                    builderSpecificCommandsError.textContent = `Rule "${rule}" must start with + or -.`;
-                    isValid = false;
-                    break;
-                }
-            }
-            
-            return isValid;
-        }
-
-        function generateAclString() {
-            const isValid = validateBuilderInputs();
-
-            if (isValid) {
-                builderUseBtn.disabled = false;
-                builderCopyBtn.disabled = false;
-                builderUseBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-                builderCopyBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-            } else {
-                builderUseBtn.disabled = true;
-                builderCopyBtn.disabled = true;
-                builderUseBtn.classList.add('opacity-50', 'cursor-not-allowed');
-                builderCopyBtn.classList.add('opacity-50', 'cursor-not-allowed');
-            }
-
-            const username = builderUsername.value.trim();
-            if (!username || !isValid) {
-                builderOutput.value = '';
-                return;
-            }
-
-            let flagParts = [];
-            if (builderFlagOn.checked) flagParts.push('on');
-            if (builderFlagNopass.checked) flagParts.push('nopass');
-
-            const passwords = builderPasswords.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
-            const passwordParts = passwords.map(pw => `>${pw}`);
-
-            const categoryRules = Object.entries(categoryStates)
-                .map(([category, state]) => (state === '+' || state === '-') ? `${state}${category}` : null)
-                .filter(Boolean);
-            
-            const specificCommands = builderSpecificCommands.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
-            const keyPatterns = builderKeys.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
-            const channelPatterns = builderChannels.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
-
-            const allRules = [
-                ...flagParts,
-                ...passwordParts,
-                ...categoryRules,
-                ...specificCommands,
-                ...keyPatterns,
-                ...channelPatterns
-            ];
-
-            const uniqueRules = [...new Set(allRules)];
-            
-            builderOutput.value = `ACL SETUSER ${username} ${uniqueRules.join(' ')}`;
-        }
-        
-        function resetBuilder() {
-            builderUsername.value = '';
-            builderPasswords.value = '';
-            builderFlagOn.checked = true;
-            builderFlagNopass.checked = false;
-            builderSpecificCommands.value = '';
-            builderKeys.value = '';
-            builderChannels.value = '';
-            
-            availableCategories.forEach(cat => categoryStates[cat] = 'default');
-            updateAllCategoryButtonsVisuals();
-            updateCategoryGridInteractivity();
-            
-            generateAclString(); 
-        }
-
-        function populateBuilderFromUser(username) {
-            const user = Users.get(username);
-            if (!user) return;
-            
-            resetBuilder(); 
-
-            builderUsername.value = user.name;
-            builderFlagOn.checked = user.flags.on;
-            builderFlagNopass.checked = user.flags.nopass;
-            
-            const specificCommands = [];
-            user.commandRules.forEach(rule => {
-                const target = rule.substring(1);
-                if (target.startsWith('@')) {
-                    categoryStates[target] = rule.charAt(0);
-                } else {
-                    specificCommands.push(rule);
-                }
-            });
-            builderSpecificCommands.value = specificCommands.join('\n');
-            
-            builderKeys.value = user.keyPatterns.join('\n');
-            builderChannels.value = Array.from(user.channelPatterns).join('\n');
-            
-            updateAllCategoryButtonsVisuals();
-            updateCategoryGridInteractivity();
-            generateAclString();
-            logMessage(`Builder populated with settings for user '${username}'.`, 'info');
-        }
-
-        function copyToClipboard(text) {
-            const textArea = document.createElement("textarea");
-            textArea.value = text;
-            textArea.style.position = "fixed";
-            textArea.style.left = "-9999px";
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-            try {
-                document.execCommand('copy');
-                logMessage('Copied to clipboard!', 'success');
-            } catch (err) {
-                logMessage('Failed to copy to clipboard.', 'error');
-            }
-            document.body.removeChild(textArea);
-        }
-        
-        function updateCategoryButtonVisual(button, state) {
-            const icon = button.querySelector('svg');
-            button.classList.remove('bg-gray-700', 'hover:bg-gray-600', 'bg-green-800', 'hover:bg-green-700', 'bg-red-800', 'hover:bg-red-700');
-            
-            switch(state) {
-                case '+':
-                    button.classList.add('bg-green-800', 'hover:bg-green-700');
-                    icon.innerHTML = `<path d="M20 6 9 17l-5-5"></path>`; // Checkmark
-                    break;
-                case '-':
-                    button.classList.add('bg-red-800', 'hover:bg-red-700');
-                    icon.innerHTML = `<line x1="5" y1="12" x2="19" y2="12"></line>`; // Minus
-                    break;
-                default: // 'default'
-                    button.classList.add('bg-gray-700', 'hover:bg-gray-600');
-                    icon.innerHTML = `<circle cx="12" cy="12" r="1"></circle>`; // Dot
-                    break;
-            }
-        }
-        
-        function updateAllCategoryButtonsVisuals() {
-            const buttons = categorySelectorGrid.querySelectorAll('.category-button');
-            buttons.forEach(btn => {
-                const cat = btn.dataset.category;
-                const state = categoryStates[cat];
-                updateCategoryButtonVisual(btn, state);
-            });
-        }
-        
-        function updateCategoryGridInteractivity() {
-            const allState = categoryStates['@all'];
-            const allButton = categorySelectorGrid.querySelector(`[data-category="@all"]`);
-
-            categorySelectorGrid.querySelectorAll('.category-button').forEach(btn => {
-                if (btn === allButton) {
-                     btn.disabled = false;
-                     btn.classList.remove('opacity-50', 'cursor-not-allowed');
-                     return;
-                }
-                
-                const category = btn.dataset.category;
-
-                if (allState !== 'default') {
-                    if (allState === '+' && categoryStates[category] === '+') {
-                        categoryStates[category] = 'default';
-                        updateCategoryButtonVisual(btn, 'default');
-                    }
-                    if (allState === '-' && categoryStates[category] === '-') {
-                        categoryStates[category] = 'default';
-                        updateCategoryButtonVisual(btn, 'default');
-                    }
-                }
-            });
-        }
-
-        function createCategorySelectorGrid() {
-            availableCategories.forEach(cat => {
-                categoryStates[cat] = 'default';
-                const button = document.createElement('button');
-                button.className = 'category-button flex items-center justify-center p-2 rounded-md text-sm font-fira bg-gray-700 hover:bg-gray-600';
-                button.dataset.category = cat;
-                button.title = categoryDescriptions[cat];
-                button.innerHTML = `
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><circle cx="12" cy="12" r="1"></circle></svg>
-                    <span>${cat}</span>
-                `;
-                button.addEventListener('click', () => {
-                    const category = button.dataset.category;
-                    const currentState = categoryStates[category];
-                    const allState = categoryStates['@all'];
-                    let nextState;
-
-                    if (category === '@all') {
-                        nextState = currentState === 'default' ? '+' : (currentState === '+' ? '-' : 'default');
-                    } else {
-                        if (allState === '+') { // +@all is active, can only toggle between default and -
-                            nextState = currentState === 'default' ? '-' : 'default';
-                        } else if (allState === '-') { // -@all is active, can only toggle between default and +
-                            nextState = currentState === 'default' ? '+' : 'default';
-                        } else { // @all is default, can toggle all 3 states
-                            nextState = currentState === 'default' ? '+' : (currentState === '+' ? '-' : 'default');
-                        }
-                    }
-                    
-                    categoryStates[category] = nextState;
-                    updateCategoryButtonVisual(button, nextState);
-                    
-                    if (category === '@all') {
-                         updateCategoryGridInteractivity(); 
-                    }
-
-                    generateAclString();
-                });
-                categorySelectorGrid.appendChild(button);
-            });
-        }
-        // --- END: COMMAND BUILDER LOGIC & VALIDATION ---
-
-        // --- START: EVENT LISTENERS ---
-        runBtn.addEventListener('click', () => {
-            const command = commandInput.value;
-            if (command) {
-                logMessage(`> ${command}`, 'info');
-                processACLCommand(command);
-                commandInput.value = '';
-            }
-        });
-
-        commandInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') runBtn.click();
-        });
-        
-        checkPermissionBtn.addEventListener('click', () => {
-            const user = dryRunUserSelect.value;
-            const command = dryRunCommandInput.value;
-            if (user && command) {
-                 logMessage(`> ACL DRYRUN ${user} ${command}`, 'info');
-                 checkPermissions(user, command);
-            }
-        });
-        
-        dryRunCommandInput.addEventListener('keydown', (e) => {
-             if (e.key === 'Enter') checkPermissionBtn.click();
-        });
-
-        clearLogBtn.addEventListener('click', () => {
-            outputLogDiv.innerHTML = '';
-            logMessage('Log cleared.', 'info');
-        });
-
-        userListDiv.addEventListener('click', (e) => {
-            const button = e.target.closest('button');
-            if (!button) return;
-
-            if (button.matches('.edit-btn')) {
-                const username = button.dataset.user;
-                populateBuilderFromUser(username);
-            }
-            if (button.matches('.deluser-btn')) {
-                const username = button.dataset.user;
-                processACLCommand(`acl deluser ${username}`);
-            }
-            if (button.matches('.view-btn')) {
-                const username = button.dataset.user;
-                logMessage(`> Viewing details for user '${username}'`, 'info');
-                const user = Users.get(username);
-                if (user) {
-                    logUserDetails(user);
-                } else {
-                    logMessage(`User '${username}' not found.`, 'error');
-                }
-            }
-        });
-
-        commandBuilderContainer.addEventListener('input', generateAclString);
-        builderResetBtn.addEventListener('click', resetBuilder);
-
-        builderCopyBtn.addEventListener('click', () => {
-            if (builderOutput.value) copyToClipboard(builderOutput.value);
-        });
-
-        builderUseBtn.addEventListener('click', () => {
-            if (builderOutput.value) {
-                commandInput.value = builderOutput.value;
-                logMessage('Command populated in ACL input.', 'info');
-                commandInput.focus();
-            }
-        });
-        // --- END: EVENT LISTENERS ---
-
-        // --- START: INITIALIZATION ---
-        function initialize() {
-            createCategorySelectorGrid();
-            createDefaultUser();
-            logMessage('Redis ACL Simulator Initialized.', 'success');
-            logMessage('Use the builder below to create users, or type ACL commands directly.', 'info');
-            
-            const workerSetup = `acl SETUSER worker on -@all +@list +@string +@hash -@dangerous -@admin ~queues:* %R~config:global:* %W~logs:worker:* &worker-notifications >samplepassword`;
-            processACLCommand(workerSetup);
-
-            updateUI();
-            generateAclString();
-        }
-
-        initialize();
-        // --- END: INITIALIZATION ---
-
-    </script>
+        if (neg) hit = !hit;
+        if (!hit) return false;
+        pi = j < p.length ? j + 1 : j;
+        si++;
+        continue;
+      }
+      if (c === "\\" && pi + 1 < p.length) {
+        pi++;
+        if (p[pi] !== s[si]) return false;
+        si++; pi++; continue;
+      }
+      if (c !== s[si]) return false;
+      si++; pi++;
+    }
+    while (p[pi] === "*") pi++;
+    return pi === p.length && si === s.length;
+  }
+  return go(0, 0);
+}
+
+/* ------------------------------------------------------------ selectors */
+const P_READ = 1, P_WRITE = 2, P_ALL = 3;
+
+function newSelector() {
+  return {
+    allkeys: false, allchannels: false, allcommands: false, future: false,
+    patterns: [],              // {pat, flags}
+    channels: [],              // string
+    bits: new Set(),           // permitted command names
+    rules: [],                 // canonical ordered rule strings, acl.c:596
+    firstargs: {}              // command -> [first arg]
+  };
+}
+
+function copySelector(s) {
+  return {
+    allkeys: s.allkeys, allchannels: s.allchannels, allcommands: s.allcommands,
+    future: s.future,
+    patterns: s.patterns.map(p => ({ pat: p.pat, flags: p.flags })),
+    channels: s.channels.slice(),
+    bits: new Set(s.bits),
+    rules: s.rules.slice(),
+    firstargs: Object.fromEntries(Object.entries(s.firstargs).map(([k, v]) => [k, v.slice()]))
+  };
+}
+
+/* acl.c:536 — clearing a bit also clears the ALLCOMMANDS flag. */
+function setBit(sel, name, on) {
+  if (on) sel.bits.add(name);
+  else { sel.bits.delete(name); sel.allcommands = false; }
+}
+
+/* acl.c:608 ACLChangeSelectorPerm — a container carries its subcommands. */
+function changePerm(sel, name, allow) {
+  setBit(sel, name, allow);
+  delete sel.firstargs[name];
+  for (const sub of (SUBS[name] || [])) setBit(sel, sub, allow);
+}
+
+/* acl.c:629 — walks every command, then recurses into subcommands. */
+function setCategoryBits(sel, catBit, allow) {
+  for (const n of NAMES) if (hasCat(n, catBit)) changePerm(sel, n, allow);
+}
+
+/* acl.c:596 ACLUpdateCommandRules — lowercase, drop a matching earlier rule
+ * (including subcommand rules when the whole command is set), then append. */
+function updateRules(sel, rule, allow) {
+  const r = rule.toLowerCase();
+  const bare = r.indexOf("|") === -1;
+  sel.rules = sel.rules.filter(existing => {
+    const t = existing.slice(1);
+    if (t === r) return false;
+    if (bare && t.startsWith(r + "|")) return false;
+    return true;
+  });
+  sel.rules.push((allow ? "+" : "-") + r);
+}
+
+function fillAll(sel, on) {
+  sel.bits = on ? new Set(NAMES) : new Set();
+  sel.allcommands = on;
+  sel.future = on;
+  sel.rules = [];
+  sel.firstargs = {};
+}
+
+function lookupCommand(name) {
+  const n = name.toLowerCase();
+  if (CMDS[n]) return n;
+  const bar = n.indexOf("|");
+  if (bar > 0) {
+    const parent = n.slice(0, bar);
+    /* server.c:3136 strict lookup: two tokens only resolve if the parent is a container. */
+    if (CMDS[parent] && SUBS[parent] && CMDS[n]) return n;
+  }
+  return null;
+}
+
+/* acl.c:1010 ACLSetSelector. Returns null on success, or an errno name. */
+function setSelector(sel, op) {
+  const low = op.toLowerCase();
+
+  if (low === "allkeys" || low === "~*") {
+    sel.allkeys = true; sel.patterns = []; return null;
+  }
+  if (low === "resetkeys") { sel.allkeys = false; sel.patterns = []; return null; }
+  if (low === "allchannels" || low === "&*") {
+    sel.allchannels = true; sel.channels = []; return null;
+  }
+  if (low === "resetchannels") { sel.allchannels = false; sel.channels = []; return null; }
+  if (low === "allcommands" || low === "+@all") { fillAll(sel, true); return null; }
+  if (low === "nocommands" || low === "-@all") { fillAll(sel, false); return null; }
+
+  if (op[0] === "~" || op[0] === "%") {
+    if (sel.allkeys) return "EEXIST";
+    let flags = 0, off = 1;
+    if (op[0] === "%") {
+      let ok = true;
+      for (; off < op.length; off++) {
+        const ch = op[off].toUpperCase();
+        if (ch === "R" && !(flags & P_READ)) flags |= P_READ;
+        else if (ch === "W" && !(flags & P_WRITE)) flags |= P_WRITE;
+        else if (op[off] === "~") { off++; break; }
+        else { ok = false; break; }
+      }
+      if (!flags || !ok) return "EINVAL";
+    } else {
+      flags = P_ALL;
+    }
+    const pat = op.slice(off);
+    if (/[\s\0]/.test(pat)) return "EINVAL";
+    const found = sel.patterns.find(p => p.pat === pat);
+    if (found) found.flags |= flags;        // acl.c:1081 — OR onto the existing pattern
+    else sel.patterns.push({ pat, flags });
+    sel.allkeys = false;
+    return null;
+  }
+
+  if (op[0] === "&") {
+    if (sel.allchannels) return "EISDIR";
+    const pat = op.slice(1);
+    if (/[\s\0]/.test(pat)) return "EINVAL";
+    if (!sel.channels.includes(pat)) sel.channels.push(pat);
+    sel.allchannels = false;
+    return null;
+  }
+
+  if (op[0] === "+" && op[1] !== "@") {
+    const body = op.slice(1);
+    const bar = body.lastIndexOf("|");
+    if (bar === -1) {
+      const cmd = lookupCommand(body);
+      if (!cmd) return "ENOENT";
+      changePerm(sel, cmd, true);
+      updateRules(sel, cmd, true);
+      return null;
+    }
+    const head = body.slice(0, bar).toLowerCase();
+    const sub = body.slice(bar + 1);
+    if (!CMDS[head]) return "ENOENT";
+    if (head.indexOf("|") !== -1) return "ECHILD";   // acl.c:1129 first-arg of a subcommand
+    if (!sub.length) return "EINVAL";
+    if (SUBS[head]) {
+      const cmd = lookupCommand(body);
+      if (!cmd) return "ENOENT";
+      changePerm(sel, cmd, true);
+    } else {
+      /* acl.c:1152 allowed_firstargs, still honoured in 7.2 with a deprecation log. */
+      (sel.firstargs[head] ||= []);
+      if (!sel.firstargs[head].some(x => x.toLowerCase() === sub.toLowerCase()))
+        sel.firstargs[head].push(sub);
+    }
+    updateRules(sel, body, true);
+    return null;
+  }
+
+  if (op[0] === "-" && op[1] !== "@") {
+    const cmd = lookupCommand(op.slice(1));
+    if (!cmd) return "ENOENT";                 // covers -select|1: SELECT has no subcommands
+    changePerm(sel, cmd, false);
+    updateRules(sel, cmd, false);
+    return null;
+  }
+
+  if ((op[0] === "+" || op[0] === "-") && op[1] === "@") {
+    const allow = op[0] === "+";
+    const cat = low.slice(1);
+    const bit = CATBIT[cat];
+    if (!bit) return "ENOENT";
+    updateRules(sel, cat, allow);
+    setCategoryBits(sel, bit, allow);
+    return null;
+  }
+
+  return "EINVAL";
+}
+
+/* acl.c:1361 ACLSetUserStringError */
+const ERRMSG = {
+  ENOENT: "Unknown command or category name in ACL",
+  EINVAL: "Syntax error",
+  EEXIST: "Adding a pattern after the * pattern (or the 'allkeys' flag) is not valid and does not have any effect. Try 'resetkeys' to start with an empty list of patterns",
+  EISDIR: "Adding a pattern after the * pattern (or the 'allchannels' flag) is not valid and does not have any effect. Try 'resetchannels' to start with an empty list of channels",
+  ENODEV: "The password you are trying to remove from the user does not exist",
+  EBADMSG: "The password hash must be exactly 64 characters and contain only lowercase hexadecimal characters",
+  ECHILD: "Allowing first-arg of a subcommand is not supported",
+  DEFAULT: "Wrong format"
+};
+
+/* ---------------------------------------------------------------- users */
+function newUser(name) {
+  return {
+    name, on: false, nopass: false, sanitize: true,
+    passwords: [],
+    selectors: [newSelector()]      // [0] is the root selector, acl.c:377
+  };
+}
+
+function rootSel(u) { return u.selectors[0]; }
+
+function copyUser(u, name) {
+  return {
+    name: name || u.name, on: u.on, nopass: u.nopass, sanitize: u.sanitize,
+    passwords: u.passwords.slice(),
+    selectors: u.selectors.map(copySelector)
+  };
+}
+
+/* Not a real hash. Only used so two different passwords look different. */
+function fakeHash(s) {
+  let h1 = 0x811c9dc5, h2 = 0x01000193;
+  for (let i = 0; i < s.length; i++) {
+    h1 = (h1 ^ s.charCodeAt(i)) >>> 0; h1 = Math.imul(h1, 16777619) >>> 0;
+    h2 = (h2 + s.charCodeAt(i) * (i + 7)) >>> 0; h2 = Math.imul(h2, 2654435761) >>> 0;
+  }
+  let out = "";
+  for (let i = 0; i < 8; i++) {
+    h1 = Math.imul(h1 ^ (h1 >>> 13), 1274126177) >>> 0;
+    h2 = Math.imul(h2 ^ (h2 >>> 15), 2246822519) >>> 0;
+    out += h1.toString(16).padStart(8, "0");
+    const t = h1; h1 = h2; h2 = t;
+  }
+  return out.slice(0, 64);
+}
+
+const HEX64 = /^[0-9a-f]{64}$/;
+
+/* acl.c:1257 ACLSetUser. Returns null on success or an errno name. */
+function setUser(u, op) {
+  const low = op.toLowerCase();
+  if (!op.length) return null;
+
+  if (low === "on") { u.on = true; return null; }
+  if (low === "off") { u.on = false; return null; }
+  if (low === "skip-sanitize-payload") { u.sanitize = false; return null; }
+  if (low === "sanitize-payload") { u.sanitize = true; return null; }
+  if (low === "nopass") { u.nopass = true; u.passwords = []; return null; }
+  if (low === "resetpass") { u.nopass = false; u.passwords = []; return null; }
+
+  if (op[0] === ">" || op[0] === "#") {
+    let pw;
+    if (op[0] === ">") pw = fakeHash(op.slice(1));
+    else { pw = op.slice(1); if (!HEX64.test(pw)) return "EBADMSG"; }
+    if (!u.passwords.includes(pw)) u.passwords.push(pw);
+    u.nopass = false;
+    return null;
+  }
+  if (op[0] === "<" || op[0] === "!") {
+    let pw;
+    if (op[0] === "<") pw = fakeHash(op.slice(1));
+    else { pw = op.slice(1); if (!HEX64.test(pw)) return "EBADMSG"; }
+    const i = u.passwords.indexOf(pw);
+    if (i === -1) return "ENODEV";
+    u.passwords.splice(i, 1);
+    return null;
+  }
+
+  if (op[0] === "(" && op[op.length - 1] === ")") {
+    const sel = newSelector();
+    const parts = op.slice(1, -1).trim().split(/\s+/).filter(Boolean);
+    for (const p of parts) {
+      const e = setSelector(sel, p);
+      if (e) return e;
+    }
+    u.selectors.push(sel);
+    return null;
+  }
+
+  if (low === "clearselectors") { u.selectors = [u.selectors[0]]; return null; }
+
+  if (low === "reset") {
+    /* acl.c:1340 — the documented composite. acl-pubsub-default is resetchannels
+     * by default (config.c:134, config.c:3159), so no allchannels step here. */
+    setUser(u, "resetpass");
+    setUser(u, "resetkeys");
+    setUser(u, "resetchannels");
+    setUser(u, "off");
+    setUser(u, "sanitize-payload");
+    setUser(u, "clearselectors");
+    setUser(u, "-@all");
+    return null;
+  }
+
+  return setSelector(rootSel(u), op);
+}
+
+/* acl.c:1996 ACLMergeSelectorArguments. Returns {args} or {badIdx}. */
+function mergeSelectorArguments(argv) {
+  const out = [];
+  let open = -1, sel = "";
+  for (let j = 0; j < argv.length; j++) {
+    const op = argv[j];
+    if (open === -1 && op[0] === "(" && op[op.length - 1] !== ")") {
+      sel = op; open = j; continue;
+    }
+    if (open !== -1) {
+      sel += " " + op;
+      if (op[op.length - 1] === ")") { open = -1; out.push(sel); }
+      continue;
+    }
+    out.push(op);
+  }
+  if (open !== -1) return { badIdx: open };
+  return { args: out };
+}
+
+/* acl.c:2043 ACLStringSetUser — staged on a copy, all-or-nothing. */
+function stringSetUser(name, argv) {
+  const merged = mergeSelectorArguments(argv);
+  if (merged.badIdx !== undefined)
+    return { err: "Unmatched parenthesis in acl selector starting at '" + argv[merged.badIdx] + "'." };
+
+  const existing = Users.get(name);
+  const temp = existing ? copyUser(existing) : newUser(name);
+  for (const op of merged.args) {
+    const e = setUser(temp, op);
+    if (e) return { err: "Error in ACL SETUSER modifier '" + op + "': " + (ERRMSG[e] || ERRMSG.DEFAULT) };
+  }
+  Users.set(name, temp);
+  return {};
+}
+
+/* ------------------------------------------------------- key resolution */
+/* db.c:1873 getKeysUsingKeySpecs. Returns {keys:[{pos,perm}]} or {invalid:true}. */
+function keysFromSpecs(info, argv) {
+  const argc = argv.length;
+  const keys = [];
+  for (const s of (info.k || [])) {
+    const [perm, bsType, bsA, bsB, fkType, fkA, fkB, fkC, extra] = s;
+    if (extra & 1) continue;                     // NOT_KEY
+    let first = 0;
+    if (bsType === 0) {
+      first = bsA;
+    } else {
+      const start = bsB > 0 ? bsB : argc + bsB;
+      const end = bsB > 0 ? argc - 1 : 1;
+      for (let i = start; i !== end; i += start <= end ? 1 : -1) {
+        if (i >= argc || i < 1) break;
+        if (String(argv[i]).toLowerCase() === String(bsA).toLowerCase()) { first = i + 1; break; }
+      }
+      if (!first) continue;                      // keyword not present
+    }
+    let last, step;
+    if (fkType === 0) {
+      step = fkB;
+      if (fkA >= 0) last = first + fkA;
+      else if (!fkC) last = argc + fkA;
+      else last = first + (Math.floor((argc - first) / fkC) + fkA);
+    } else {
+      step = fkC;
+      if (fkA >= argc) return { invalid: true };
+      const n = Number(argv[first + fkA]);
+      if (!Number.isInteger(n) || n < 0) return { invalid: true };
+      first += fkB;
+      last = first + n - 1;
+    }
+    if (last >= argc || last < first || first >= argc) return { invalid: true };
+    for (let i = first; i <= last; i += step) {
+      if (i >= argc || i < first) continue;
+      keys.push({ pos: i, perm });
+    }
+    if (extra & 2) return { invalid: true };     // INCOMPLETE
+  }
+  return { keys };
+}
+
+/* db.c:2501 setGetKeys — the only VARIABLE_FLAGS command reproduced here. */
+function setKeySpec(argv) {
+  for (let i = 3; i < argv.length; i++)
+    if (String(argv[i]).toLowerCase() === "get")
+      return [{ pos: 1, perm: P_ALL }];          // RW | ACCESS | UPDATE
+  return [{ pos: 1, perm: P_WRITE }];            // OW | UPDATE
+}
+
+function resolveKeys(name, info, argv) {
+  if (name === "set") return { keys: setKeySpec(argv) };
+  if (info.kv) return { keys: [], note: "variable key flags, not modelled" };
+  const r = keysFromSpecs(info, argv);
+  if (r.invalid) return { keys: r.keys || [], note: "incomplete key spec, not modelled" };
+  return r;
+}
+
+function resolveChannels(info, argv) {
+  if (info.ch === undefined || !(info.ch & 3)) return [];
+  const [f, l] = info.cr;
+  const last = l < 0 ? argv.length + l : f + (l - f);
+  const out = [];
+  for (let i = f; i <= last && i < argv.length; i++)
+    out.push({ pos: i, isPattern: !!(info.ch & 4) });
+  return out;
+}
+
+/* ------------------------------------------------------------- checking */
+const ACL_OK = 0, ACL_CMD = 1, ACL_KEY = 2, ACL_CHANNEL = 4;
+
+/* acl.c:1555 ACLSelectorCheckKey */
+function selectorCheckKey(sel, key, perm) {
+  if (sel.allkeys) return true;
+  for (const p of sel.patterns) {
+    if ((p.flags & perm) !== perm) continue;
+    if (globMatch(p.pat, key)) return true;
+  }
+  return false;
+}
+
+/* acl.c:1620 ACLCheckChannelAgainstList */
+function selectorCheckChannel(sel, chan, isPattern) {
+  if (sel.allchannels) return true;
+  for (const p of sel.channels) {
+    if (isPattern ? p === chan : globMatch(p, chan)) return true;
+  }
+  return false;
+}
+
+/* acl.c:1662 ACLSelectorCheckCmd */
+function selectorCheckCmd(sel, name, info, argv) {
+  if (!sel.allcommands && !info.na) {
+    if (!sel.bits.has(name)) {
+      const fa = sel.firstargs[name];
+      const idx = info.p ? 2 : 1;
+      if (argv.length < 2 || !fa || !fa.length) return { r: ACL_CMD, idx: 0 };
+      const got = argv[idx];
+      if (got === undefined || !fa.some(x => x.toLowerCase() === String(got).toLowerCase()))
+        return { r: ACL_CMD, idx: 0 };
+    }
+  }
+  if (!sel.allkeys) {
+    const res = resolveKeys(name, info, argv);
+    for (const k of res.keys) {
+      if (!selectorCheckKey(sel, String(argv[k.pos]), k.perm))
+        return { r: ACL_KEY, idx: k.pos };
+    }
+  }
+  if (!sel.allchannels) {
+    for (const c of resolveChannels(info, argv)) {
+      if (!selectorCheckChannel(sel, String(argv[c.pos]), c.isPattern))
+        return { r: ACL_CHANNEL, idx: c.pos };
+    }
+  }
+  return { r: ACL_OK, idx: 0 };
+}
+
+/* acl.c:1821 ACLCheckAllUserCommandPerm */
+function checkAll(u, name, info, argv) {
+  let relevant = ACL_CMD, lastIdx = 0;
+  for (const sel of u.selectors) {
+    const got = selectorCheckCmd(sel, name, info, argv);
+    if (got.r === ACL_OK) return { r: ACL_OK, idx: 0 };
+    if (got.r > relevant || (got.r === relevant && got.idx > lastIdx)) {
+      relevant = got.r; lastIdx = got.idx;
+    }
+  }
+  return { r: relevant, idx: lastIdx };
+}
+
+/* acl.c:2656 getAclErrorMessage, verbose = 1 as ACL DRYRUN uses it (acl.c:3045). */
+function aclErrorMessage(res, userName, cmdName, erroredVal) {
+  if (res === ACL_CMD)
+    return "User " + userName + " has no permissions to run the '" + cmdName + "' command";
+  if (res === ACL_KEY)
+    return "User " + userName + " has no permissions to access the '" + erroredVal + "' key";
+  return "User " + userName + " has no permissions to access the '" + erroredVal + "' channel";
+}
+
+/* -------------------------------------------------------- command table */
+/* Resolve a typed command line to a command entry, like acl.c:3030 lookupCommand. */
+function resolveCommand(tokens) {
+  if (!tokens.length) return null;
+  const base = tokens[0].toLowerCase();
+  if (!CMDS[base]) return null;
+  if (SUBS[base] && tokens.length >= 2) {
+    const full = base + "|" + tokens[1].toLowerCase();
+    if (CMDS[full]) return full;
+    return null;
+  }
+  return base;
+}
+
+/* --------------------------------------------------------------- state */
+const Users = new Map();
+
+function createDefaultUser() {
+  /* acl.c:1392 ACLCreateDefaultUser */
+  const u = newUser("default");
+  setUser(u, "+@all");
+  setUser(u, "~*");
+  setUser(u, "&*");
+  setUser(u, "on");
+  setUser(u, "nopass");
+  Users.set("default", u);
+}
+
+/* acl.c:733 ACLDescribeSelectorCommandRules, acl.c:788 ACLDescribeSelector */
+function describeSelector(s) {
+  const base = s.future ? "+@all" : "-@all";
+  /* Stored rules already carry the leading @ for categories, as acl.c:682 does. */
+  const cmdRules = s.rules.slice();
+  const keys = s.allkeys ? "~*" : s.patterns.map(p =>
+    p.flags === P_ALL ? "~" + p.pat
+      : (p.flags === P_READ ? "%R~" : "%W~") + p.pat).join(" ");
+  const chans = s.allchannels ? "&*" : s.channels.map(c => "&" + c).join(" ");
+  return {
+    commands: [base].concat(cmdRules).join(" "),
+    keys, channels: chans
+  };
+}
+
+function describeUser(u) {
+  const out = [u.on ? "on" : "off"];
+  if (u.nopass) out.push("nopass");
+  out.push(u.sanitize ? "sanitize-payload" : "skip-sanitize-payload");
+  for (const p of u.passwords) out.push("#" + p);
+  const root = describeSelector(rootSel(u));
+  if (root.keys) out.push(root.keys);
+  if (root.channels) out.push(root.channels);
+  out.push(root.commands);
+  for (let i = 1; i < u.selectors.length; i++) {
+    const d = describeSelector(u.selectors[i]);
+    out.push("(" + [d.commands, d.keys, d.channels].filter(Boolean).join(" ") + ")");
+  }
+  return out.join(" ");
+}
+
+/* ------------------------------------------------------------------ UI */
+const $ = id => document.getElementById(id);
+const logEl = $("log");
+
+function log(msg, kind) {
+  const p = document.createElement("p");
+  const t = document.createElement("span");
+  t.className = "t";
+  t.textContent = new Date().toLocaleTimeString();
+  p.appendChild(t);
+  const m = document.createElement("span");
+  if (kind === "err") m.className = "hit";
+  if (kind === "ok") m.className = "good";
+  m.textContent = msg;
+  p.appendChild(m);
+  logEl.appendChild(p);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function esc(s) { return String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+
+function renderUsers() {
+  const box = $("users");
+  box.textContent = "";
+  for (const u of Users.values()) {
+    const row = document.createElement("div");
+    row.className = "userrow";
+    const head = document.createElement("div");
+    head.className = "userline";
+    const pill = document.createElement("span");
+    pill.className = "pill " + (u.on ? "pill--ok" : "pill--fail");
+    pill.textContent = u.on ? "on" : "off";
+    const nm = document.createElement("b");
+    nm.className = "mono";
+    nm.textContent = u.name;
+    head.appendChild(nm);
+    head.appendChild(pill);
+    if (u.selectors.length > 1) {
+      const s = document.createElement("span");
+      s.className = "pill";
+      s.textContent = (u.selectors.length - 1) + " selector" + (u.selectors.length > 2 ? "s" : "");
+      head.appendChild(s);
+    }
+    const body = document.createElement("code");
+    body.textContent = describeUser(u);
+    row.appendChild(head);
+    row.appendChild(body);
+    box.appendChild(row);
+  }
+}
+
+function renderUserSelect() {
+  const sel = $("dry-user");
+  const keep = sel.value;
+  sel.textContent = "";
+  for (const n of Users.keys()) {
+    const o = document.createElement("option");
+    o.value = n; o.textContent = n;
+    sel.appendChild(o);
+  }
+  if (Users.has(keep)) sel.value = keep;
+}
+
+function refresh() { renderUsers(); renderUserSelect(); }
+
+/* --------------------------------------------------------- ACL commands */
+function runAclCommand(line) {
+  const tok = line.trim().split(/\s+/).filter(Boolean);
+  if (!tok.length) return;
+  if (tok[0].toLowerCase() !== "acl") {
+    log("ERR unknown command '" + tok[0] + "'. This page only runs ACL subcommands.", "err");
+    return;
+  }
+  const sub = (tok[1] || "").toLowerCase();
+  const rest = tok.slice(2);
+
+  if (sub === "setuser") {
+    if (!rest.length) { log("ERR wrong number of arguments for 'acl|setuser' command", "err"); return; }
+    const name = rest[0];
+    if (/[\s\0]/.test(name)) { log("ERR Usernames can't contain spaces or null characters", "err"); return; }
+    const res = stringSetUser(name, rest.slice(1));
+    if (res.err) log("ERR " + res.err, "err");
+    else log("OK", "ok");
+    refresh();
+    return;
+  }
+
+  if (sub === "getuser") {
+    const u = Users.get(rest[0]);
+    if (!u) { log("(nil)"); return; }
+    const d = describeSelector(rootSel(u));
+    const flags = [u.on ? "on" : "off"];
+    if (u.nopass) flags.push("nopass");
+    flags.push(u.sanitize ? "sanitize-payload" : "skip-sanitize-payload");
+    log("flags: " + flags.join(" "));
+    log("passwords: " + (u.passwords.join(" ") || "(empty)"));
+    log("commands: " + d.commands);
+    log("keys: " + (d.keys || ""));
+    log("channels: " + (d.channels || ""));
+    log("selectors: " + (u.selectors.length - 1));
+    for (let i = 1; i < u.selectors.length; i++) {
+      const s = describeSelector(u.selectors[i]);
+      log("  [" + i + "] commands: " + s.commands + " | keys: " + s.keys + " | channels: " + s.channels);
+    }
+    return;
+  }
+
+  if (sub === "deluser") {
+    if (rest.includes("default")) { log("ERR The 'default' user cannot be removed", "err"); return; }
+    let n = 0;
+    for (const name of rest) if (Users.delete(name)) n++;
+    log("(integer) " + n, "ok");
+    refresh();
+    return;
+  }
+
+  if (sub === "list") { for (const u of Users.values()) log("user " + u.name + " " + describeUser(u)); return; }
+  if (sub === "users") { for (const n of Users.keys()) log(n); return; }
+
+  if (sub === "cat") {
+    if (!rest.length) { log(CATS.join(" ")); return; }
+    const bit = CATBIT["@" + rest[0].toLowerCase()];
+    if (!bit) { log("ERR Unknown category '" + rest[0] + "'", "err"); return; }
+    log(NAMES.filter(n => hasCat(n, bit)).sort().join(" "));
+    return;
+  }
+
+  if (sub === "dryrun") {
+    if (rest.length < 2) { log("ERR wrong number of arguments for 'acl|dryrun' command", "err"); return; }
+    $("dry-user").value = rest[0];
+    $("dry-cmd").value = rest.slice(1).join(" ");
+    doDryRun();
+    return;
+  }
+
+  log("ERR Unknown ACL subcommand or wrong number of arguments for '" + (tok[1] || "") + "'", "err");
+}
+
+/* ------------------------------------------------------------- dry run */
+function doDryRun() {
+  const name = $("dry-user").value;
+  const line = $("dry-cmd").value.trim();
+  const verdict = $("dry-verdict");
+  const msgBox = $("dry-msg");
+  verdict.textContent = "";
+  msgBox.textContent = "";
+  msgBox.style.display = "none";
+  $("trace-wrap").style.display = "none";
+  $("trace-empty").style.display = "";
+
+  const u = Users.get(name);
+  if (!u) { verdict.innerHTML = '<span class="pill pill--fail">ERR</span> User \'' + esc(name) + "' not found"; return; }
+  if (!line) return;
+
+  const tokens = line.split(/\s+/).filter(Boolean);
+  const cmdName = resolveCommand(tokens);
+  if (!cmdName) {
+    verdict.innerHTML = '<span class="pill pill--fail">ERR</span> Command \'' + esc(tokens[0] || "") + "' not found";
+    log("ERR Command '" + (tokens[0] || "") + "' not found", "err");
+    return;
+  }
+  const info = CMDS[cmdName];
+  const argv = tokens;
+
+  /* acl.c:3035 arity check, using the release's declared arity. */
+  if (info.a !== undefined && ((info.a > 0 && info.a !== argv.length) || (info.a < 0 && argv.length < -info.a))) {
+    const m = "wrong number of arguments for '" + cmdName + "' command";
+    verdict.innerHTML = '<span class="pill pill--fail">ERR</span> ' + esc(m);
+    log("ERR " + m, "err");
+    return;
+  }
+
+  const res = checkAll(u, cmdName, info, argv);
+  if (res.r === ACL_OK) {
+    verdict.innerHTML = '<span class="pill pill--ok">OK</span> <span class="muted">reply is a plain +OK</span>';
+    log("DRYRUN " + name + " " + line + " -> OK", "ok");
+  } else {
+    const val = argv[res.idx];
+    const m = aclErrorMessage(res.r, u.name, cmdName, val);
+    verdict.innerHTML = '<span class="pill pill--fail">DENIED</span> <span class="muted">'
+      + (res.r === ACL_CMD ? "command" : res.r === ACL_KEY ? "key" : "channel") + " check</span>";
+    msgBox.textContent = m;
+    msgBox.style.display = "";
+    log("DRYRUN " + name + " " + line + " -> " + m, "err");
+  }
+
+  renderTrace(u, cmdName, info, argv, res);
+}
+
+/* The replay: re-apply the root selector's rules in order and record when the
+ * verdict for this one command changed. This is the same walk acl.c:647 uses
+ * to rebuild bits from command_rules. */
+function renderTrace(u, cmdName, info, argv, finalRes) {
+  const root = rootSel(u);
+  const body = $("trace-body");
+  body.textContent = "";
+
+  const probe = newSelector();
+  fillAll(probe, root.future);
+  const rows = [];
+  rows.push({ n: 0, rule: root.future ? "+@all" : "-@all", effect: root.future ? "fills the whole bitmap" : "clears the whole bitmap", allowed: probe.bits.has(cmdName) });
+
+  root.rules.forEach((r, i) => {
+    const before = probe.bits.has(cmdName);
+    setSelector(probe, r);
+    const after = probe.bits.has(cmdName);
+    let effect;
+    if (before === after) effect = "no effect on this command";
+    else if (after) effect = "adds " + cmdName;
+    else effect = "removes " + cmdName;
+    rows.push({ n: i + 1, rule: r, effect, allowed: after });
+  });
+
+  for (const r of rows) {
+    const tr = document.createElement("tr");
+    const c0 = document.createElement("td"); c0.className = "nil"; c0.textContent = r.n;
+    const c1 = document.createElement("td"); c1.textContent = r.rule;
+    const c2 = document.createElement("td"); c2.textContent = r.effect;
+    const c3 = document.createElement("td");
+    c3.className = r.allowed ? "on" : "off";
+    c3.textContent = r.allowed ? "yes" : "no";
+    tr.append(c0, c1, c2, c3);
+    body.appendChild(tr);
+  }
+
+  if (info.na) {
+    const tr = document.createElement("tr");
+    const c = document.createElement("td");
+    c.colSpan = 4;
+    c.className = "nil";
+    c.textContent = "This command is flagged NO_AUTH, so the command bit is never consulted (acl.c:1665).";
+    tr.appendChild(c);
+    body.appendChild(tr);
+  }
+  if (u.selectors.length > 1) {
+    const tr = document.createElement("tr");
+    const c = document.createElement("td");
+    c.colSpan = 4;
+    c.className = "nil";
+    c.textContent = "The replay above is the root selector. " + (u.selectors.length - 1)
+      + " extra selector(s) were also tried; the first one that passes wins (acl.c:1839).";
+    tr.appendChild(c);
+    body.appendChild(tr);
+  }
+  if (finalRes.r === ACL_KEY || finalRes.r === ACL_CHANNEL) {
+    const tr = document.createElement("tr");
+    const c = document.createElement("td");
+    c.colSpan = 4;
+    c.className = "nil";
+    c.textContent = "The command check passed; the "
+      + (finalRes.r === ACL_KEY ? "key" : "channel") + " check is what denied it.";
+    tr.appendChild(c);
+    body.appendChild(tr);
+  }
+
+  $("trace-empty").style.display = "none";
+  $("trace-wrap").style.display = "";
+}
+
+/* -------------------------------------------------------------- builder */
+const catState = {};
+const ALLCATS = ["@all"].concat(CATS.map(c => "@" + c));
+
+function buildCatGrid() {
+  const grid = $("b-cats");
+  for (const c of ALLCATS) {
+    catState[c] = "default";
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.cat = c;
+    b.dataset.state = "default";
+    b.textContent = c;
+    b.addEventListener("click", () => {
+      const s = catState[c];
+      catState[c] = s === "default" ? "+" : s === "+" ? "-" : "default";
+      b.dataset.state = catState[c];
+      buildOutput();
+    });
+    grid.appendChild(b);
+  }
+}
+
+function validateBuilder() {
+  let ok = true;
+  const checks = [
+    ["b-keys", "b-keys-err", v => v[0] === "~" || v[0] === "%", "must start with ~, %R~, %W~ or %RW~"],
+    ["b-chans", "b-chans-err", v => v[0] === "&", "must start with &"],
+    ["b-cmds", "b-cmds-err", v => v[0] === "+" || v[0] === "-", "must start with + or -"],
+    ["b-sel", "b-sel-err", v => v[0] === "(" && v[v.length - 1] === ")", "must be wrapped in ( )"]
+  ];
+  for (const [inId, errId, test, msg] of checks) {
+    const lines = $(inId).value.split("\n").map(s => s.trim()).filter(Boolean);
+    const bad = lines.find(v => !test(v));
+    $(errId).textContent = bad ? "\"" + bad + "\" " + msg : "";
+    if (bad) ok = false;
+  }
+  return ok;
+}
+
+function buildOutput() {
+  const ok = validateBuilder();
+  $("b-use").disabled = !ok;
+  $("b-copy").disabled = !ok;
+
+  const name = $("b-user").value.trim();
+  if (!name || !ok) { $("b-out").value = ""; return; }
+
+  const parts = [];
+  parts.push($("b-on").checked ? "on" : "off");
+  if ($("b-nopass").checked) parts.push("nopass");
+  for (const p of $("b-pass").value.split("\n").map(s => s.trim()).filter(Boolean)) parts.push(">" + p);
+
+  /* @all first: placed later it would erase everything before it (acl.c:1030). */
+  if (catState["@all"] !== "default") parts.push(catState["@all"] + "@all");
+  for (const c of ALLCATS) {
+    if (c === "@all") continue;
+    if (catState[c] !== "default") parts.push(catState[c] + c);
+  }
+
+  const grab = id => $(id).value.split("\n").map(s => s.trim()).filter(Boolean);
+  parts.push(...grab("b-cmds"), ...grab("b-keys"), ...grab("b-chans"), ...grab("b-sel"));
+
+  $("b-out").value = "ACL SETUSER " + name + " " + parts.join(" ");
+}
+
+function resetBuilder() {
+  for (const id of ["b-user", "b-pass", "b-keys", "b-chans", "b-cmds", "b-sel"]) $(id).value = "";
+  $("b-on").checked = true;
+  $("b-nopass").checked = false;
+  for (const c of ALLCATS) {
+    catState[c] = "default";
+    const b = $("b-cats").querySelector('[data-cat="' + c + '"]');
+    if (b) b.dataset.state = "default";
+  }
+  buildOutput();
+}
+
+/* ------------------------------------------------------------- wiring */
+$("cmd-run").addEventListener("click", () => { runAclCommand($("cmd-in").value); });
+$("cmd-in").addEventListener("keydown", e => { if (e.key === "Enter") runAclCommand($("cmd-in").value); });
+$("dry-run").addEventListener("click", doDryRun);
+$("dry-cmd").addEventListener("keydown", e => { if (e.key === "Enter") doDryRun(); });
+$("log-clear").addEventListener("click", () => { logEl.textContent = ""; });
+$("b-reset").addEventListener("click", resetBuilder);
+$("b-use").addEventListener("click", () => {
+  const v = $("b-out").value;
+  if (!v) return;
+  $("cmd-in").value = v;
+  runAclCommand(v);
+});
+$("b-copy").addEventListener("click", () => {
+  const v = $("b-out").value;
+  if (!v) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(v).then(() => log("Copied.", "ok"), () => log("Copy failed.", "err"));
+  } else {
+    log("Clipboard unavailable in this context.", "err");
+  }
+});
+for (const id of ["b-user", "b-pass", "b-keys", "b-chans", "b-cmds", "b-sel"])
+  $(id).addEventListener("input", buildOutput);
+for (const id of ["b-on", "b-nopass"]) $(id).addEventListener("change", buildOutput);
+
+/* ---------------------------------------------------------------- init */
+createDefaultUser();
+buildCatGrid();
+
+stringSetUser("worker", [
+  "on", ">samplepassword",
+  "-@all", "+@read", "+@write", "+@list", "+@pubsub", "-@dangerous",
+  "~queues:*", "%R~config:global:*", "%W~logs:worker:*", "&worker:*"
+]);
+
+refresh();
+$("dry-user").value = "worker";
+$("dry-cmd").value = "GET queues:pending";
+resetBuilder();
+log("default and worker loaded. Try: ACL SETUSER worker -@all +@read -get +get", "ok");
+log("Then dry-run GET queues:pending — the last rule wins, as in acl.c.");
+</script>
 </body>
 </html>
-
