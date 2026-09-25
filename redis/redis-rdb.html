@@ -1,853 +1,797 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Redis RDB Visualizer</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #111827;
-            color: #E5E7EB;
-        }
-        .fira-code {
-            font-family: 'Fira Code', monospace;
-        }
-        .tooltip {
-            position: relative;
-            display: inline-block;
-            cursor: pointer;
-        }
-        .tooltip .tooltiptext {
-            visibility: hidden;
-            width: 280px;
-            background-color: #1F2937;
-            color: #fff;
-            text-align: left;
-            border-radius: 6px;
-            padding: 10px;
-            position: absolute;
-            z-index: 1;
-            bottom: 125%;
-            left: 50%;
-            margin-left: -140px;
-            opacity: 0;
-            transition: opacity 0.3s;
-            font-size: 0.8rem;
-            border: 1px solid #374151;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-        }
-        .tooltip:hover .tooltiptext {
-            visibility: visible;
-            opacity: 1;
-        }
-        .tooltip .tooltiptext::after {
-            content: "";
-            position: absolute;
-            top: 100%;
-            left: 50%;
-            margin-left: -5px;
-            border-width: 5px;
-            border-style: solid;
-            border-color: #1F2937 transparent transparent transparent;
-        }
-        .tooltip .tooltiptext.tooltip-small {
-            width: auto;
-            white-space: nowrap;
-            padding: 4px 8px;
-            margin-left: 0;
-            transform: translateX(-50%);
-        }
-        .byte-block {
-            transition: all 0.3s ease-in-out;
-        }
-        .byte-block:hover {
-            transform: scale(1.05);
-            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
-        }
-        .key-card-enter {
-            animation: key-enter 0.5s ease-out;
-        }
-        @keyframes key-enter {
-            0% {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            100% {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        .rdb-block-enter {
-            animation: rdb-enter 0.3s ease-out;
-        }
-        @keyframes rdb-enter {
-            0% {
-                opacity: 0;
-                transform: scale(0.9);
-            }
-            100% {
-                opacity: 1;
-                transform: scale(1);
-            }
-        }
-        .input-group {
-            display: none;
-        }
-        .input-group.active {
-            display: block;
-        }
-        details > summary {
-            list-style: none;
-        }
-        details > summary::-webkit-details-marker {
-            display: none;
-        }
-        details > summary .summary-chevron {
-            transition: transform 0.2s;
-        }
-        details[open] > summary .summary-chevron {
-            transform: rotate(90deg);
-        }
-    </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Redis RDB Format Visualizer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+<link rel="stylesheet" href="viz.css" />
+<style>
+  /* Page-specific only: viz.css has no key editor, record list or opcode table. */
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .row > input { flex: 1 1 12ch; min-width: 0; }
+  .stack { display: grid; gap: 10px; }
+  .field { display: grid; gap: 4px; }
+  .field textarea {
+    font: 400 12px/1.6 var(--mono); color: var(--fg); padding: 6px 9px;
+    background: var(--bg); border: 1px solid var(--rule); border-radius: 4px;
+    resize: vertical; width: 100%;
+  }
+  .field textarea:focus { outline: none; border-color: var(--faint); }
+  .keyrow { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; padding: 8px 0; }
+  .keyrow + .keyrow { border-top: 1px solid var(--rule); }
+  .keyrow code { color: var(--fg); word-break: break-all; }
+  .keyrow .grow { flex: 1 1 auto; }
+  .rec { padding: 10px 0; }
+  .rec + .rec { border-top: 1px solid var(--rule); }
+  .rec__head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; margin-bottom: 6px; }
+  .rec__head b { font: 500 12px/1.6 var(--mono); font-weight: 500; color: var(--dim); }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font: 400 12px/1.7 var(--mono); }
+  th { text-align: left; font-weight: 500; color: var(--faint); padding: 4px 10px 4px 0; white-space: nowrap; }
+  td { padding: 3px 10px 3px 0; color: var(--dim); vertical-align: top; }
+  tr + tr td { border-top: 1px solid var(--rule); }
+  td.k { color: var(--red); white-space: nowrap; }
+</style>
 </head>
-<body class="min-h-screen p-4 sm:p-6 lg:p-8">
-    <div class="max-w-7xl mx-auto">
-        <!-- Header -->
-        <header class="text-center mb-8">
-            <h1 class="text-3xl sm:text-4xl font-bold text-white tracking-tight">Redis RDB Internals Visualizer</h1>
-            <p class="mt-2 text-lg text-gray-400">See how Redis saves your data to a snapshot file, byte by byte.</p>
-        </header>
+<body>
+<div class="wrap">
 
-        <!-- Controls -->
-        <div class="flex justify-center items-center space-x-2 sm:space-x-4 mb-8 bg-gray-900/50 p-4 rounded-xl border border-gray-700 shadow-lg sticky top-4 z-10 backdrop-blur-sm">
-            <button id="add-key-btn" class="flex items-center justify-center w-12 h-12 bg-blue-600 hover:bg-blue-700 text-white rounded-full transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 tooltip">
-                <i class="fas fa-plus"></i>
-                <span class="tooltiptext"><b>Add Key-Value Pair:</b><br>Click to open a dialog and add a new entry to the in-memory view.</span>
-            </button>
-            <button id="randomize-btn" class="flex items-center justify-center w-12 h-12 bg-purple-600 hover:bg-purple-700 text-white rounded-full transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 tooltip">
-                <i class="fas fa-magic-wand-sparkles"></i>
-                <span class="tooltiptext"><b>Generate Random Data:</b><br>Populate the view with 100 random keys of various types.</span>
-            </button>
-            <button id="bgsave-btn" class="flex items-center justify-center w-12 h-12 bg-green-600 hover:bg-green-700 text-white rounded-full transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 tooltip">
-                <i class="fas fa-save"></i>
-                <span class="tooltiptext"><b>Generate RDB File (BGSAVE):</b><br>Simulates the `BGSAVE` command. It takes the current in-memory data and generates the corresponding RDB file structure on the right.</span>
-            </button>
-            <button id="download-btn" class="flex items-center justify-center w-12 h-12 bg-orange-500 hover:bg-orange-600 text-white rounded-full transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-opacity-50 tooltip">
-                <i class="fas fa-download"></i>
-                <span class="tooltiptext"><b>Download .rdb File:</b><br>Generate and download a binary .rdb file based on the current in-memory data.</span>
-            </button>
-            <button id="clear-btn" class="flex items-center justify-center w-12 h-12 bg-red-600 hover:bg-red-700 text-white rounded-full transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 tooltip">
-                <i class="fas fa-trash"></i>
-                <span class="tooltiptext"><b>Clear All:</b><br>Resets the simulation, clearing both the in-memory data and the RDB visualization.</span>
-            </button>
-            <button id="scroll-to-top-btn" class="hidden flex items-center justify-center w-12 h-12 bg-gray-600 hover:bg-gray-500 text-white rounded-full transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-50 tooltip">
-                <i class="fas fa-arrow-up"></i>
-                <span class="tooltiptext"><b>Scroll to Top</b></span>
-            </button>
+  <a class="back" href="../index.html">&larr; index</a>
+  <h1>Redis RDB Format Visualizer</h1>
+  <p class="src">Modelled on <a href="https://github.com/redis/redis/blob/7.2.14/src/rdb.c">src/rdb.c</a> and <a href="https://github.com/redis/redis/blob/7.2.14/src/rdb.h">src/rdb.h</a>, Redis 7.2.14. Listpack, intset and CRC64 layouts follow <code>listpack.c</code>, <code>intset.c</code> and <code>crc64.c</code> from the same release.</p>
+
+  <p class="lede">
+    An RDB file is a header, a run of opcodes, one record per key and an 8-byte checksum.
+    Build a keyspace below and every byte a 7.2.14 server would write for it appears on the
+    right, in order. The bytes are real: the download is a loadable <code>.rdb</code>, and the
+    type byte for each value is chosen the way <code>rdbSaveObjectType</code> chooses it, so a
+    small hash gets a listpack and a large one gets a hash table.
+  </p>
+
+  <div class="grid grid--2">
+
+    <div class="stack">
+      <section class="panel">
+        <div class="panel__head"><h2>Add a key</h2><span class="cite">rdb.c:1125 rdbSaveKeyValuePair</span></div>
+        <div class="stack">
+          <div class="row">
+            <input id="k-name" type="text" spellcheck="false" aria-label="Key name" placeholder="key name" />
+            <select id="k-type" aria-label="Value type">
+              <option value="string">String</option>
+              <option value="list">List</option>
+              <option value="set">Set</option>
+              <option value="hash">Hash</option>
+              <option value="zset">Sorted set</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="k-value" id="k-hint">Value</label>
+            <textarea id="k-value" rows="3" spellcheck="false"></textarea>
+          </div>
+          <div class="row">
+            <label for="k-ttl">expire in ms</label>
+            <input id="k-ttl" type="text" spellcheck="false" placeholder="blank = no expiry" aria-label="Expire in milliseconds" />
+            <button id="k-add" class="btn btn--go">Add</button>
+          </div>
         </div>
+      </section>
 
-        <!-- Main Content -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <!-- Left Panel: In-Memory View -->
-            <div class="bg-gray-900 p-6 rounded-xl border border-gray-700 shadow-lg">
-                <h2 class="text-2xl font-semibold mb-4 text-center text-white"><i class="fas fa-memory mr-2 text-blue-400"></i>Redis In-Memory Data</h2>
-                <div id="in-memory-view" class="space-y-4 min-h-[300px]">
-                    <div id="no-keys-message" class="text-center text-gray-500 py-16">
-                        <i class="fas fa-key text-4xl mb-4"></i>
-                        <p>No keys in memory.</p>
-                        <p class="text-sm">Click the <i class="fas fa-plus"></i> button to add data.</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Right Panel: RDB File View -->
-            <div class="bg-gray-900 p-6 rounded-xl border border-gray-700 shadow-lg">
-                <h2 class="text-2xl font-semibold mb-4 text-center text-white"><i class="fas fa-file-alt mr-2 text-green-400"></i>RDB File Structure</h2>
-                <div id="rdb-view" class="bg-gray-800 p-4 rounded-lg min-h-[300px] flex flex-col items-center justify-center space-y-2">
-                    <div id="no-rdb-message" class="text-center text-gray-500">
-                         <i class="fas fa-file-export text-4xl mb-4"></i>
-                        <p>RDB view is empty.</p>
-                        <p class="text-sm">Click <i class="fas fa-save"></i> to generate the file structure.</p>
-                    </div>
-                </div>
-            </div>
+      <section class="panel">
+        <div class="panel__head">
+          <h2>Keyspace</h2>
+          <span class="cite" id="ks-count">db 0 &middot; empty</span>
         </div>
+        <div id="ks-list"></div>
+        <p class="muted" id="ks-empty">No keys. Redis skips an empty database entirely &mdash; no <code>SELECTDB</code> opcode is written for it (rdb.c:1310).</p>
+        <div class="row" style="margin-top:10px">
+          <button id="k-sample" class="btn">Load sample keyspace</button>
+          <button id="k-clear" class="btn">Clear</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head"><h2>Save trace</h2><span class="cite">rdb.c:1376 rdbSaveRio</span></div>
+        <div class="log" id="trace"></div>
+      </section>
     </div>
 
-    <footer class="text-center mt-12 mb-4">
-        <p class="text-xs text-gray-500 max-w-3xl mx-auto">
-            <strong>Note:</strong> This is an educational tool. While the generated RDB is loadable with a valid CRC64 checksum,
-            it does not implement advanced production features like LZF compression, optimized data encodings (e.g., listpack), or metadata (expiry/LRU/LFU).
+    <div class="stack">
+      <section class="panel">
+        <div class="panel__head">
+          <h2>RDB byte stream</h2>
+          <span id="dump-size" class="pill">0 bytes</span>
+        </div>
+        <div id="dump"></div>
+        <p class="legend">
+          <span><span class="byte byte--hdr">FF</span> magic and opcode</span>
+          <span><span class="byte byte--enc">FF</span> length or encoding prefix</span>
+          <span><span class="byte byte--data">FF</span> payload</span>
+          <span><span class="byte byte--eof">FF</span> end of file</span>
+          <span><span class="byte byte--back">FF</span> CRC64</span>
         </p>
-    </footer>
-
-    <!-- Add Key Modal -->
-    <div id="add-key-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden backdrop-blur-sm">
-        <div class="bg-gray-800 rounded-lg shadow-xl p-8 w-full max-w-md border border-gray-700">
-            <h3 class="text-2xl font-bold mb-4 text-white">Add New Key</h3>
-            <form id="add-key-form">
-                <div class="mb-4">
-                    <label for="key-input" class="block text-sm font-medium text-gray-300 mb-1">Key</label>
-                    <input type="text" id="key-input" class="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" required>
-                </div>
-                 <div class="mb-4">
-                    <label for="type-select" class="block text-sm font-medium text-gray-300 mb-1">Type</label>
-                    <select id="type-select" class="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
-                        <option value="string">String</option>
-                        <option value="list">List</option>
-                        <option value="set">Set</option>
-                        <option value="hash">Hash</option>
-                        <option value="zset">Sorted Set (ZSet)</option>
-                    </select>
-                </div>
-
-                <!-- Value Inputs -->
-                <div id="string-input-group" class="input-group active">
-                    <label for="string-value-input" class="block text-sm font-medium text-gray-300 mb-1">Value</label>
-                    <input type="text" id="string-value-input" class="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
-                </div>
-                <div id="list-input-group" class="input-group">
-                    <label for="list-value-input" class="block text-sm font-medium text-gray-300 mb-1">Elements (one per line)</label>
-                    <textarea id="list-value-input" rows="4" class="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"></textarea>
-                </div>
-                 <div id="set-input-group" class="input-group">
-                    <label for="set-value-input" class="block text-sm font-medium text-gray-300 mb-1">Members (one per line, duplicates ignored)</label>
-                    <textarea id="set-value-input" rows="4" class="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"></textarea>
-                </div>
-                <div id="hash-input-group" class="input-group">
-                    <label for="hash-value-input" class="block text-sm font-medium text-gray-300 mb-1">Field-Value Pairs (e.g., "field1 value1" per line)</label>
-                    <textarea id="hash-value-input" rows="4" class="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"></textarea>
-                </div>
-                 <div id="zset-input-group" class="input-group">
-                    <label for="zset-value-input" class="block text-sm font-medium text-gray-300 mb-1">Score-Member Pairs (e.g., "1.5 member1" per line)</label>
-                    <textarea id="zset-value-input" rows="4" class="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"></textarea>
-                </div>
-
-                <div class="flex justify-end space-x-4 mt-6">
-                    <button type="button" id="modal-cancel-btn" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-md transition">Cancel</button>
-                    <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition">Add Key</button>
-                </div>
-            </form>
+        <div class="row" style="margin-top:10px">
+          <button id="dl" class="btn">Download dump.rdb</button>
+          <span class="cite" id="crc-line"></span>
         </div>
+      </section>
     </div>
+  </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            // State
-            let redisData = [];
-            let keyCounter = 0;
+  <section class="panel">
+    <div class="panel__head"><h2>Opcodes</h2><span class="cite">rdb.h:103&ndash;113</span></div>
+    <p class="muted" style="margin-bottom:8px">
+      The complete 7.2.14 list. An opcode is read where a value type byte would otherwise be,
+      so anything from 245 upward is an instruction rather than a type
+      (<code>rdbIsObjectType</code> covers 0&ndash;7 and 9&ndash;21, rdb.h:100).
+    </p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>hex</th><th>dec</th><th>name</th><th>what follows it</th></tr></thead>
+        <tbody>
+          <tr><td class="k">F5</td><td>245</td><td>FUNCTION2</td><td>One function library's source, as a string.</td></tr>
+          <tr><td class="k">F6</td><td>246</td><td>FUNCTION_PRE_GA</td><td>The 7.0 rc1/rc2 function format. Written by no released server.</td></tr>
+          <tr><td class="k">F7</td><td>247</td><td>MODULE_AUX</td><td>Module id, a when-marker, then module-defined data.</td></tr>
+          <tr><td class="k">F8</td><td>248</td><td>IDLE</td><td>A length-encoded idle time in seconds. Written only under an LRU maxmemory policy (rdb.c:1136&ndash;1140).</td></tr>
+          <tr><td class="k">F9</td><td>249</td><td>FREQ</td><td>One raw byte, the LFU counter. Written only under an LFU policy (rdb.c:1144&ndash;1152).</td></tr>
+          <tr><td class="k">FA</td><td>250</td><td>AUX</td><td>Two strings: field name, then value.</td></tr>
+          <tr><td class="k">FB</td><td>251</td><td>RESIZEDB</td><td>Two lengths: key count, then how many of them have an expiry.</td></tr>
+          <tr><td class="k">FC</td><td>252</td><td>EXPIRETIME_MS</td><td>8 bytes, little-endian, an absolute Unix time in ms.</td></tr>
+          <tr><td class="k">FD</td><td>253</td><td>EXPIRETIME</td><td>4 bytes, seconds. Still read, never written by 7.2 (rdb.c:1130&ndash;1132 always uses FC).</td></tr>
+          <tr><td class="k">FE</td><td>254</td><td>SELECTDB</td><td>A length-encoded database number.</td></tr>
+          <tr><td class="k">FF</td><td>255</td><td>EOF</td><td>Nothing. The 8-byte checksum follows.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cite" style="margin-top:10px">
+      Per-key metadata precedes the value type byte, not the key:
+      <code>FC &lt;8 bytes&gt;</code> then <code>F8</code>/<code>F9</code> if the policy asks for
+      them, then the type byte, then the key, then the value (rdb.c:1129&ndash;1158).
+      <code>RDB_OPCODE_SLOT_INFO</code> does not exist in 7.2.
+    </p>
+  </section>
 
-            // DOM Elements
-            const inMemoryView = document.getElementById('in-memory-view');
-            const rdbView = document.getElementById('rdb-view');
-            const addKeyBtn = document.getElementById('add-key-btn');
-            const bgsaveBtn = document.getElementById('bgsave-btn');
-            const randomizeBtn = document.getElementById('randomize-btn');
-            const downloadBtn = document.getElementById('download-btn');
-            const clearBtn = document.getElementById('clear-btn');
-            const scrollToTopBtn = document.getElementById('scroll-to-top-btn');
-            const modal = document.getElementById('add-key-modal');
-            const modalCancelBtn = document.getElementById('modal-cancel-btn');
-            const addKeyForm = document.getElementById('add-key-form');
-            const keyInput = document.getElementById('key-input');
-            const typeSelect = document.getElementById('type-select');
-            const noKeysMessage = document.getElementById('no-keys-message');
-            const noRdbMessage = document.getElementById('no-rdb-message');
-            const inputGroups = document.querySelectorAll('.input-group');
+  <div class="grid grid--2">
+    <section class="panel">
+      <div class="panel__head"><h2>Length encoding</h2><span class="cite">rdb.c:172 rdbSaveLen</span></div>
+      <p class="muted" style="margin-bottom:8px">
+        The top two bits of the first byte say how to read the rest.
+      </p>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>first byte</th><th>meaning</th></tr></thead>
+          <tbody>
+            <tr><td class="k">00xxxxxx</td><td>The length is the low 6 bits. One byte total, covering 0&ndash;63.</td></tr>
+            <tr><td class="k">01xxxxxx</td><td>14-bit length: low 6 bits are the high half, the next byte the low half.</td></tr>
+            <tr><td class="k">10000000</td><td><code>RDB_32BITLEN</code> (0x80). A 32-bit length follows, <b>big-endian</b> &mdash; <code>htonl</code>, unlike every other multi-byte field in the format.</td></tr>
+            <tr><td class="k">10000001</td><td><code>RDB_64BITLEN</code> (0x81). A 64-bit big-endian length follows. Taken only when the length exceeds <code>UINT32_MAX</code> (rdb.c:196&ndash;199).</td></tr>
+            <tr><td class="k">11xxxxxx</td><td><code>RDB_ENCVAL</code>. Not a length: the low 6 bits name a special encoding for the string that follows.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
 
-            // --- RDB Constants (from rdb.h) ---
-            const RDB_VERSION = 11;
-            const RDB_6BITLEN = 0;
-            const RDB_14BITLEN = 1;
-            const RDB_32BITLEN = 0x80;
-            const RDB_ENCVAL = 3;
-            const RDB_ENC_INT8 = 0;
-            const RDB_ENC_INT16 = 1;
-            const RDB_TYPE_STRING = 0;
-            const RDB_TYPE_LIST = 1;
-            const RDB_TYPE_SET = 2;
-            const RDB_TYPE_ZSET_2 = 5;
-            const RDB_TYPE_HASH = 4;
-            const RDB_OPCODE_SELECTDB = 254;
-            const RDB_OPCODE_EOF = 255;
-            const RDB_OPCODE_RESIZEDB = 251;
-            const RDB_OPCODE_AUX = 250;
-            
-            const TYPE_MAP = {
-                'string': { icon: 'fa-font', color: 'blue-400', rdbType: RDB_TYPE_STRING, name: 'String' },
-                'list': { icon: 'fa-list-ol', color: 'green-400', rdbType: RDB_TYPE_LIST, name: 'List' },
-                'set': { icon: 'fa-layer-group', color: 'yellow-400', rdbType: RDB_TYPE_SET, name: 'Set' },
-                'hash': { icon: 'fa-hashtag', color: 'indigo-400', rdbType: RDB_TYPE_HASH, name: 'Hash' },
-                'zset': { icon: 'fa-sort-amount-up', color: 'purple-400', rdbType: RDB_TYPE_ZSET_2, name: 'ZSet' },
-            };
+    <section class="panel">
+      <div class="panel__head"><h2>String encodings</h2><span class="cite">rdb.c:442 rdbSaveRawString</span></div>
+      <p class="muted" style="margin-bottom:8px">
+        A string is tried as an integer first, then as compressed, then stored verbatim.
+      </p>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>prefix</th><th>layout</th></tr></thead>
+          <tbody>
+            <tr><td class="k">C0</td><td><code>INT8</code>: one signed byte.</td></tr>
+            <tr><td class="k">C1</td><td><code>INT16</code>: two bytes, little-endian.</td></tr>
+            <tr><td class="k">C2</td><td><code>INT32</code>: four bytes, little-endian.</td></tr>
+            <tr><td class="k">C3</td><td><code>LZF</code>: compressed length, then <em>original</em> length, both length-encoded, then the payload (rdb.c:345&ndash;361).</td></tr>
+            <tr><td class="k">&mdash;</td><td>Otherwise a length, then that many raw bytes.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="cite" style="margin-top:10px">
+        Integer encoding is attempted only when the string is at most 11 bytes (rdb.c:447) and
+        parses as a canonical integer &mdash; <code>string2ll</code> rejects leading zeros,
+        <code>-0</code> and trailing text (util.c:438). Compression is attempted only when
+        <code>rdbcompression</code> is on and the string is longer than 20 bytes (rdb.c:457);
+        this page never compresses, so a long string here shows the verbatim form.
+      </p>
+    </section>
+  </div>
 
-            // --- Event Listeners ---
-            addKeyBtn.addEventListener('click', () => {
-                addKeyForm.reset();
-                updateModalInputs();
-                modal.classList.remove('hidden')
-            });
-            modalCancelBtn.addEventListener('click', () => modal.classList.add('hidden'));
-            typeSelect.addEventListener('change', updateModalInputs);
-            
-            addKeyForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                addKey(keyInput.value, typeSelect.value);
-                modal.classList.add('hidden');
-                addKeyForm.reset();
-            });
-            bgsaveBtn.addEventListener('click', generateRDBView);
-            randomizeBtn.addEventListener('click', generateRandomData);
-            downloadBtn.addEventListener('click', handleDownload);
-            clearBtn.addEventListener('click', clearAll);
+  <section class="panel">
+    <div class="panel__head"><h2>How the type byte is chosen</h2><span class="cite">rdb.c:661 rdbSaveObjectType</span></div>
+    <p class="muted" style="margin-bottom:8px">
+      The type byte names the <em>encoding on disk</em>, not the user-visible type. A small
+      collection is one packed blob; a large one is written element by element. The ziplist
+      types 10, 12 and 13 are still read by 7.2 but nothing writes them any more.
+    </p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>value</th><th>type byte</th><th>written when</th><th>payload</th></tr></thead>
+        <tbody>
+          <tr><td>String</td><td class="k">0 STRING</td><td>always</td><td>One string.</td></tr>
+          <tr><td>List</td><td class="k">18 LIST_QUICKLIST_2</td><td>always &mdash; there is no other list branch (rdb.c:665&ndash;668)</td><td>Node count, then per node a container flag (2 = packed) and the node's listpack as a string.</td></tr>
+          <tr><td>Set</td><td class="k">11 SET_INTSET</td><td>every member parses as an integer and there are at most 512 (<code>set-max-intset-entries</code>)</td><td>An intset blob as a string.</td></tr>
+          <tr><td>Set</td><td class="k">20 SET_LISTPACK</td><td>at most 128 members, none longer than 64 bytes</td><td>A listpack as a string.</td></tr>
+          <tr><td>Set</td><td class="k">2 SET</td><td>otherwise</td><td>Member count, then each member as a string.</td></tr>
+          <tr><td>Hash</td><td class="k">16 HASH_LISTPACK</td><td>at most 512 fields, no field or value longer than 64 bytes</td><td>A listpack of field, value, field, value.</td></tr>
+          <tr><td>Hash</td><td class="k">4 HASH</td><td>otherwise</td><td>Field count, then each field and value as strings.</td></tr>
+          <tr><td>Sorted set</td><td class="k">17 ZSET_LISTPACK</td><td>at most 128 members, none longer than 64 bytes</td><td>A listpack of member, score, member, score, in ascending score order.</td></tr>
+          <tr><td>Sorted set</td><td class="k">5 ZSET_2</td><td>otherwise</td><td>Member count, then each member and its 8-byte score &mdash; walked from the skiplist tail, so <b>highest score first</b> (rdb.c:914&ndash;925).</td></tr>
+          <tr><td>Stream</td><td class="k">21 STREAM_LISTPACKS_3</td><td>always</td><td>Not modelled here.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cite" style="margin-top:10px">
+      Thresholds are the shipped defaults from config.c:3236&ndash;3244. A list stays one
+      listpack node until that node would exceed 8192 bytes, the limit
+      <code>list-max-listpack-size = -2</code> selects (quicklist.c:49, quicklist.c:467).
+    </p>
+  </section>
 
-            window.addEventListener('scroll', () => {
-                if (window.scrollY > 200) {
-                    scrollToTopBtn.classList.remove('hidden');
-                } else {
-                    scrollToTopBtn.classList.add('hidden');
-                }
-            });
+  <section class="panel">
+    <div class="panel__head"><h2>What this page leaves out</h2></div>
+    <p class="muted">
+      Functions (<code>F5</code>), module data (<code>F7</code>), streams, LZF compression, the
+      LRU and LFU opcodes, and databases other than 0. Everything it does emit is the real
+      byte sequence for Redis 7.2.14, including the CRC64, so <code>redis-check-rdb</code>
+      accepts the download.
+    </p>
+  </section>
 
-            scrollToTopBtn.addEventListener('click', () => {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            });
+</div>
 
+<script>
+'use strict'
+document.addEventListener('DOMContentLoaded', () => {
 
-            // --- Core Logic ---
-            function updateModalInputs() {
-                const selectedType = typeSelect.value;
-                inputGroups.forEach(group => {
-                    if (group.id === `${selectedType}-input-group`) {
-                        group.classList.add('active');
-                    } else {
-                        group.classList.remove('active');
-                    }
-                });
-            }
+  /* ---------------------------------------------------------- constants */
+  /* rdb.h, Redis 7.2.14. */
+  const RDB_VERSION = 11
+  const OP = { AUX: 250, RESIZEDB: 251, EXPIRETIME_MS: 252, SELECTDB: 254, EOF: 255 }
+  const T = { STRING: 0, SET: 2, HASH: 4, ZSET_2: 5, SET_INTSET: 11,
+              HASH_LISTPACK: 16, ZSET_LISTPACK: 17, LIST_QUICKLIST_2: 18, SET_LISTPACK: 20 }
+  /* config.c:3236-3244 defaults; quicklist.c:49 with list-max-listpack-size = -2. */
+  const LIMIT = { hashEntries: 512, hashValue: 64, zsetEntries: 128, zsetValue: 64,
+                  setEntries: 128, setValue: 64, intsetEntries: 512, listNodeBytes: 8192 }
+  const QUICKLIST_NODE_CONTAINER_PACKED = 2
 
-            function addKey(key, type) {
-                if (!key) {
-                    alert("Key cannot be empty.");
-                    return;
-                }
-                let value;
-                try {
-                    switch(type) {
-                        case 'string':
-                            value = document.getElementById('string-value-input').value;
-                            break;
-                        case 'list':
-                            value = document.getElementById('list-value-input').value.split('\n').filter(Boolean);
-                            break;
-                        case 'set':
-                            const members = document.getElementById('set-value-input').value.split('\n').filter(Boolean);
-                            value = [...new Set(members)]; // Enforce uniqueness
-                            break;
-                        case 'hash':
-                            value = new Map();
-                            document.getElementById('hash-value-input').value.split('\n').filter(Boolean).forEach(line => {
-                                const parts = line.match(/^(\S+)\s+(.*)$/);
-                                if(parts) value.set(parts[1], parts[2]);
-                            });
-                            break;
-                        case 'zset':
-                            value = [];
-                             document.getElementById('zset-value-input').value.split('\n').filter(Boolean).forEach(line => {
-                                const parts = line.match(/^(\S+)\s+(.*)$/);
-                                if(parts) {
-                                    const score = parseFloat(parts[1]);
-                                    if(!isNaN(score)) value.push({ score, member: parts[2] });
-                                }
-                            });
-                            value.sort((a,b) => a.score - b.score); // Keep it sorted
-                            break;
-                    }
-                } catch(e) {
-                    console.error("Error parsing input: ", e);
-                    alert("Invalid input format for the selected type.");
-                    return;
-                }
-                
-                const existingKeyIndex = redisData.findIndex(item => item.key === key);
-                if (existingKeyIndex !== -1) {
-                    redisData[existingKeyIndex].value = value;
-                    redisData[existingKeyIndex].type = type;
-                } else {
-                    keyCounter++;
-                    redisData.push({ id: keyCounter, key, value, type });
-                }
-                renderInMemoryView();
-            }
+  const utf8 = new TextEncoder()
+  const fromUtf8 = new TextDecoder()
+  const bytesOf = (s) => utf8.encode(s)
 
-            function generateRandomData() {
-                clearAll();
-                const types = Object.keys(TYPE_MAP);
-                
-                for (let i = 0; i < 100; i++) {
-                    const key = `key:${i}`;
-                    const type = types[Math.floor(Math.random() * types.length)];
-                    let value;
+  /* ------------------------------------------------------------- crc64 */
+  /* CRC-64/Jones. crc64.c:33 gives the polynomial as 0xad93d23594c935a9; this
+   * is its reflection, because the table here shifts right. Init 0 and no
+   * final xor, per crc64.c:110 and the rdb->cksum seed at rdb.c:1406. */
+  const CRC64_TABLE = (() => {
+    const POLY = 0x95ac9329ac4bc9b5n
+    const t = new BigUint64Array(256)
+    for (let i = 0; i < 256; i++) {
+      let c = BigInt(i)
+      for (let j = 0; j < 8; j++) c = (c & 1n) ? (c >> 1n) ^ POLY : c >> 1n
+      t[i] = c
+    }
+    return t
+  })()
 
-                    switch(type) {
-                        case 'string':
-                            value = `value-${Math.random().toString(36).substring(2, 10)}`;
-                            break;
-                        case 'list':
-                            value = Array.from({length: Math.ceil(Math.random() * 5) + 2}, (_, j) => `item-${j}-${Math.random().toString(36).substring(2, 8)}`);
-                            break;
-                        case 'set':
-                            const set = new Set();
-                            for(let j=0; j < Math.ceil(Math.random() * 5) + 2; j++) {
-                                set.add(`member-${j}-${Math.random().toString(36).substring(2, 8)}`);
-                            }
-                            value = [...set];
-                            break;
-                        case 'hash':
-                            value = new Map();
-                             for(let j=0; j < Math.ceil(Math.random() * 4) + 2; j++) {
-                                value.set(`field${j}`, `value-${Math.random().toString(36).substring(2, 12)}`);
-                            }
-                            break;
-                        case 'zset':
-                             value = [];
-                            const memberSet = new Set();
-                            for(let j=0; j < Math.ceil(Math.random() * 5) + 2; j++) {
-                                const member = `member-${j}-${Math.random().toString(36).substring(2, 8)}`;
-                                if(!memberSet.has(member)){
-                                    memberSet.add(member);
-                                    value.push({
-                                        score: parseFloat((Math.random() * 1000).toFixed(2)),
-                                        member: member
-                                    });
-                                }
-                            }
-                            value.sort((a,b) => a.score - b.score);
-                            break;
-                    }
+  function crc64(input) {
+    const b = typeof input === 'string' ? bytesOf(input) : input
+    let c = 0n
+    for (let i = 0; i < b.length; i++) c = (c >> 8n) ^ CRC64_TABLE[Number((c ^ BigInt(b[i])) & 0xffn)]
+    return c
+  }
+  window.crc64 = crc64
 
-                    keyCounter++;
-                    redisData.push({ id: keyCounter, key, value, type });
-                }
-                renderInMemoryView();
-                // Optionally, auto-generate RDB view after randomizing
-                generateRDBView();
-            }
+  /* ------------------------------------------------------- rdb encoders */
 
-            function removeKey(id) {
-                redisData = redisData.filter(item => item.id !== id);
-                renderInMemoryView();
-            }
+  /* util.c:438 string2ll, and lpStringToInt64 which is the same function. */
+  function string2ll(s) {
+    if (s.length === 0 || s.length >= 21) return null
+    if (!/^(0|-?[1-9][0-9]*)$/.test(s)) return null
+    const v = BigInt(s)
+    if (v < -(2n ** 63n) || v > 2n ** 63n - 1n) return null
+    return v
+  }
 
-            function clearAll() {
-                redisData = [];
-                keyCounter = 0;
-                renderInMemoryView();
-                rdbView.innerHTML = '';
-                rdbView.appendChild(noRdbMessage);
-                noRdbMessage.style.display = 'block';
-            }
-            
-            function handleDownload() {
-                if(redisData.length === 0) {
-                    alert("Add some data first before downloading.");
-                    return;
-                }
-                const rdbBytes = generateRDBBinary();
-                const blob = new Blob([rdbBytes], {type: 'application/octet-stream'});
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                
-                const now = new Date();
-                const year = now.getFullYear();
-                const month = String(now.getMonth() + 1).padStart(2, '0');
-                const day = String(now.getDate()).padStart(2, '0');
-                const hours = String(now.getHours()).padStart(2, '0');
-                const minutes = String(now.getMinutes()).padStart(2, '0');
-                const seconds = String(now.getSeconds()).padStart(2, '0');
-                const timestamp = `${year}${month}${day}-${hours}${minutes}${seconds}`;
-                
-                a.href = url;
-                a.download = `dump-${timestamp}.rdb`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            }
+  /* rdb.c:172. The 32-bit case is big-endian; the 64-bit case cannot be
+   * reached from a browser and is described in the reference table instead. */
+  function saveLen(n) {
+    if (n < (1 << 6)) return [n]
+    if (n < (1 << 14)) return [((n >> 8) & 0xff) | 0x40, n & 0xff]
+    return [0x80, (n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff]
+  }
 
-            // --- Rendering Functions ---
-            function renderInMemoryView() {
-                inMemoryView.innerHTML = '';
-                if (redisData.length === 0) {
-                    inMemoryView.appendChild(noKeysMessage);
-                    noKeysMessage.style.display = 'block';
-                } else {
-                    noKeysMessage.style.display = 'none';
-                    redisData.forEach(item => {
-                        const typeInfo = TYPE_MAP[item.type];
-                        const card = document.createElement('div');
-                        card.className = 'bg-gray-800 border border-gray-700 p-4 rounded-lg shadow-md key-card-enter';
-                        
-                        let valueHtml = '';
-                        switch(item.type) {
-                             case 'string':
-                                valueHtml = `<div class="text-gray-400 text-sm fira-code break-all">${item.value}</div>`;
-                                break;
-                            case 'list':
-                                valueHtml = item.value.map(v => `<div class="pl-4 text-gray-400 fira-code text-sm">- ${v}</div>`).join('');
-                                break;
-                             case 'set':
-                                valueHtml = [...item.value].map(v => `<div class="pl-4 text-gray-400 fira-code text-sm">- ${v}</div>`).join('');
-                                break;
-                            case 'hash':
-                                valueHtml = [...item.value.entries()].map(([k,v]) => `<div class="pl-4 text-gray-400 fira-code text-sm"><span class="text-gray-500">${k}:</span> ${v}</div>`).join('');
-                                break;
-                            case 'zset':
-                                valueHtml = item.value.map(({score, member}) => `<div class="pl-4 text-gray-400 fira-code text-sm"><span class="text-gray-500">${score}:</span> ${member}</div>`).join('');
-                                break;
-                        }
+  /* rdb.c:266 rdbEncodeInteger. */
+  function encodeInteger(v) {
+    const b = (sh) => Number((v >> BigInt(sh)) & 0xffn)
+    if (v >= -128n && v <= 127n) return [0xc0, b(0)]
+    if (v >= -32768n && v <= 32767n) return [0xc1, b(0), b(8)]
+    if (v >= -2147483648n && v <= 2147483647n) return [0xc2, b(0), b(8), b(16), b(24)]
+    return null
+  }
 
-                        card.innerHTML = `
-                            <div class="flex justify-between items-start">
-                                <div class="flex items-start">
-                                    <span class="tooltip text-${typeInfo.color} mr-3 mt-1">
-                                        <i class="fas ${typeInfo.icon}"></i>
-                                        <span class="tooltiptext tooltip-small">${typeInfo.name}</span>
-                                    </span>
-                                    <div>
-                                        <div class="font-semibold text-white fira-code">${item.key}</div>
-                                        <div class="mt-2">${valueHtml}</div>
-                                    </div>
-                                </div>
-                                <button class="remove-key-btn text-gray-500 hover:text-red-500 transition" data-id="${item.id}">
-                                    <i class="fas fa-times-circle"></i>
-                                </button>
-                            </div>
-                        `;
-                        inMemoryView.appendChild(card);
-                    });
+  /* rdb.c:442. Integer encoding is tried only up to 11 bytes; LZF is skipped. */
+  function saveString(b) {
+    if (b.length <= 11) {
+      const v = string2ll(fromUtf8.decode(b))
+      if (v !== null) {
+        const enc = encodeInteger(v)
+        if (enc) return { pre: enc, data: [] }
+      }
+    }
+    return { pre: saveLen(b.length), data: [...b] }
+  }
 
-                    document.querySelectorAll('.remove-key-btn').forEach(btn => {
-                        btn.addEventListener('click', (e) => {
-                            const id = parseInt(e.currentTarget.getAttribute('data-id'));
-                            removeKey(id);
-                        });
-                    });
-                }
-            }
-            
-            function generateRDBView() {
-                rdbView.innerHTML = '';
-                noRdbMessage.style.display = 'none';
+  const saveStr = (s) => saveString(bytesOf(s))
 
-                const rdbContentBytes = generateRDBBinary(false); // Generate content without checksum
-                const checksum = crc64(rdbContentBytes);
-                
-                const headerFragment = document.createDocumentFragment();
+  /* rdb.c:634 rdbSaveBinaryDoubleValue: 8 raw bytes, little-endian. */
+  function double8(x) {
+    const d = new DataView(new ArrayBuffer(8))
+    d.setFloat64(0, x, true)
+    return [...new Uint8Array(d.buffer)]
+  }
 
-                // 1. Header & DB Select
-                const rdbVerStr = `REDIS${String(RDB_VERSION).padStart(4, '0')}`;
-                headerFragment.appendChild(createRDBBlock('Magic String', rdbVerStr.split('').map(c => c.charCodeAt(0)), `Identifies the file as Redis RDB version ${RDB_VERSION}.`, 'bg-purple-600'));
-                headerFragment.appendChild(createRDBBlock('AUX Field Opcode', [RDB_OPCODE_AUX], `Opcode <b>0xFA</b> signals an auxiliary metadata field.`, 'bg-yellow-600'));
-                headerFragment.appendChild(createEncodedStringBlock('AUX Key', 'redis-ver'));
-                headerFragment.appendChild(createEncodedStringBlock('AUX Value', '7.2.0'));
-                headerFragment.appendChild(createRDBBlock('DB Selector Opcode', [RDB_OPCODE_SELECTDB], `Opcode <b>0xFE</b> selects a database.`, 'bg-yellow-600'));
-                headerFragment.appendChild(createLengthBlock('DB Number', 0));
-                
-                if(redisData.length > 0) {
-                    headerFragment.appendChild(createRDBBlock('RESIZEDB Opcode', [RDB_OPCODE_RESIZEDB], `Opcode <b>0xFB</b> hints at the upcoming DB size.`, 'bg-yellow-600'));
-                    headerFragment.appendChild(createLengthBlock('DB Size Hint', redisData.length));
-                    headerFragment.appendChild(createLengthBlock('Expires Size Hint', 0));
-                }
-                rdbView.appendChild(headerFragment);
+  /* rdb.c:140 rdbSaveMillisecondTime. */
+  function millis8(ms) {
+    const d = new DataView(new ArrayBuffer(8))
+    d.setBigInt64(0, BigInt(ms), true)
+    return [...new Uint8Array(d.buffer)]
+  }
 
-                // 2. Key-Value Pairs
-                redisData.forEach(item => {
-                    const typeInfo = TYPE_MAP[item.type];
-                    
-                    const details = document.createElement('details');
-                    details.className = 'w-full bg-gray-700/50 rounded-lg rdb-block-enter';
-                    
-                    const summary = document.createElement('summary');
-                    summary.className = 'p-3 cursor-pointer flex justify-between items-center';
-                    summary.innerHTML = `
-                        <div class="flex items-center">
-                           <i class="fas ${typeInfo.icon} text-${typeInfo.color} mr-3"></i>
-                           <span class="font-semibold fira-code">Key: "${item.key}"</span>
-                           <span class="text-xs text-gray-400 ml-2">(${typeInfo.name})</span>
-                        </div>
-                        <i class="fas fa-chevron-right summary-chevron text-gray-400"></i>
-                    `;
-                    
-                    const content = document.createElement('div');
-                    content.className = 'p-4 border-t border-gray-600';
-                    
-                    // Value Type
-                    content.appendChild(createRDBBlock('Value Type', [typeInfo.rdbType], `<b>0x${typeInfo.rdbType.toString(16)}</b> signals a <b>${typeInfo.name}</b> value.`, 'bg-indigo-600'));
-                    
-                    // Key (always a string)
-                    content.appendChild(createEncodedStringBlock('Key', item.key));
+  /* ---------------------------------------------------------- listpack */
+  /* listpack.c: 6-byte header, entries, 0xFF terminator. Every entry is its
+   * encoding and data followed by a backwards length. */
 
-                    // Value (depends on type)
-                    switch(item.type) {
-                        case 'string':
-                             content.appendChild(createEncodedStringBlock('Value', item.value));
-                             break;
-                        case 'list':
-                        case 'set':
-                            content.appendChild(createLengthBlock(`${typeInfo.name} Length`, item.value.length));
-                            item.value.forEach(v => content.appendChild(createEncodedStringBlock(`${typeInfo.name} Element`, v)));
-                            break;
-                        case 'hash':
-                             content.appendChild(createLengthBlock('Hash Field Count', item.value.size));
-                             item.value.forEach((val, field) => {
-                                content.appendChild(createEncodedStringBlock('Hash Field', field));
-                                content.appendChild(createEncodedStringBlock('Hash Value', val));
-                             });
-                             break;
-                        case 'zset':
-                            content.appendChild(createLengthBlock('ZSet Member Count', item.value.length));
-                            item.value.forEach(({score, member}) => {
-                                content.appendChild(createEncodedStringBlock('ZSet Member', member));
-                                const scoreBytes = numberToFloat64Bytes(score);
-                                content.appendChild(createRDBBlock('ZSet Score', scoreBytes, `8-byte IEEE 754 double-precision float for score <b>${score}</b>. Stored in little-endian format.`, 'bg-pink-600'));
-                            });
-                            break;
-                    }
-                    details.appendChild(summary);
-                    details.appendChild(content);
-                    rdbView.appendChild(details);
-                });
-                
-                // 3. EOF & Checksum
-                const footerFragment = document.createDocumentFragment();
-                footerFragment.appendChild(createRDBBlock('EOF Opcode', [RDB_OPCODE_EOF], `Opcode <b>0xFF</b> marks the end of the file.`, 'bg-red-600'));
-                
-                const checksumBytes = [];
-                const view = new DataView(new ArrayBuffer(8));
-                view.setBigUint64(0, checksum, true); // true for little-endian
-                for(let i=0; i<8; i++) checksumBytes.push(view.getUint8(i));
+  function lpIntEncoding(v) {                       /* listpack.c:267 */
+    const b = (sh) => Number((v >> BigInt(sh)) & 0xffn)
+    if (v >= 0n && v <= 127n) return [Number(v)]
+    if (v >= -4096n && v <= 4095n) { const u = v < 0n ? (1n << 13n) + v : v
+      return [Number(u >> 8n) | 0xc0, Number(u & 0xffn)] }
+    if (v >= -32768n && v <= 32767n) { const u = v < 0n ? (1n << 16n) + v : v
+      return [0xf1, Number(u & 0xffn), Number((u >> 8n) & 0xffn)] }
+    if (v >= -8388608n && v <= 8388607n) { const u = v < 0n ? (1n << 24n) + v : v
+      return [0xf2, Number(u & 0xffn), Number((u >> 8n) & 0xffn), Number((u >> 16n) & 0xffn)] }
+    if (v >= -2147483648n && v <= 2147483647n) { const u = v < 0n ? (1n << 32n) + v : v
+      return [0xf3, Number(u & 0xffn), Number((u >> 8n) & 0xffn), Number((u >> 16n) & 0xffn), Number((u >> 24n) & 0xffn)] }
+    const u = v < 0n ? (1n << 64n) + v : v
+    const o = [0xf4]
+    for (let i = 0; i < 8; i++) o.push(Number((u >> BigInt(i * 8)) & 0xffn))
+    return o
+  }
 
-                footerFragment.appendChild(createRDBBlock('CRC64 Checksum', checksumBytes, `An 8-byte checksum for data integrity. Calculated value: <b>0x${checksum.toString(16).toUpperCase()}</b>`, 'bg-teal-600'));
-                rdbView.appendChild(footerFragment);
-            }
+  function lpStrEncoding(b) {                       /* listpack.c:403 */
+    if (b.length < 64) return [0x80 | b.length, ...b]
+    if (b.length < 4096) return [0xe0 | (b.length >> 8), b.length & 0xff, ...b]
+    return [0xf0, b.length & 0xff, (b.length >> 8) & 0xff,
+            (b.length >> 16) & 0xff, (b.length >> 24) & 0xff, ...b]
+  }
 
-            function createRDBBlock(title, bytes, tooltipText, colorClass = 'bg-gray-500') {
-                const container = document.createElement('div');
-                container.className = 'w-full mb-2';
-                const titleEl = document.createElement('div');
-                titleEl.className = 'text-sm text-gray-400 mb-1';
-                titleEl.textContent = title;
-                const blockWrapper = document.createElement('div');
-                blockWrapper.className = 'flex flex-wrap gap-1';
-                bytes.forEach(byte => {
-                    const byteEl = document.createElement('div');
-                    byteEl.className = `byte-block tooltip w-10 h-10 flex items-center justify-center rounded fira-code font-semibold ${colorClass}`;
-                    byteEl.textContent = byte.toString(16).toUpperCase().padStart(2, '0');
-                    const tooltipSpan = document.createElement('span');
-                    tooltipSpan.className = 'tooltiptext fira-code';
-                    tooltipSpan.innerHTML = `<b>${title.split(':')[0]}</b><br>${tooltipText}`;
-                    byteEl.appendChild(tooltipSpan);
-                    blockWrapper.appendChild(byteEl);
-                });
-                container.appendChild(titleEl);
-                container.appendChild(blockWrapper);
-                return container;
-            }
-            
-            function createLengthBlock(title, len) {
-                const { bytes, description } = rdbSaveLen(len);
-                const byteValues = bytes.map(b => b.value);
-                return createRDBBlock(title, byteValues, description, 'bg-blue-600');
-            }
+  function lpBacklen(l) {                           /* listpack.c:347 */
+    if (l <= 127) return [l]
+    if (l < 16383) return [l >> 7, (l & 127) | 128]
+    if (l < 2097151) return [l >> 14, ((l >> 7) & 127) | 128, (l & 127) | 128]
+    if (l < 268435455) return [l >> 21, ((l >> 14) & 127) | 128, ((l >> 7) & 127) | 128, (l & 127) | 128]
+    return [l >> 28, ((l >> 21) & 127) | 128, ((l >> 14) & 127) | 128,
+            ((l >> 7) & 127) | 128, (l & 127) | 128]
+  }
 
-            function createEncodedStringBlock(title, str) {
-                const { bytes, description } = rdbEncodeString(str);
-                const container = document.createElement('div');
-                container.className = 'w-full mb-2';
-                const titleEl = document.createElement('div');
-                titleEl.className = 'text-sm text-gray-400 mb-1';
-                titleEl.textContent = `${title}: "${str}"`;
-                const blockWrapper = document.createElement('div');
-                blockWrapper.className = 'flex flex-wrap gap-1';
-                const lenColor = 'bg-blue-600';
-                const valColor = 'bg-green-600';
-                bytes.forEach(byteObj => {
-                    const byteEl = document.createElement('div');
-                    byteEl.className = `byte-block tooltip w-10 h-10 flex items-center justify-center rounded fira-code font-semibold ${byteObj.isLength ? lenColor : valColor}`;
-                    byteEl.textContent = byteObj.value.toString(16).toUpperCase().padStart(2, '0');
-                    const tooltipSpan = document.createElement('span');
-                    tooltipSpan.className = 'tooltiptext fira-code';
-                    tooltipSpan.innerHTML = `<b>${title}</b><br>${description}`;
-                    byteEl.appendChild(tooltipSpan);
-                    blockWrapper.appendChild(byteEl);
-                });
-                container.appendChild(titleEl);
-                container.appendChild(blockWrapper);
-                return container;
-            }
+  function lpEntry(b) {                             /* listpack.c:329 */
+    const v = string2ll(fromUtf8.decode(b))
+    const enc = v !== null ? lpIntEncoding(v) : lpStrEncoding(b)
+    return [...enc, ...lpBacklen(enc.length)]
+  }
 
-            // --- RDB Logic Emulation ---
-            function rdbSaveLen(len) {
-                if (len < (1 << 6)) {
-                    return {
-                        bytes: [{value: (len & 0xFF) | (RDB_6BITLEN << 6), isLength: true}],
-                        description: `<b>6-bit Length Encoding</b><br>Fits in one byte. The first 2 bits are <b>00</b>. The remaining 6 bits store the length (${len}).`
-                    };
-                } else if (len < (1 << 14)) {
-                    return {
-                        bytes: [
-                            {value: ((len >> 8) & 0xFF) | (RDB_14BITLEN << 6), isLength: true},
-                            {value: len & 0xFF, isLength: true}
-                        ],
-                        description: `<b>14-bit Length Encoding</b><br>Uses two bytes. First byte's MSBs are <b>01</b>.`
-                    };
-                } else { 
-                    const len32 = [
-                        (len >> 24) & 0xFF, (len >> 16) & 0xFF, (len >> 8) & 0xFF, len & 0xFF,
-                    ];
-                    return {
-                        bytes: [{value: RDB_32BITLEN, isLength: true}, ...len32.map(b => ({value: b, isLength: true}))],
-                        description: `<b>32-bit Length Encoding</b><br>First byte <b>0x80</b> signals a 4-byte length follows.`
-                    };
-                }
-            }
-            
-            function numberToFloat64Bytes(num) {
-                const buffer = new ArrayBuffer(8);
-                const view = new DataView(buffer);
-                view.setFloat64(0, num, true); // true for little-endian
-                return Array.from(new Uint8Array(buffer));
-            }
+  function listpack(elements) {
+    const body = []
+    for (const e of elements) body.push(...lpEntry(e))
+    const total = 6 + body.length + 1
+    const n = Math.min(elements.length, 65535)      /* LP_HDR_NUMELE_UNKNOWN */
+    return [total & 0xff, (total >> 8) & 0xff, (total >> 16) & 0xff, (total >> 24) & 0xff,
+            n & 0xff, (n >> 8) & 0xff, ...body, 0xff]
+  }
 
-            function rdbEncodeString(str) {
-                const num = parseInt(str, 10);
-                if (String(num) === str) {
-                    if (num >= -128 && num <= 127) {
-                        return {
-                            bytes: [{value:(RDB_ENCVAL << 6) | RDB_ENC_INT8, isLength: true}, {value: num & 0xFF, isLength: false}],
-                            description: `<b>Integer Encoding (INT8)</b><br>Value '${str}' fits in a signed 8-bit int. Uses an encoding flag + 1 byte.`
-                        };
-                    }
-                    if (num >= -32768 && num <= 32767) {
-                         const valBytes = [num & 0xFF, (num >> 8) & 0xFF];
-                         return {
-                            bytes: [{value: (RDB_ENCVAL << 6) | RDB_ENC_INT16, isLength: true}, ...valBytes.map(b => ({value: b, isLength: false}))],
-                            description: `<b>Integer Encoding (INT16)</b><br>Value '${str}' fits in a signed 16-bit int. Uses an encoding flag + 2 bytes.`
-                        };
-                    }
-                }
-                const lenInfo = rdbSaveLen(str.length);
-                const strBytes = str.split('').map(c => ({ value: c.charCodeAt(0), isLength: false }));
-                return {
-                    bytes: [...lenInfo.bytes, ...strBytes],
-                    description: `<b>Raw String Encoding</b><br>${lenInfo.description} Followed by the raw bytes.`
-                }
-            }
-            
-            // --- Binary Generation & CRC64 ---
-            const crc64Table = new Array(256);
-            // Full CRC64 table generation
-            (function() {
-                const poly = 0xC96C5795D7870F42n;
-                for (let i = 0; i < 256; i++) {
-                    let crc = BigInt(i);
-                    for (let j = 0; j < 8; j++) {
-                        if (crc & 1n) {
-                            crc = (crc >> 1n) ^ poly;
-                        } else {
-                            crc = crc >> 1n;
-                        }
-                    }
-                    crc64Table[i] = crc;
-                }
-            })();
+  /* ------------------------------------------------------------ intset */
+  /* intset.h: uint32 encoding, uint32 length, then that many values, all
+   * little-endian and sorted ascending. */
+  function intsetBlob(values) {
+    const sorted = [...values].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    const width = sorted.some((v) => v < -2147483648n || v > 2147483647n) ? 8
+                : sorted.some((v) => v < -32768n || v > 32767n) ? 4 : 2
+    const out = new Uint8Array(8 + width * sorted.length)
+    const d = new DataView(out.buffer)
+    d.setUint32(0, width, true)
+    d.setUint32(4, sorted.length, true)
+    sorted.forEach((v, i) => {
+      const off = 8 + i * width
+      if (width === 2) d.setInt16(off, Number(v), true)
+      else if (width === 4) d.setInt32(off, Number(v), true)
+      else d.setBigInt64(off, v, true)
+    })
+    return [...out]
+  }
 
-            function crc64(buffer) {
-                let crc = 0xFFFFFFFFFFFFFFFFn;
-                for (let i = 0; i < buffer.length; i++) {
-                    const byte = buffer[i];
-                    const index = (crc ^ BigInt(byte)) & 0xFFn;
-                    crc = (crc >> 8n) ^ crc64Table[index];
-                }
-                return crc ^ 0xFFFFFFFFFFFFFFFFn;
-            }
-            
-            function rdbSaveLenBytes(len) {
-                return rdbSaveLen(len).bytes.map(b => b.value);
-            }
-            function rdbEncodeStringBytes(str) {
-                 return rdbEncodeString(str).bytes.map(b => b.value);
-            }
+  /* --------------------------------------------------------- encodings */
 
-            function generateRDBBinary(includeChecksum = true) {
-                let bytes = [];
-                const rdbVerStr = `REDIS${String(RDB_VERSION).padStart(4, '0')}`;
-                bytes.push(...rdbVerStr.split('').map(c => c.charCodeAt(0)));
-                bytes.push(RDB_OPCODE_AUX, ...rdbEncodeStringBytes('redis-ver'), ...rdbEncodeStringBytes('7.2.0'));
-                bytes.push(RDB_OPCODE_SELECTDB, ...rdbSaveLenBytes(0));
-                
-                if (redisData.length > 0) {
-                    bytes.push(RDB_OPCODE_RESIZEDB, ...rdbSaveLenBytes(redisData.length), ...rdbSaveLenBytes(0));
-                }
+  function listNodes(elements) {
+    /* One packed node until it would pass 8192 bytes, then a new one. */
+    const nodes = []
+    let cur = []
+    for (const e of elements) {
+      const next = [...cur, e]
+      if (cur.length && listpack(next).length > LIMIT.listNodeBytes) { nodes.push(cur); cur = [e] }
+      else cur = next
+    }
+    if (cur.length || !nodes.length) nodes.push(cur)
+    return nodes
+  }
 
-                redisData.forEach(item => {
-                    const typeInfo = TYPE_MAP[item.type];
-                    bytes.push(typeInfo.rdbType);
-                    bytes.push(...rdbEncodeStringBytes(item.key));
-                    switch(item.type) {
-                        case 'string':
-                            bytes.push(...rdbEncodeStringBytes(item.value));
-                            break;
-                        case 'list':
-                        case 'set':
-                            bytes.push(...rdbSaveLenBytes(item.value.length));
-                            item.value.forEach(v => bytes.push(...rdbEncodeStringBytes(v)));
-                            break;
-                        case 'hash':
-                             bytes.push(...rdbSaveLenBytes(item.value.size));
-                             item.value.forEach((val, field) => {
-                                bytes.push(...rdbEncodeStringBytes(field));
-                                bytes.push(...rdbEncodeStringBytes(val));
-                             });
-                             break;
-                        case 'zset':
-                            bytes.push(...rdbSaveLenBytes(item.value.length));
-                            item.value.forEach(({score, member}) => {
-                                bytes.push(...rdbEncodeStringBytes(member));
-                                bytes.push(...numberToFloat64Bytes(score));
-                            });
-                            break;
-                    }
-                });
+  function chooseEncoding(item) {
+    const { type, value } = item
+    if (type === 'string') return { name: 'raw', rdbType: T.STRING }
+    if (type === 'list') {
+      const nodes = listNodes(value.map(bytesOf))
+      return { name: nodes.length === 1 ? 'listpack' : `quicklist, ${nodes.length} nodes`,
+               rdbType: T.LIST_QUICKLIST_2 }
+    }
+    if (type === 'set') {
+      const ints = value.map((m) => string2ll(m))
+      if (ints.every((v) => v !== null) && value.length <= LIMIT.intsetEntries)
+        return { name: 'intset', rdbType: T.SET_INTSET }
+      if (value.length <= LIMIT.setEntries && value.every((m) => bytesOf(m).length <= LIMIT.setValue))
+        return { name: 'listpack', rdbType: T.SET_LISTPACK }
+      return { name: 'hashtable', rdbType: T.SET }
+    }
+    if (type === 'hash') {
+      const fits = value.length <= LIMIT.hashEntries &&
+        value.every(([f, v]) => bytesOf(f).length <= LIMIT.hashValue && bytesOf(v).length <= LIMIT.hashValue)
+      return fits ? { name: 'listpack', rdbType: T.HASH_LISTPACK }
+                  : { name: 'hashtable', rdbType: T.HASH }
+    }
+    const fits = value.length <= LIMIT.zsetEntries &&
+      value.every((e) => bytesOf(e.member).length <= LIMIT.zsetValue)
+    return fits ? { name: 'listpack', rdbType: T.ZSET_LISTPACK }
+                : { name: 'skiplist', rdbType: T.ZSET_2 }
+  }
 
-                bytes.push(RDB_OPCODE_EOF);
-                
-                if (includeChecksum) {
-                    const contentToChecksum = new Uint8Array(bytes);
-                    const checksum = crc64(contentToChecksum);
-                    const checksumBytes = [];
-                    const view = new DataView(new ArrayBuffer(8));
-                    view.setBigUint64(0, checksum, true); // true for little-endian
-                    for (let i = 0; i < 8; i++) {
-                        checksumBytes.push(view.getUint8(i));
-                    }
-                    bytes.push(...checksumBytes);
-                }
+  /* t_zset.c:1030 zzlInsertAt writes the score as text, which the listpack
+   * then re-encodes as an integer when it is integral (util.c:626 d2string). */
+  const scoreText = (s) => String(s)
 
-                return new Uint8Array(bytes);
-            }
-            
-            // Initial setup
-            updateModalInputs();
-            renderInMemoryView();
-        });
-    </script>
+  /* ------------------------------------------------------- the emitter */
+
+  const nowSeconds = Math.floor(Date.now() / 1000)
+
+  function emit(keys) {
+    const fields = []
+    const put = (label, cite, kind, bytes, note) => fields.push({ label, cite, kind, bytes, note })
+    const putString = (label, cite, s) => {
+      const { pre, data } = saveStr(s)
+      const isInt = pre[0] >= 0xc0
+      put(label, cite, 'enc', pre,
+        isInt ? `Integer encoding 0x${pre[0].toString(16).toUpperCase()}: "${s}" fits, so no separate length is written.`
+              : `Length ${bytesOf(s).length}, as UTF-8 bytes.`)
+      if (data.length) put(`${label} bytes`, '', 'data', data, `"${s}" verbatim.`)
+    }
+    const putBlob = (label, cite, blob, note) => {
+      const pre = saveLen(blob.length)
+      put(label, cite, 'enc', pre, `The blob is written as an ordinary RDB string: length ${blob.length}.`)
+      put(`${label} bytes`, '', 'data', blob, note)
+    }
+
+    put('Magic', 'rdb.c:1384', 'hdr', [...bytesOf(`REDIS${String(RDB_VERSION).padStart(4, '0')}`)],
+      `"REDIS" and the RDB version as four decimal digits. 7.2.14 writes RDB_VERSION ${RDB_VERSION} (rdb.h:41).`)
+
+    const aux = [['redis-ver', '7.2.14'], ['redis-bits', '64'],
+                 ['ctime', String(nowSeconds)], ['used-mem', '1048576'], ['aof-base', '0']]
+    for (const [k, v] of aux) {
+      put(`AUX ${k}`, 'rdb.c:1168', 'hdr', [OP.AUX], 'Opcode 0xFA: an auxiliary field follows as two strings.')
+      putString(`  field "${k}"`, '', k)
+      putString(`  value "${v}"`, '', v)
+    }
+
+    if (keys.length) {
+      put('SELECTDB', 'rdb.c:1313', 'hdr', [OP.SELECTDB], 'Opcode 0xFE. Every key after this belongs to the database named next.')
+      put('  db number', '', 'enc', saveLen(0), 'Length-encoded 0.')
+      const expires = keys.filter((k) => k.ttl != null).length
+      put('RESIZEDB', 'rdb.c:1324', 'hdr', [OP.RESIZEDB], 'Opcode 0xFB. A sizing hint so the loader can presize both tables.')
+      put('  key count', '', 'enc', saveLen(keys.length), `${keys.length} keys in this database.`)
+      put('  expires count', '', 'enc', saveLen(expires), `${expires} of them carry an expiry.`)
+
+      for (const item of keys) {
+        const encoding = chooseEncoding(item)
+        fields.push({ record: item.key, encoding })
+
+        if (item.ttl != null) {
+          put('EXPIRETIME_MS', 'rdb.c:1130', 'hdr', [OP.EXPIRETIME_MS],
+            'Opcode 0xFC. This comes before the type byte and the key, not after.')
+          put('  expiry', 'rdb.c:140', 'data', millis8(item.ttl),
+            `${new Date(item.ttl).toISOString()} as a signed 64-bit millisecond time, little-endian.`)
+        }
+
+        put('Value type', 'rdb.c:1156', 'hdr', [encoding.rdbType],
+          `0x${encoding.rdbType.toString(16).toUpperCase().padStart(2, '0')} — chosen because this value is ${encoding.name} encoded in memory (rdb.c:661).`)
+        putString('Key', 'rdb.c:1157', item.key)
+
+        emitValue(item, encoding, put, putString, putBlob)
+      }
+    }
+
+    put('EOF', 'rdb.c:1402', 'eof', [OP.EOF], 'Opcode 0xFF. Nothing follows but the checksum.')
+    const body = fields.filter((f) => f.bytes).flatMap((f) => f.bytes)
+    const sum = crc64(new Uint8Array(body))
+    const d = new DataView(new ArrayBuffer(8))
+    d.setBigUint64(0, sum, true)
+    put('CRC64', 'rdb.c:1406', 'back', [...new Uint8Array(d.buffer)],
+      `CRC-64/Jones over every byte above, including the EOF opcode. Little-endian. A zero here means the file was saved with rdbchecksum off and the loader skips the check (rdb.c:3334).`)
+
+    return { fields, sum, size: body.length + 8 }
+  }
+
+  function emitValue(item, encoding, put, putString, putBlob) {
+    const { type, value } = item
+
+    if (type === 'string') return putString('Value', 'rdb.c:1158', value)
+
+    if (type === 'list') {
+      const nodes = listNodes(value.map(bytesOf))
+      put('Node count', 'rdb.c:827', 'enc', saveLen(nodes.length),
+        'A quicklist is a list of nodes; a small list is a quicklist with one.')
+      nodes.forEach((node, i) => {
+        put(`Node ${i} container`, 'rdb.c:831', 'enc', saveLen(QUICKLIST_NODE_CONTAINER_PACKED),
+          '2 = packed, meaning the node holds a listpack. 1 would mean a single oversized element stored plain.')
+        putBlob(`Node ${i} listpack`, 'listpack.c', listpack(node),
+          `${node.length} elements: 4-byte total size, 2-byte count, one entry each, then the 0xFF terminator.`)
+      })
+      return
+    }
+
+    if (type === 'set') {
+      if (encoding.rdbType === T.SET_INTSET)
+        return putBlob('Intset', 'intset.h:42', intsetBlob(value.map((m) => string2ll(m))),
+          '4-byte width, 4-byte count, then the members sorted ascending — all little-endian.')
+      if (encoding.rdbType === T.SET_LISTPACK)
+        return putBlob('Listpack', 'listpack.c', listpack(value.map(bytesOf)),
+          `${value.length} members, one listpack entry each.`)
+      put('Member count', 'rdb.c:865', 'enc', saveLen(value.length), `${value.length} members follow, one string each.`)
+      value.forEach((m, i) => putString(`Member ${i}`, '', m))
+      return
+    }
+
+    if (type === 'hash') {
+      if (encoding.rdbType === T.HASH_LISTPACK)
+        return putBlob('Listpack', 'listpack.c', listpack(value.flat().map(bytesOf)),
+          `${value.length} pairs, flattened to field, value, field, value.`)
+      put('Field count', 'rdb.c:941', 'enc', saveLen(value.length), `${value.length} field/value pairs follow.`)
+      value.forEach(([f, v], i) => { putString(`Field ${i}`, '', f); putString(`Value ${i}`, '', v) })
+      return
+    }
+
+    if (encoding.rdbType === T.ZSET_LISTPACK) {
+      const flat = []
+      for (const e of value) { flat.push(bytesOf(e.member)); flat.push(bytesOf(scoreText(e.score))) }
+      return putBlob('Listpack', 'listpack.c', listpack(flat),
+        `${value.length} members, ascending by score, each followed by its score as a listpack entry.`)
+    }
+    put('Member count', 'rdb.c:905', 'enc', saveLen(value.length), `${value.length} members follow.`)
+    for (const e of [...value].reverse()) {
+      putString(`Member "${e.member}"`, 'rdb.c:916', e.member)
+      put(`  score ${e.score}`, 'rdb.c:634', 'data', double8(e.score),
+        'An IEEE 754 double, little-endian. Members are walked from the skiplist tail, so the highest score is written first.')
+    }
+  }
+
+  /* ------------------------------------------------------------ render */
+
+  const $ = (id) => document.getElementById(id)
+  const keys = []
+
+  const el = (tag, cls, text) => {
+    const n = document.createElement(tag)
+    if (cls) n.className = cls
+    if (text != null) n.textContent = text
+    return n
+  }
+
+  function renderKeyspace() {
+    const list = $('ks-list')
+    list.textContent = ''
+    $('ks-empty').style.display = keys.length ? 'none' : ''
+    $('ks-count').textContent = keys.length ? `db 0 · ${keys.length} key${keys.length > 1 ? 's' : ''}` : 'db 0 · empty'
+    keys.forEach((item, i) => {
+      const row = el('div', 'keyrow')
+      const name = el('code', null, item.key)
+      row.append(name, el('span', 'pill', chooseEncoding(item).name))
+      row.append(el('span', 'faint mono grow', summarise(item)))
+      if (item.ttl != null) row.append(el('span', 'pill pill--warn', 'expires'))
+      const rm = el('button', 'btn', 'remove')
+      rm.addEventListener('click', () => { keys.splice(i, 1); refresh() })
+      row.append(rm)
+      list.append(row)
+    })
+  }
+
+  function summarise(item) {
+    if (item.type === 'string') return item.value.length > 24 ? `${item.value.slice(0, 24)}…` : item.value
+    if (item.type === 'hash') return `${item.value.length} fields`
+    if (item.type === 'zset') return `${item.value.length} members`
+    return `${item.value.length} elements`
+  }
+
+  function renderDump(out) {
+    const dump = $('dump')
+    dump.textContent = ''
+    let box = dump
+    for (const f of out.fields) {
+      if (f.record) {
+        box = el('div', 'rec')
+        const head = el('div', 'rec__head')
+        head.append(el('b', null, `record: ${f.record}`), el('span', 'pill', f.encoding.name))
+        box.append(head)
+        dump.append(box)
+        continue
+      }
+      const line = el('div')
+      line.style.marginBottom = '8px'
+      const head = el('div', 'rec__head')
+      const label = el('span', f.note ? 'tip mono' : 'mono', f.label)
+      if (f.note) {
+        label.tabIndex = 0
+        const body = el('span', 'tip__body', f.note)
+        label.append(body)
+      }
+      head.append(label)
+      if (f.cite) head.append(el('span', 'cite', f.cite))
+      line.append(head)
+      const bytes = el('div', 'bytes')
+      for (const b of f.bytes) {
+        const cell = el('span', `byte byte--${f.kind}`, b.toString(16).toUpperCase().padStart(2, '0'))
+        cell.title = f.note || f.label
+        bytes.append(cell)
+      }
+      line.append(bytes)
+      box.append(line)
+    }
+    $('dump-size').textContent = `${out.size} bytes`
+    $('crc-line').textContent = `crc64 = 0x${out.sum.toString(16).padStart(16, '0')}`
+  }
+
+  function renderTrace(out) {
+    const log = $('trace')
+    log.textContent = ''
+    const say = (text, cls) => {
+      const p = el('p')
+      if (cls) { const s = el('span', cls, text); p.append(s) } else p.textContent = text
+      log.append(p)
+    }
+    say(`rdbSaveRio: wrote REDIS${String(RDB_VERSION).padStart(4, '0')} and 5 aux fields`)
+    if (!keys.length) say('rdbSaveDb: db 0 is empty, nothing written for it', 'hit')
+    else {
+      const expires = keys.filter((k) => k.ttl != null).length
+      say(`rdbSaveDb: db 0 — ${keys.length} keys, ${expires} with an expiry`)
+      for (const item of keys) {
+        const e = chooseEncoding(item)
+        say(`  ${item.key}: ${item.type} is ${e.name}, type byte ${e.rdbType}`)
+      }
+    }
+    say(`EOF, then CRC64 0x${out.sum.toString(16).padStart(16, '0')}`, 'good')
+  }
+
+  function refresh() {
+    const out = emit(keys)
+    renderKeyspace()
+    renderDump(out)
+    renderTrace(out)
+    return out
+  }
+
+  /* ------------------------------------------------------------- input */
+
+  const HINTS = {
+    string: 'Value',
+    list: 'Elements, one per line',
+    set: 'Members, one per line',
+    hash: 'Field and value per line, separated by a space',
+    zset: 'Score and member per line, separated by a space',
+  }
+  const PLACEHOLDER = {
+    string: 'hello',
+    list: 'first\nsecond\nthird',
+    set: '10\n20\n30',
+    hash: 'name ada\nrole engineer',
+    zset: '1 alice\n2.5 bob',
+  }
+
+  function syncHint() {
+    const t = $('k-type').value
+    $('k-hint').textContent = HINTS[t]
+    $('k-value').placeholder = PLACEHOLDER[t]
+  }
+
+  function parseValue(type, text) {
+    const lines = text.split('\n').map((l) => l.trim()).filter(Boolean)
+    if (type === 'string') return text
+    if (type === 'list') return lines
+    if (type === 'set') return [...new Set(lines)]
+    if (type === 'hash') {
+      const seen = new Map()
+      for (const l of lines) {
+        const m = l.match(/^(\S+)\s+(.*)$/)
+        if (m) seen.set(m[1], m[2])
+      }
+      return [...seen.entries()]
+    }
+    const members = new Map()
+    for (const l of lines) {
+      const m = l.match(/^(\S+)\s+(.*)$/)
+      if (!m) continue
+      const score = Number(m[1])
+      if (Number.isNaN(score)) continue
+      members.set(m[2], score)
+    }
+    return [...members.entries()]
+      .map(([member, score]) => ({ member, score }))
+      .sort((a, b) => a.score - b.score || (a.member < b.member ? -1 : 1))
+  }
+
+  function addKey() {
+    const key = $('k-name').value.trim()
+    const type = $('k-type').value
+    if (!key) { $('k-name').focus(); return }
+    const value = parseValue(type, $('k-value').value)
+    if (type !== 'string' && value.length === 0) { $('k-value').focus(); return }
+    const ttlRaw = $('k-ttl').value.trim()
+    const ttl = ttlRaw && !Number.isNaN(Number(ttlRaw)) ? Date.now() + Number(ttlRaw) : null
+    const at = keys.findIndex((k) => k.key === key)
+    const item = { key, type, value, ttl }
+    if (at >= 0) keys[at] = item
+    else keys.push(item)
+    $('k-name').value = ''
+    $('k-value').value = ''
+    $('k-ttl').value = ''
+    refresh()
+  }
+
+  const SAMPLE = [
+    { key: 'greeting', type: 'string', value: 'hello', ttl: null },
+    { key: 'counter', type: 'string', value: '100000', ttl: null },
+    { key: 'session:9f2', type: 'string', value: 'token', ttl: Date.now() + 3600000 },
+    { key: 'queue', type: 'list', value: ['first', 'second', 'third'], ttl: null },
+    { key: 'ids', type: 'set', value: ['10', '20', '300'], ttl: null },
+    { key: 'user:1', type: 'hash', value: [['name', 'ada'], ['role', 'engineer']], ttl: null },
+    { key: 'leaderboard', type: 'zset', value: [{ member: 'alice', score: 1 }, { member: 'bob', score: 2.5 }], ttl: null },
+    { key: 'big:hash', type: 'hash',
+      value: [['note', 'x'.repeat(80)]], ttl: null },
+  ]
+
+  $('k-add').addEventListener('click', addKey)
+  $('k-type').addEventListener('change', syncHint)
+  $('k-clear').addEventListener('click', () => { keys.length = 0; refresh() })
+  $('k-sample').addEventListener('click', () => {
+    keys.length = 0
+    for (const s of SAMPLE) keys.push({ ...s })
+    refresh()
+  })
+  $('dl').addEventListener('click', () => {
+    const out = emit(keys)
+    const bytes = new Uint8Array(out.fields.filter((f) => f.bytes).flatMap((f) => f.bytes))
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'dump.rdb'
+    document.body.append(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  })
+
+  /* Used by scripts/redis-check.mjs and by hand, to diff against a real dump. */
+  window.rdbBytes = () => new Uint8Array(emit(keys).fields.filter((f) => f.bytes).flatMap((f) => f.bytes))
+  window.rdbLoadSample = () => { keys.length = 0; for (const s of SAMPLE) keys.push({ ...s }); refresh() }
+
+  syncHint()
+  refresh()
+})
+</script>
 </body>
 </html>
-
-
