@@ -42,7 +42,7 @@
   .wait { height: 3px; background: var(--bg-3); border-radius: 2px; overflow: hidden; }
   .wait i { display: block; height: 100%; background: var(--red); }
 
-  .kv { display: grid; grid-template-columns: minmax(0, 11ch) minmax(0, 1fr); gap: 2px 10px;
+  .kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 10px;
         font: 400 12px/1.7 var(--mono); }
   .kv dt { color: var(--faint); }
   .kv dd { margin: 0; color: var(--dim); overflow-wrap: anywhere; }
@@ -57,6 +57,60 @@
 
   .slotout { display: grid; gap: 3px; font: 400 12px/1.7 var(--mono); }
   .slotout b { font-weight: 500; color: var(--fg); }
+
+  /* ---- motion ----------------------------------------------------------
+   * Every class below is applied from a model event, never from a timer
+   * script. viz.css already collapses durations under prefers-reduced-motion;
+   * each animation's resting state is the finished state, so with motion off
+   * the step still lands, it just lands instantly. */
+  .node { transition: border-color 0.3s ease, background-color 0.3s ease; }
+  .bar span { transition: flex-basis 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+  .wait i { transition: width 0.12s linear; }
+
+  @keyframes ring-fail {
+    from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--red) 60%, transparent); }
+    to   { box-shadow: 0 0 0 8px transparent; }
+  }
+  @keyframes ring-warn {
+    from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warn) 55%, transparent); }
+    to   { box-shadow: 0 0 0 8px transparent; }
+  }
+  @keyframes ring-ok {
+    from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent); }
+    to   { box-shadow: 0 0 0 8px transparent; }
+  }
+  .ring-fail { animation: ring-fail 0.75s ease-out; }
+  .ring-warn { animation: ring-warn 0.75s ease-out; }
+  .ring-ok   { animation: ring-ok 0.75s ease-out; }
+
+  /* Vote chips: present and legible from the first frame. The animation only
+   * tints them as each vote lands, so reduced motion loses the cue, not the
+   * information. */
+  .votes { display: flex; flex-wrap: wrap; gap: 4px; }
+  .vote { padding: 0 6px; font: 500 10px/1.8 var(--mono); color: var(--dim);
+          border: 1px solid var(--rule); border-radius: 3px; }
+  .vote--yes { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+  .vote--no { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, transparent); }
+  @keyframes vote-land {
+    from { background: color-mix(in srgb, var(--ok) 30%, transparent); transform: translateY(-2px); }
+    to   { background: transparent; transform: none; }
+  }
+  .vote--land { animation: vote-land 0.5s ease-out; }
+
+  @keyframes tally-bump { from { color: var(--ok); } to { color: inherit; } }
+  .tally--bump { animation: tally-bump 0.6s ease-out; }
+
+  @keyframes state-flip {
+    from { background: color-mix(in srgb, var(--red) 35%, transparent); }
+    to   { background: transparent; }
+  }
+  .state--flip { animation: state-flip 0.9s ease-out; }
+
+  @keyframes log-in { from { opacity: 0.3; } to { opacity: 1; } }
+  .log p { animation: log-in 0.35s ease-out; }
+
+  /* .bar/.votes/.kids set display, which outranks the UA's [hidden] rule. */
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
@@ -82,7 +136,10 @@
       <span class="cite">cluster.c:5128 clusterUpdateState</span>
     </div>
 
-    <div class="readout" id="readout"></div>
+    <div class="readout" id="readout">
+      <span class="pill" id="statePill">cluster_state: ok</span>
+      <span id="stats" style="display:contents"></span>
+    </div>
 
     <div class="row" style="margin-top:10px">
       <button id="bDemo" class="btn--go" type="button">Run demo</button>
@@ -387,6 +444,40 @@ const flagStr = (f) => FLAG_NAMES.filter(([b]) => f & b).map(([, n]) => n).join(
 
 let cfg, nodes, now, currentEpoch, selected, autoTimer = null;
 
+/* Model events. Every animation on this page is played from this queue, and
+ * only the source-mirroring functions below append to it — nothing here is on
+ * a script of its own. render() drains it. */
+let events = [];
+const emit = (kind, o) => {
+  events.push(Object.assign({ kind: kind }, o));
+  if (events.length > 60) events.shift();
+};
+const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* One-shot highlight, restartable. The resting state of every keyframe set is
+ * the finished state, so dropping the animation drops the cue, not the fact. */
+function pulse(el, cls, delay) {
+  if (!el) return;
+  const d = reduced() ? 0 : (delay || 0);
+  el.classList.remove(cls);
+  void el.offsetWidth;
+  el.style.animationDelay = d + "ms";
+  el.classList.add(cls);
+  window.setTimeout(() => {
+    el.classList.remove(cls);
+    el.style.animationDelay = "";
+  }, d + 1100);
+}
+
+/* Only write when the markup actually changed, so an element mid-animation is
+ * not destroyed by the next repaint. */
+function setHTML(el, html) {
+  if (el && el.dataset.h !== html) {
+    el.innerHTML = html;
+    el.dataset.h = html;
+  }
+}
+
 /* ----------------------------------------------------------------- crc16 */
 /* XMODEM, polynomial 0x1021, init 0 — crc16.c:32-40, crc16.c:59. */
 function crc16(bytes) {
@@ -438,6 +529,8 @@ function makeNode(o) {
 
     failoverAuthTime: NEVER,             /* cluster.h:191 */
     failoverAuthCount: 0,
+    voters: [],                          /* display only: who granted */
+    denied: [],                          /* display only: who refused */
     failoverAuthSent: false,
     failoverAuthRank: 0,
     failoverAuthEpoch: 0,
@@ -534,6 +627,12 @@ function initCluster() {
   for (const a of nodes) {
     for (const b of nodes) if (a !== b) a.view[b.id] = b.flags;
   }
+  /* Start from a clean DOM so a reset is not animated out of the old run. */
+  events = [];
+  lastState = null;
+  cardEls.clear();
+  groupEls.clear();
+  $("#topology").textContent = "";
   log("Cluster up: " + clusterSize() + " masters with slots, quorum " + neededQuorum() + ".", "good");
   render();
 }
@@ -566,6 +665,7 @@ function markNodeAsFailingIfNeeded(observer, target) {
   if (isMaster(observer)) failures++;                             /* 2009 */
   if (failures < quorum) return;                                  /* 2010 */
 
+  emit("fail", { target: target.id, by: observer.id });
   log(observer.id + " marks " + target.id + " FAIL: " + failures + "/" + quorum +
       " masters agree (cluster.c:2002), broadcasting FAIL.", "hit");
   target.flags &= ~F.PFAIL;                                       /* 2016 */
@@ -586,12 +686,16 @@ function detectTimeouts() {
       if (obs === target || obs.dead) continue;
       if (obs.view[target.id] & (F.PFAIL | F.FAIL)) continue;
       obs.view[target.id] |= F.PFAIL;                             /* 4865 */
+      emit("pfail", { target: target.id, by: obs.id });
       log(obs.id + " sets PFAIL on " + target.id + ": no reply for " +
           (now - target.unreachableSince) + "ms > node_timeout " + cfg.nodeTimeout +
           "ms (cluster.c:4861).", "hit");
       if (!(target.flags & (F.PFAIL | F.FAIL))) target.flags |= F.PFAIL;
       /* Gossip: only masters' reports are collected (cluster.c:2022-2024). */
-      if (isMaster(obs)) for (const h of nodes) if (h !== obs && h !== target) addFailReport(h, target.id, obs.id);
+      if (isMaster(obs)) {
+        emit("report", { target: target.id, by: obs.id });
+        for (const h of nodes) if (h !== obs && h !== target) addFailReport(h, target.id, obs.id);
+      }
     }
   }
   for (const obs of nodes) {
@@ -606,7 +710,11 @@ function detectTimeouts() {
 /* cluster.c:4027-4128. */
 function sendFailoverAuthIfNeeded(voter, req) {
   const master = req.masterId ? byId(req.masterId) : null;
-  const deny = (why) => log(voter.id + " denies " + req.id + ": " + why, "hit");
+  const deny = (why) => {
+    req.denied.push(voter.id);                                     /* display only */
+    emit("deny", { voter: voter.id, candidate: req.id });
+    log(voter.id + " denies " + req.id + ": " + why, "hit");
+  };
 
   if (!isMaster(voter) || numSlots(voter) === 0) {                  /* 4039 */
     deny("not a master serving slots (cluster.c:4039)");
@@ -644,6 +752,8 @@ function sendFailoverAuthIfNeeded(voter, req) {
   voter.lastVoteEpoch = currentEpoch;                               /* 4122 */
   voter.votedTime[master.id] = now;                                 /* 4123 */
   req.failoverAuthCount++;
+  req.voters.push(voter.id);                                        /* display only */
+  emit("vote", { voter: voter.id, candidate: req.id });
   log(voter.id + " votes for " + req.id + " in epoch " + currentEpoch + ".", "good");
 }
 
@@ -669,6 +779,7 @@ function failoverReplaceYourMaster(me) {
   me.won = true;
   me.slots = old.slots;                                            /* 4247-4252 */
   old.slots = null;
+  emit("promote", { node: me.id, old: old.id });
   log(me.id + " is now MASTER, took " + numSlots(me) + " slots at configEpoch " +
       me.configEpoch + " (cluster.c:4236).", "good");
 
@@ -743,6 +854,8 @@ function handleSlaveFailover(me) {
   if (authAge > authRetry) {                                       /* 4346 */
     me.failoverAuthTime = now + 500 + Math.floor(Math.random() * 500);  /* 4347-4349 */
     me.failoverAuthCount = 0;
+    me.voters = [];
+    me.denied = [];
     me.failoverAuthSent = false;
     me.failoverAuthRank = getSlaveRank(me);                        /* 4352 */
     me.failoverAuthTime += me.failoverAuthRank * 1000;             /* 4356-4357 */
@@ -752,6 +865,7 @@ function handleSlaveFailover(me) {
     }
     me.initialDelay = Math.max(1, me.failoverAuthTime - now);
     me.cantFailover = "";
+    emit("sched", { node: me.id, rank: me.failoverAuthRank });
     log(me.id + ": start of election delayed for " + (me.failoverAuthTime - now) +
         "ms (rank #" + me.failoverAuthRank + ", offset " + me.replOffset +
         ") — cluster.c:4347.");
@@ -788,6 +902,7 @@ function handleSlaveFailover(me) {
     me.failoverAuthEpoch = currentEpoch;                           /* 4412 */
     me.failoverAuthSent = true;
     me.cantFailover = "WAITING_VOTES";
+    emit("request", { node: me.id, epoch: currentEpoch });
     log(me.id + " starts a failover election for epoch " + currentEpoch +
         ", needs " + quorum + " of " + clusterSize() + " masters (cluster.c:4411).", "hit");
     for (const v of voters()) sendFailoverAuthIfNeeded(v, me);     /* 4415 */
@@ -795,6 +910,7 @@ function handleSlaveFailover(me) {
   }
 
   if (me.failoverAuthCount >= quorum) {                            /* 4424 */
+    emit("won", { node: me.id });
     log(me.id + " won the election: " + me.failoverAuthCount + "/" + quorum + " votes.", "good");
     if (me.configEpoch < me.failoverAuthEpoch) me.configEpoch = me.failoverAuthEpoch;  /* 4431 */
     failoverReplaceYourMaster(me);                                 /* 4439 */
@@ -895,10 +1011,56 @@ function manualFailover(id, mode) {
   render();
 }
 
+/* The earliest time the model has something to do: a pending PFAIL deadline, a
+ * scheduled election, an election about to expire, a manual failover window.
+ * The player uses it to decide how fast to run — it is derived from state, not
+ * from a storyboard. */
+function nextDeadline() {
+  let best = Infinity;
+  const authTimeout = Math.max(cfg.nodeTimeout * 2, 2000);
+  for (const n of nodes) {
+    if (n.dead && Number.isFinite(n.unreachableSince)) {
+      const t = n.unreachableSince + cfg.nodeTimeout;
+      if (t > now && t < best) best = t;
+    }
+    if (n.flags & F.SLAVE && Number.isFinite(n.failoverAuthTime)) {
+      if (n.failoverAuthTime > now && n.failoverAuthTime < best) best = n.failoverAuthTime;
+      if (n.failoverAuthSent) {
+        const exp = n.failoverAuthTime + authTimeout;
+        if (exp > now && exp < best) best = exp;
+      }
+    }
+    if (n.mfEnd && n.mfEnd > now && n.mfEnd < best) best = n.mfEnd;
+  }
+  return best;
+}
+
+function playFrame() {
+  readConfig();
+  const gap = nextDeadline() - now;
+  if (gap <= 1500) {
+    advance(STEP);                 /* close to something: real time, watchable */
+    autoTimer = window.setTimeout(playFrame, 130);
+  } else if (Number.isFinite(gap)) {
+    advance(1000);                 /* a long wait with nothing in it: skim it */
+    autoTimer = window.setTimeout(playFrame, 30);
+  } else {
+    advance(STEP);                 /* idle */
+    autoTimer = window.setTimeout(playFrame, 150);
+  }
+}
+
+function startAuto() {
+  stopAuto();
+  $("#bAuto").setAttribute("aria-pressed", "true");
+  playFrame();
+}
+
 function runDemo() {
   initCluster();
+  readConfig();
   killNode("M1");
-  advance(cfg.nodeTimeout + 4000);
+  startAuto();
 }
 
 /* --------------------------------------------------------------- render */
@@ -907,13 +1069,46 @@ function render() {
   renderTopology();
   renderInspector();
   renderReplicaSelect();
+  playEvents();
+  events = [];
 }
+
+/* Plays the queue drained from the model. Votes are staggered so three
+ * arriving in one model step read as three arrivals; the count, the quorum and
+ * the winner are whatever the model already decided. */
+function playEvents() {
+  let vote = 0;
+  const root = (id) => (cardEls.get(id) || {}).root;
+  for (const e of events) {
+    if (e.kind === "pfail") pulse(root(e.target), "ring-warn", 0);
+    else if (e.kind === "report") pulse(root(e.by), "ring-warn", 90);
+    else if (e.kind === "fail") pulse(root(e.target), "ring-fail", 0);
+    else if (e.kind === "sched") pulse(root(e.node), "ring-warn", 0);
+    else if (e.kind === "request") pulse(root(e.node), "ring-fail", 0);
+    else if (e.kind === "won" || e.kind === "promote") pulse(root(e.node), "ring-ok", 0);
+    else if (e.kind === "vote" || e.kind === "deny") {
+      const d = vote++ * 170;
+      pulse(root(e.voter), e.kind === "vote" ? "ring-ok" : "ring-fail", d);
+      const card = cardEls.get(e.candidate);
+      if (card) {
+        pulse(card.votes.querySelector('[data-v="' + e.voter + '"]'), "vote--land", d);
+        pulse(card.votes.querySelector(".tally"), "tally--bump", d);
+      }
+    }
+  }
+}
+
+let lastState = null;
 
 function renderReadout() {
   const ok = clusterStateOk();
+  const pill = $("#statePill");
+  pill.className = "pill " + (ok ? "pill--ok" : "pill--fail");
+  pill.textContent = "cluster_state: " + (ok ? "ok" : "fail");
+  if (lastState !== null && lastState !== ok) pulse(pill, "state--flip", 0);
+  lastState = ok;
+
   const parts = [
-    '<span class="pill ' + (ok ? "pill--ok" : "pill--fail") + '">cluster_state: ' +
-      (ok ? "ok" : "fail") + "</span>",
     "t <b>" + now + "ms</b>",
     "cluster_known_nodes <b>" + nodes.length + "</b>",
     "cluster_size <b>" + clusterSize() + "</b>",
@@ -930,75 +1125,153 @@ function renderReadout() {
        : downOwner ? "a slot owner is FAIL (cluster.c:5139)"
        : "minority partition (cluster.c:5176)") + "</span>");
   }
-  $("#readout").innerHTML = parts.join("");
+  setHTML($("#stats"), parts.join(""));
 }
 
-function slotBar(n) {
-  const owned = numSlots(n);
-  if (!owned) return "";
-  const pct = ((owned / CLUSTER_SLOTS) * 100).toFixed(2);
-  const cls = n.flags & F.FAIL ? "down" : "own";
-  return '<div class="bar"><span class="' + cls + '" style="flex:0 0 ' + pct +
-         '%"></span><span class="gap" style="flex:1 1 auto"></span></div>';
+/* Cards and groups are built once and kept. Rebuilding them every frame is
+ * what made the old page unable to animate: an element replaced mid-animation
+ * restarts from nothing. */
+const cardEls = new Map();
+const groupEls = new Map();
+
+function buildCard(id) {
+  const root = document.createElement("button");
+  root.type = "button";
+  root.className = "node";
+  root.dataset.id = id;
+
+  const top = document.createElement("span");
+  top.className = "node__top";
+  const meta = document.createElement("span");
+  meta.className = "node__meta";
+
+  const bar = document.createElement("div");
+  bar.className = "bar";
+  const own = document.createElement("span");
+  const gap = document.createElement("span");
+  gap.className = "gap";
+  gap.style.flex = "1 1 auto";
+  bar.appendChild(own);
+  bar.appendChild(gap);
+
+  const wait = document.createElement("div");
+  wait.className = "wait";
+  const fill = document.createElement("i");
+  wait.appendChild(fill);
+
+  const votes = document.createElement("div");
+  votes.className = "votes";
+
+  root.appendChild(top);
+  root.appendChild(meta);
+  root.appendChild(bar);
+  root.appendChild(wait);
+  root.appendChild(votes);
+
+  const rec = { root: root, top: top, meta: meta, bar: bar, own: own,
+                wait: wait, fill: fill, votes: votes };
+  cardEls.set(id, rec);
+  return rec;
 }
 
-function nodeCard(n) {
-  const el = document.createElement("button");
-  el.type = "button";
-  el.className = "node" +
+function paintCard(n) {
+  const c = cardEls.get(n.id) || buildCard(n.id);
+  c.root.className = "node" +
     (n.flags & F.FAIL ? " node--fail" : n.flags & F.PFAIL ? " node--pfail" : "") +
     (n.won ? " node--won" : "");
-  el.setAttribute("aria-pressed", String(selected === n.id));
-  el.dataset.id = n.id;
+  c.root.setAttribute("aria-pressed", String(selected === n.id));
 
   const state = n.dead ? '<span class="pill pill--fail">down</span>'
     : n.flags & F.FAIL ? '<span class="pill pill--fail">FAIL</span>'
     : n.flags & F.PFAIL ? '<span class="pill pill--warn">PFAIL</span>'
     : '<span class="pill pill--ok">up</span>';
+  setHTML(c.top, '<span class="node__id">' + n.id + "</span>" + state +
+    '<span class="node__meta">' + flagStr(n.flags) + "</span>");
 
   let meta;
   if (isMaster(n)) {
     meta = "configEpoch " + n.configEpoch + " &middot; " + numSlots(n) + " slots" +
       (n.slots ? " (" + n.slots.from + "&ndash;" + n.slots.to + ")" : "");
   } else {
-    const rank = getSlaveRank(n);
     const age = n.linkUp ? 0 : Math.max(0, now - n.replDownSince);
-    meta = "offset " + n.replOffset + " &middot; rank " + rank +
+    meta = "offset " + n.replOffset + " &middot; rank " + getSlaveRank(n) +
       (n.flags & F.NOFAILOVER ? " &middot; NOFAILOVER" : "") +
       (n.linkUp ? "" : " &middot; link down " + Math.round(age / 1000) + "s") +
       (n.cantFailover ? " &middot; " + n.cantFailover : "");
   }
 
-  let extra = isMaster(n) ? slotBar(n) : "";
-  if (!isMaster(n) && n.failoverAuthSent === false && Number.isFinite(n.failoverAuthTime) &&
-      now < n.failoverAuthTime && n.initialDelay > 0) {
+  /* The slot bar keeps its element, so the handover from the dead master to
+   * the winner is a width change the eye can follow rather than a redraw. */
+  const owned = numSlots(n);
+  c.bar.hidden = owned === 0;
+  c.own.className = n.flags & F.FAIL ? "down" : "own";
+  c.own.style.flex = "0 0 " + ((owned / CLUSTER_SLOTS) * 100).toFixed(2) + "%";
+
+  const counting = !isMaster(n) && !n.failoverAuthSent &&
+    Number.isFinite(n.failoverAuthTime) && now < n.failoverAuthTime && n.initialDelay > 0;
+  c.wait.hidden = !counting;
+  if (counting) {
     const remain = n.failoverAuthTime - now;
-    const pct = Math.max(0, Math.min(100, ((n.initialDelay - remain) / n.initialDelay) * 100));
-    extra = '<div class="wait"><i style="width:' + pct.toFixed(1) + '%"></i></div>';
+    c.fill.style.width = Math.max(0, Math.min(100,
+      ((n.initialDelay - remain) / n.initialDelay) * 100)).toFixed(1) + "%";
     meta += " &middot; fires in " + remain + "ms";
   }
+  setHTML(c.meta, meta);
 
-  el.innerHTML =
-    '<span class="node__top"><span class="node__id">' + n.id + "</span>" + state +
-    '<span class="node__meta">' + flagStr(n.flags) + "</span></span>" +
-    '<span class="node__meta">' + meta + "</span>" + extra;
-  return el;
+  /* Kept after promotion too: the winner's card is where a reader checks who
+   * actually elected it, and that the dead master was in the denominator. */
+  let chips = "";
+  if (n.failoverAuthSent && (n.voters.length || n.denied.length)) {
+    chips = '<span class="vote tally">' + n.failoverAuthCount + "/" + neededQuorum() + "</span>";
+    for (const v of n.voters) {
+      chips += '<span class="vote vote--yes" data-v="' + v + '">' + v + " &#10003;</span>";
+    }
+    for (const v of n.denied) {
+      chips += '<span class="vote vote--no" data-v="' + v + '">' + v + " &#215;</span>";
+    }
+  }
+  setHTML(c.votes, chips);
+  c.votes.hidden = chips === "";
+  return c.root;
+}
+
+/* Move an element only when it is not already where it belongs: insertBefore
+ * on an element already in place still restarts its animations. */
+function place(parent, el, idx) {
+  const cur = parent.children[idx];
+  if (cur !== el) parent.insertBefore(el, cur || null);
 }
 
 function renderTopology() {
   const root = $("#topology");
-  root.textContent = "";
-  for (const m of nodes.filter(isMaster)) {
-    const wrap = document.createElement("div");
-    wrap.appendChild(nodeCard(m));
-    const kids = replicasOf(m.id);
-    if (kids.length) {
-      const box = document.createElement("div");
-      box.className = "kids";
-      for (const k of kids) box.appendChild(nodeCard(k));
-      wrap.appendChild(box);
+  const masters = nodes.filter(isMaster);
+  const keep = new Set();
+
+  masters.forEach((m, i) => {
+    keep.add(m.id);
+    let group = groupEls.get(m.id);
+    if (!group) {
+      group = document.createElement("div");
+      const kids = document.createElement("div");
+      kids.className = "kids";
+      group.appendChild(kids);
+      groupEls.set(m.id, group);
     }
-    root.appendChild(wrap);
+    place(group, paintCard(m), 0);
+    const kids = group.querySelector(".kids");
+    place(group, kids, 1);
+    const reps = replicasOf(m.id);
+    reps.forEach((r, j) => place(kids, paintCard(r), j));
+    while (kids.children.length > reps.length) kids.lastElementChild.remove();
+    kids.hidden = reps.length === 0;
+    place(root, group, i);
+  });
+
+  for (const [id, group] of groupEls) {
+    if (!keep.has(id)) {
+      group.remove();
+      groupEls.delete(id);
+    }
   }
 }
 
@@ -1085,7 +1358,7 @@ function renderSlot() {
 
 /* ----------------------------------------------------------------- wiring */
 function stopAuto() {
-  if (autoTimer) clearInterval(autoTimer);
+  if (autoTimer) window.clearTimeout(autoTimer);
   autoTimer = null;
   $("#bAuto").setAttribute("aria-pressed", "false");
 }
@@ -1096,9 +1369,8 @@ $("#bCut").addEventListener("click", () => { readConfig(); cutLink("S1A"); });
 $("#bHeal").addEventListener("click", () => { stopAuto(); logEl().textContent = ""; initCluster(); });
 $("#bClear").addEventListener("click", () => { logEl().textContent = ""; });
 $("#bAuto").addEventListener("click", () => {
-  if (autoTimer) return stopAuto();
-  $("#bAuto").setAttribute("aria-pressed", "true");
-  autoTimer = setInterval(() => advance(1000), 200);
+  if (autoTimer) stopAuto();
+  else startAuto();
 });
 for (const b of document.querySelectorAll("[data-adv]")) {
   b.addEventListener("click", () => advance(Number(b.dataset.adv)));
