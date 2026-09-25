@@ -65,6 +65,41 @@
   b.ch { color: var(--ok); font-weight: 400; }
   b.pat { color: var(--warn); font-weight: 400; }
   b.sh { color: var(--shard); font-weight: 400; }
+
+  /* ------------------------------------------------------------- fan-out */
+  /* Fixed, clipped and pointer-transparent, so a packet in flight can never
+     extend the document or swallow a click. */
+  .pkt-layer { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 40; }
+  .pkt {
+    position: absolute; top: 0; left: 0; will-change: transform;
+    padding: 1px 7px; border-radius: 999px; white-space: nowrap;
+    font: 500 10px/1.7 var(--mono);
+    background: var(--bg-2); border: 1px solid currentColor;
+    transition: transform 0.52s linear, opacity 0.3s linear;
+  }
+  .pkt--message  { color: var(--ok); }
+  .pkt--pmessage { color: var(--warn); }
+  .pkt--smessage { color: var(--shard); }
+  /* Aimed at a client that is no longer connected: drifts past and fades out. */
+  .pkt--miss { color: var(--faint); text-decoration: line-through; opacity: 0; }
+
+  /* Arrival marks the edge of the card. No background flash, no bounce. */
+  .client { border-left: 2px solid transparent; padding-left: 9px; transition: border-color 0.3s linear; }
+  .client--hit   { border-left-color: var(--ok); }
+  .client--hit-p { border-left-color: var(--warn); }
+  .client--hit-s { border-left-color: var(--shard); }
+  .client--pass  { border-left-color: var(--faint); }
+
+  /* .pill sets display, which would otherwise beat the UA's [hidden] rule. */
+  .pill[hidden] { display: none; }
+
+  .inbox:empty { margin-top: 0; }
+  .inbox .push--new { animation: land 0.34s linear both; }
+  @keyframes land { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
+
+  /* The dict entry that routed this delivery. */
+  .dict div { transition: color 0.3s linear; }
+  .dict div.routed { color: var(--fg); }
 </style>
 </head>
 <body>
@@ -116,6 +151,15 @@
       <button id="spub" class="btn">SPUBLISH</button>
     </div>
     <p class="note" id="pub-result">&nbsp;</p>
+    <p class="note sim">
+      Each push travels from the publisher to one subscriber and is labelled with its type:
+      <b class="ch">message</b> from the channel dict, <b class="pat">pmessage</b> from a matching
+      pattern, <b class="sh">smessage</b> from a shard channel. A client holding both a channel and
+      a pattern that matches it is flown to twice. A push aimed at a disconnected client drifts
+      past and fades &mdash; that one is gone. The flight order and count are read straight off the
+      delivery list that produced the integer, so the motion cannot disagree with it. With
+      <code>prefers-reduced-motion</code> set, every arrival lands at once instead.
+    </p>
   </section>
 
   <div class="grid grid--side">
@@ -285,6 +329,8 @@ pmessage     <b>4</b> elements   1) "pmessage"     2) <b>pattern</b>   3) channe
   </section>
 
 </div>
+
+<div class="pkt-layer" id="pkt-layer" aria-hidden="true"></div>
 
 <script>
 // ---------------------------------------------------------------- model ---
@@ -613,10 +659,10 @@ function publish(server, channel, message, sharded) {
     }
 
     const { receivers, deliveries } = publish(server, channel, message, sharded);
-    for (const d of deliveries) clients.get(d.id).inbox.unshift(d.push);
 
-    // Simulator bookkeeping: what an absent subscriber would have got.
-    let missedBy = 0;
+    // Simulator bookkeeping: what an absent subscriber would have got. The
+    // counter is applied when the packet visibly passes the client, not here.
+    const misses = [];
     for (const [id, was] of remembered) {
       if (!clients.has(id)) continue;
       let n = 0;
@@ -625,8 +671,9 @@ function publish(server, channel, message, sharded) {
         n += was.channels.filter((s) => s === channel).length;
         n += was.patterns.filter((p) => stringmatch(p, channel)).length;
       }
-      if (n) { clients.get(id).missed += n; missedBy++; }
+      if (n) misses.push({ id, n, kind: sharded ? 'smessage' : 'message' });
     }
+    const missedBy = misses.length;
 
     logReply(`(integer) ${receivers}`);
 
@@ -652,15 +699,120 @@ function publish(server, channel, message, sharded) {
     }
     out.innerHTML = bits.join(' ');
     render();
+    fanOut(from.id, deliveries, misses);
+  }
+
+  // -------------------------------------------------------------- fan-out
+  // Driven entirely by `deliveries` — the same list whose length is the
+  // receivers count — so the motion cannot drift from the model.
+  const STEP = 250;   // gap between one arrival and the next
+  const FLIGHT = 520; // matches the .pkt transform transition
+
+  const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const cardOf = (id) => document.querySelector(`[data-client="${id}"]`);
+  const anchor = (el) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.left + Math.min(r.width / 2, 110), y: r.top + r.height / 2 };
+  };
+
+  function flyPacket(from, to, label, onArrive, isMiss) {
+    const el = document.createElement('div');
+    el.className = `pkt pkt--${label}`;
+    el.textContent = label;
+    $('pkt-layer').append(el);
+
+    const w = el.offsetWidth, h = el.offsetHeight; // also forces the start frame
+    const at = (p) => `translate(${Math.round(p.x - w / 2)}px, ${Math.round(p.y - h / 2)}px)`;
+    el.style.transform = at(from);
+    requestAnimationFrame(() => { el.style.transform = at(to); });
+
+    setTimeout(() => {
+      onArrive();
+      if (!isMiss) return el.remove();
+      el.classList.add('pkt--miss');
+      el.style.transform = at({ x: to.x + 40, y: to.y + 12 });
+      setTimeout(() => el.remove(), 360);
+    }, FLIGHT);
+  }
+
+  // Briefly lift the dict entry that routed this push: push[1] is the channel
+  // for message/smessage and the matched pattern for pmessage.
+  function flashRoute(push) {
+    const el = document.querySelector(`[data-dictkey="${CSS.escape(push[1])}"]`);
+    if (!el) return;
+    el.classList.add('routed');
+    setTimeout(() => el.classList.remove('routed'), 430);
+  }
+
+  function landPush(id, push) {
+    const c = clients.get(id);
+    if (!c) return;
+    c.inbox.unshift(push);
+    c.inbox.splice(6);
+    const box = document.querySelector(`[data-inbox="${id}"]`);
+    if (box) {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = pushLine(push, true);
+      box.prepend(tmp.firstElementChild);
+      while (box.children.length > 6) box.lastElementChild.remove();
+    }
+    const card = cardOf(id);
+    if (!card) return;
+    const cls =
+      push[0] === 'pmessage' ? 'client--hit-p' : push[0] === 'smessage' ? 'client--hit-s' : 'client--hit';
+    card.classList.add(cls);
+    setTimeout(() => card.classList.remove(cls), 430);
+  }
+
+  function markMiss(id, n) {
+    const c = clients.get(id);
+    if (!c) return;
+    c.missed += n;
+    const pill = document.querySelector(`[data-missed="${id}"]`);
+    if (pill) {
+      pill.hidden = false;
+      pill.textContent = `missed ${c.missed} push${c.missed === 1 ? '' : 'es'}`;
+    }
+    const card = cardOf(id);
+    if (!card) return;
+    card.classList.add('client--pass');
+    setTimeout(() => card.classList.remove('client--pass'), 430);
+  }
+
+  function fanOut(fromId, deliveries, misses) {
+    const src = cardOf(fromId);
+    // Motion off, or nowhere to fly from: everything still lands, just at once.
+    if (reduced() || !src) {
+      for (const d of deliveries) { flashRoute(d.push); landPush(d.id, d.push); }
+      for (const m of misses) markMiss(m.id, m.n);
+      return;
+    }
+
+    let slot = 0;
+    for (const d of deliveries) {
+      setTimeout(() => {
+        flashRoute(d.push);
+        const target = cardOf(d.id), from = cardOf(fromId);
+        if (!target || !from) return landPush(d.id, d.push);
+        flyPacket(anchor(from), anchor(target), d.push[0], () => landPush(d.id, d.push), false);
+      }, slot++ * STEP);
+    }
+    for (const m of misses) {
+      setTimeout(() => {
+        const target = cardOf(m.id), from = cardOf(fromId);
+        if (!target || !from) return markMiss(m.id, m.n);
+        flyPacket(anchor(from), anchor(target), m.kind, () => markMiss(m.id, m.n), true);
+      }, slot++ * STEP);
+    }
   }
 
   // ----------------------------------------------------------------- view
-  function pushLine(push) {
+  function pushLine(push, isNew) {
     const kind = push[0];
     const body = push
       .map((v, i) => `<span class="${i === 0 ? 'k' : 'v'}">${i + 1}) "${esc(v)}"</span>`)
       .join(' ');
-    return `<div class="push--${kind}">${body}</div>`;
+    return `<div class="push--${kind}${isNew ? ' push--new' : ''}">${body}</div>`;
   }
 
   function chipRow(c, set, kind, cls) {
@@ -688,13 +840,13 @@ function publish(server, channel, message, sharded) {
           chipRow(c, c.shard, 'shard', 'chip--sh');
         const was = remembered.get(c.id);
         return `
-<div class="client${c.online ? '' : ' client--off'}">
+<div class="client${c.online ? '' : ' client--off'}" data-client="${c.id}">
   <div class="client__head">
     <span class="client__name">client-${c.id}</span>
     <span class="row">
       ${c.online ? '<span class="pill pill--ok">online</span>' : '<span class="pill">offline</span>'}
       ${inPubsub ? '<span class="pill">CLIENT_PUBSUB</span>' : ''}
-      ${c.missed ? `<span class="pill pill--warn">missed ${c.missed} push${c.missed > 1 ? 'es' : ''}</span>` : ''}
+      <span class="pill pill--warn" data-missed="${c.id}"${c.missed ? '' : ' hidden'}>missed ${c.missed} push${c.missed === 1 ? '' : 'es'}</span>
       <button data-act="toggle" data-id="${c.id}">${c.online ? 'Disconnect' : 'Reconnect'}</button>
       <button data-act="drop" data-id="${c.id}">Remove</button>
     </span>
@@ -717,7 +869,7 @@ function publish(server, channel, message, sharded) {
       ? `<p class="cite" style="margin-top:8px">reply count: ${subCount(c)} (channels + patterns) &middot; ${shardCount(c)} (shard)</p>`
       : ''
   }
-  ${c.inbox.length ? `<div class="inbox">${c.inbox.slice(0, 6).map(pushLine).join('')}</div>` : ''}
+  <div class="inbox" data-inbox="${c.id}">${c.inbox.slice(0, 6).map((p) => pushLine(p)).join('')}</div>
 </div>`;
       })
       .join('');
@@ -734,7 +886,7 @@ function publish(server, channel, message, sharded) {
           withSlot && clusterOn
             ? ` <span class="faint">slot ${keyHashSlot(k)}${nodeForSlot(keyHashSlot(k)) === MYSELF ? '' : ' (not ours)'}</span>`
             : '';
-        return `<div><span class="key--${cls}">'${esc(k)}'</span>: [${ids.map((i) => 'client-' + i).join(', ')}]${slot}</div>`;
+        return `<div data-dictkey="${esc(k)}"><span class="key--${cls}">'${esc(k)}'</span>: [${ids.map((i) => 'client-' + i).join(', ')}]${slot}</div>`;
       })
       .join('');
   }
