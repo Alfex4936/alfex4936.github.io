@@ -32,19 +32,25 @@ const htmlFiles = git('ls-files', '*.html')
   .filter(Boolean)
 
 // href="css/site.css?v=16", src="js/site.js?v=7", from './js/scene-city.js?v=13'
-const REF = /(["'])((?:\.{0,2}\/)?[\w./-]+\.(?:css|js))\?v=(\d+)\1|(["'])((?:\.{0,2}\/)?[\w./-]+\.(?:css|js))\?v=(\d+)(?=["'])/g
+// The version group is optional: an asset referenced with no ?v= at all is the
+// same hazard as a stale one, and is the easier of the two to miss.
+const REF = /(?:href|src|from)\s*=?\s*["']((?:\.{0,2}\/)?[\w./-]+\.(?:css|js))(\?v=(\d+))?["']/g
 
-// Reference paths are written relative to the page or rooted at the site; both
-// mean the same file on disk, so collapse them before comparing versions.
-const canon = (p) => posix.normalize(p.replace(/^\.\//, '').replace(/^\//, ''))
+// A ref is either rooted at the site ("/css/site.css") or relative to the page
+// that holds it — and a page in redis/ saying "viz.css" means redis/viz.css,
+// not a file of that name at the root.
+const canon = (raw, file) =>
+  raw.startsWith('/')
+    ? posix.normalize(raw.slice(1))
+    : posix.normalize(posix.join(posix.dirname(file), raw))
 
 const assets = new Map() // canonical path -> { refs: [{file, raw, v}] }
 for (const file of htmlFiles) {
   const text = readFileSync(join(ROOT, file), 'utf8')
   for (const m of text.matchAll(REF)) {
-    const raw = m[2] ?? m[5]
-    const v = Number(m[3] ?? m[6])
-    const key = canon(raw)
+    const raw = m[1]
+    const v = m[3] === undefined ? null : Number(m[3])
+    const key = canon(raw, file)
     if (!assets.has(key)) assets.set(key, { refs: [] })
     assets.get(key).refs.push({ file, raw, v })
   }
@@ -52,16 +58,27 @@ for (const file of htmlFiles) {
 
 const stale = []
 const mismatched = []
+const unversioned = []
 
 for (const [key, a] of assets) {
-  const versions = [...new Set(a.refs.map((r) => r.v))]
-  if (versions.length > 1) mismatched.push({ key, versions, refs: a.refs })
+  const versioned = a.refs.filter((r) => r.v !== null)
+  const versions = [...new Set(versioned.map((r) => r.v))]
+  if (versions.length > 1) mismatched.push({ key, versions, refs: versioned })
 
   if (!existsSync(join(ROOT, key))) continue
   const head = git('show', `HEAD:${key}`)
   if (head === null) continue // new file, never committed: nothing to compare
   const now = readFileSync(join(ROOT, key), 'utf8')
   if (head === now) continue
+
+  // The bytes moved. An asset nobody ever gave a ?v= is the worse case: there
+  // is no number to compare, so a warm cache keeps the old file indefinitely
+  // and no amount of bumping elsewhere helps.
+  if (!versioned.length) {
+    unversioned.push({ key, refs: a.refs })
+    continue
+  }
+  a.refs = versioned
 
   // bytes moved; did any reference's version move with them?
   const bumped = a.refs.some((r) => {
@@ -85,12 +102,21 @@ if (FIX) {
   }
   for (const s of stale) bump(s.refs, s.v + 1)
   for (const m of mismatched) bump(m.refs, Math.max(...m.versions))
+  // An asset with no version anywhere gets one, rather than a bump.
+  for (const u of unversioned) {
+    for (const r of u.refs) {
+      const text = edits.get(r.file) ?? readFileSync(join(ROOT, r.file), 'utf8')
+      edits.set(r.file, text.split(`"${r.raw}"`).join(`"${r.raw}?v=1"`))
+    }
+  }
   for (const [file, text] of edits) writeFileSync(join(ROOT, file), text)
   if (edits.size) {
     console.log(`bumped ${plural(edits.size, 'file')}:`)
     for (const s of stale) console.log(`  ${s.key}  v${s.v} -> v${s.v + 1}  (${s.refs.length} refs)`)
     for (const m of mismatched)
       console.log(`  ${m.key}  ${m.versions.join('/')} -> v${Math.max(...m.versions)}  (aligned)`)
+    for (const u of unversioned)
+      console.log(`  ${u.key}  no version -> v1  (${u.refs.length} refs)`)
   } else {
     console.log(`${plural(assets.size, 'versioned asset')}, nothing to bump`)
   }
@@ -109,7 +135,14 @@ for (const s of stale)
       s.refs.map((r) => `            ${r.file}`).join('\n'),
   )
 
-if (stale.length || mismatched.length) {
+for (const u of unversioned)
+  console.error(
+    `UNVERSIONED  ${u.key} changed since HEAD and carries no ?v= at all\n` +
+      `            there is no number to compare, so a warm cache keeps the old file\n` +
+      u.refs.map((r) => `            ${r.file}`).join('\n'),
+  )
+
+if (stale.length || mismatched.length || unversioned.length) {
   console.error(`\nrun: node scripts/check-versions.mjs --fix`)
   process.exit(1)
 }
