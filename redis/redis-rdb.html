@@ -133,15 +133,15 @@
       <table>
         <thead><tr><th>hex</th><th>dec</th><th>name</th><th>what follows it</th></tr></thead>
         <tbody>
-          <tr><td class="k">F5</td><td>245</td><td>FUNCTION2</td><td>One function library's source, as a string.</td></tr>
-          <tr><td class="k">F6</td><td>246</td><td>FUNCTION_PRE_GA</td><td>The 7.0 rc1/rc2 function format. Written by no released server.</td></tr>
-          <tr><td class="k">F7</td><td>247</td><td>MODULE_AUX</td><td>Module id, a when-marker, then module-defined data.</td></tr>
+          <tr><td class="k">F5</td><td>245</td><td>FUNCTION2</td><td>One function library's source, as a string. One opcode per library (rdb.c:1279).</td></tr>
+          <tr><td class="k">F6</td><td>246</td><td>FUNCTION_PRE_GA</td><td>&ldquo;Old function library data for 7.0 rc1 and rc2&rdquo; (rdb.h:104).</td></tr>
+          <tr><td class="k">F7</td><td>247</td><td>MODULE_AUX</td><td>Module id, a <code>UINT</code> sub-opcode and a when-marker, module data, then an <code>EOF</code> sub-opcode (rdb.c:1216).</td></tr>
           <tr><td class="k">F8</td><td>248</td><td>IDLE</td><td>A length-encoded idle time in seconds. Written only under an LRU maxmemory policy (rdb.c:1136&ndash;1140).</td></tr>
           <tr><td class="k">F9</td><td>249</td><td>FREQ</td><td>One raw byte, the LFU counter. Written only under an LFU policy (rdb.c:1144&ndash;1152).</td></tr>
           <tr><td class="k">FA</td><td>250</td><td>AUX</td><td>Two strings: field name, then value.</td></tr>
           <tr><td class="k">FB</td><td>251</td><td>RESIZEDB</td><td>Two lengths: key count, then how many of them have an expiry.</td></tr>
           <tr><td class="k">FC</td><td>252</td><td>EXPIRETIME_MS</td><td>8 bytes, little-endian, an absolute Unix time in ms.</td></tr>
-          <tr><td class="k">FD</td><td>253</td><td>EXPIRETIME</td><td>4 bytes, seconds. Still read, never written by 7.2 (rdb.c:1130&ndash;1132 always uses FC).</td></tr>
+          <tr><td class="k">FD</td><td>253</td><td>EXPIRETIME</td><td>4 bytes read as an <code>int32</code>, in seconds (rdb.c:134). Still read, never written by 7.2 &mdash; rdb.c:1130 always uses FC.</td></tr>
           <tr><td class="k">FE</td><td>254</td><td>SELECTDB</td><td>A length-encoded database number.</td></tr>
           <tr><td class="k">FF</td><td>255</td><td>EOF</td><td>Nothing. The 8-byte checksum follows.</td></tr>
         </tbody>
@@ -237,9 +237,12 @@
     <div class="panel__head"><h2>What this page leaves out</h2></div>
     <p class="muted">
       Functions (<code>F5</code>), module data (<code>F7</code>), streams, LZF compression, the
-      LRU and LFU opcodes, and databases other than 0. Everything it does emit is the real
-      byte sequence for Redis 7.2.14, including the CRC64, so <code>redis-check-rdb</code>
-      accepts the download.
+      LRU and LFU opcodes, and databases other than 0. The two hash-table branches
+      (<code>2 SET</code> and <code>4 HASH</code>) are written here in insertion order; a
+      server writes them in dict iteration order, which is neither insertion order nor
+      reproducible between runs. Everything else is the byte sequence Redis 7.2.14 would
+      produce, including the CRC64, so <code>redis-check-rdb</code> accepts the download and
+      a server loads it.
     </p>
   </section>
 
@@ -500,9 +503,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (keys.length) {
       const expires = keys.filter((k) => k.ttl != null).length
-      put('SELECTDB', 'rdb.c:1313', [...mk([OP.SELECTDB], 'hdr'), ...mk(saveLen(0), 'enc')],
+      put('SELECTDB', 'rdb.c:1314', [...mk([OP.SELECTDB], 'hdr'), ...mk(saveLen(0), 'enc')],
         'Opcode 0xFE and a length-encoded database number. Every key after this belongs to db 0.')
-      put('RESIZEDB', 'rdb.c:1324',
+      put('RESIZEDB', 'rdb.c:1323',
         [...mk([OP.RESIZEDB], 'hdr'), ...mk(saveLen(keys.length), 'enc'), ...mk(saveLen(expires), 'enc')],
         `Opcode 0xFB and two lengths: ${keys.length} keys, ${expires} of them with an expiry. A sizing hint so the loader can presize both tables.`)
 
@@ -553,7 +556,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (type === 'set') {
       if (encoding.rdbType === T.SET_INTSET)
-        return putBlob('Intset', 'intset.h:42', intsetBlob(value.map((m) => string2ll(m))),
+        return putBlob('Intset', 'intset.h:35', intsetBlob(value.map((m) => string2ll(m))),
           '4-byte value width, 4-byte count, then the members sorted ascending — all little-endian.')
       if (encoding.rdbType === T.SET_LISTPACK)
         return putBlob('Listpack', 'listpack.c', listpack(value.map(bytesOf)),
