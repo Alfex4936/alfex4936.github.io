@@ -99,7 +99,8 @@ const PAGE_PROBE = `(() => {
     tailwind: ext.some(u => host(u).includes('tailwindcss')),
     fontAwesome: ext.some(u => /fontawesome|font-awesome/i.test(u)) ||
                  !!document.querySelector('i.fas, i.far, i.fab'),
-    viz: [...document.querySelectorAll('link[rel=stylesheet]')].some(l => l.href.endsWith('/viz.css')),
+    viz: [...document.querySelectorAll('link[rel=stylesheet]')]
+      .some(l => /\\/viz\\.css(\\?|$)/.test(l.href)),  // the href carries a ?v= cache-bust
     externalHosts: [...new Set(ext.map(host))],
     hasSrcLine: !!document.querySelector('.src'),
     badViewBox: [...document.querySelectorAll('svg[viewBox]')]
