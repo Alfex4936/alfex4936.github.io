@@ -1,8 +1,13 @@
 /* Shared style for the Redis internals visualizers.
  *
- * Redis red on Redis midnight. The palette is the hidden [data-theme="redis"]
- * from the portfolio's css/site.css, promoted from easter egg to the default
- * here — these pages are that world, so they should look like it.
+ * Redis red on near-black. It began as the portfolio's hidden [data-theme="redis"],
+ * but that palette put a blue cast on every neutral — faint ran +43 blue over
+ * red, dim +30 — and across a page of dense text it read as cyan rather than as
+ * a dark ground. The neutrals are now within +13 of neutral, so the red is the
+ * only thing carrying a hue, which is the point.
+ *
+ * Every colour here clears 4.5:1 on all three surfaces; the old faint managed
+ * 3.42 on a byte cell. Nothing is set below 12.5px.
  *
  * Deliberately self-contained: no import of site.css, so a change to the
  * portfolio's design cannot break ten visualizers, and PRODUCT.md's record of
@@ -13,16 +18,16 @@
  */
 
 :root {
-  --bg: #091a23; /* Redis midnight */
-  --bg-2: #0f2430; /* one tonal step up: panels, wells */
-  --bg-3: #143241; /* two steps: byte cells, chips */
-  --fg: #e8eef1;
-  --dim: #97abb5; /* secondary text */
-  --faint: #678592; /* labels, gutters, placeholders */
-  --rule: #1c3542; /* hairlines */
+  --bg: #091016; /* near-black with a hint of blue; the red carries the identity */
+  --bg-2: #0f161c; /* one tonal step up: panels, wells */
+  --bg-3: #1e252b; /* two steps: byte cells, chips */
+  --fg: #e7e9ea;
+  --dim: #b2b5b8; /* secondary text */
+  --faint: #92969a; /* labels, gutters, placeholders */
+  --rule: #262d33; /* hairlines */
   --red: #ff4438; /* Redis red. The one attention colour. */
-  --ok: #4eba65; /* a state that is fine */
-  --warn: #e3a008; /* a state that is degrading */
+  --ok: #5cc46f; /* a state that is fine */
+  --warn: #e8ab1a; /* a state that is degrading */
 
   --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
@@ -39,7 +44,7 @@
 body {
   margin: 0;
   padding: 32px 24px 64px;
-  font: 400 14px/1.65 var(--sans);
+  font: 400 15.5px/1.65 var(--sans);
   color: var(--fg);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
@@ -64,14 +69,14 @@ pre {
 }
 
 h1 {
-  font: 600 22px/1.3 var(--mono);
+  font: 600 25px/1.3 var(--mono);
   letter-spacing: -0.01em;
 }
 
 /* The subject, not decoration: every page names the C file it came from. */
 .src {
   margin-top: 4px;
-  font: 400 12px/1.6 var(--mono);
+  font: 400 13.5px/1.6 var(--mono);
   color: var(--faint);
 }
 
@@ -80,12 +85,12 @@ h1 {
 }
 
 h2 {
-  font: 600 15px/1.5 var(--mono);
+  font: 600 16px/1.5 var(--mono);
   letter-spacing: -0.005em;
 }
 
 h3 {
-  font: 500 13px/1.5 var(--mono);
+  font: 500 14px/1.5 var(--mono);
   color: var(--dim);
 }
 
@@ -158,7 +163,7 @@ code,
 
 button,
 .btn {
-  font: 500 12px/1.6 var(--mono);
+  font: 500 13.5px/1.6 var(--mono);
   color: var(--dim);
   padding: 5px 11px;
   background: none;
@@ -205,7 +210,7 @@ button:disabled:hover {
 
 input,
 select {
-  font: 400 12px/1.6 var(--mono);
+  font: 400 13.5px/1.6 var(--mono);
   color: var(--fg);
   padding: 5px 9px;
   background: var(--bg);
@@ -231,7 +236,7 @@ input[type="range"] {
 }
 
 label {
-  font: 400 12px/1.6 var(--mono);
+  font: 400 13.5px/1.6 var(--mono);
   color: var(--faint);
 }
 
@@ -246,7 +251,7 @@ label {
 .pill {
   display: inline-block;
   padding: 1px 8px;
-  font: 500 11px/1.7 var(--mono);
+  font: 500 12.5px/1.7 var(--mono);
   letter-spacing: 0.02em;
   border: 1px solid var(--rule);
   border-radius: 999px;
@@ -275,7 +280,7 @@ label {
   display: flex;
   flex-wrap: wrap;
   gap: 3px;
-  font: 400 12px/1 var(--mono);
+  font: 400 13.5px/1 var(--mono);
 }
 
 .byte {
@@ -316,7 +321,7 @@ label {
   flex-wrap: wrap;
   gap: 4px 16px;
   margin-top: 10px;
-  font: 400 11px/1.7 var(--mono);
+  font: 400 12.5px/1.7 var(--mono);
   color: var(--faint);
 }
 
@@ -331,7 +336,7 @@ pre,
 .dump {
   overflow-x: auto;
   padding: 10px 12px;
-  font: 400 12px/1.6 var(--mono);
+  font: 400 13.5px/1.6 var(--mono);
   color: var(--dim);
   background: var(--bg);
   border: 1px solid var(--rule);
@@ -345,7 +350,7 @@ pre b {
 
 /* A citation into the real source. Never decorative. */
 .cite {
-  font: 400 11px/1.6 var(--mono);
+  font: 400 12.5px/1.6 var(--mono);
   color: var(--faint);
 }
 
@@ -355,7 +360,7 @@ pre b {
   max-height: 260px;
   overflow-y: auto;
   padding: 8px 10px;
-  font: 400 12px/1.7 var(--mono);
+  font: 400 13.5px/1.7 var(--mono);
   background: var(--bg);
   border: 1px solid var(--rule);
   border-radius: 5px;
@@ -400,7 +405,7 @@ pre b {
   width: max-content;
   max-width: min(44ch, 78vw);
   padding: 8px 11px;
-  font: 400 12px/1.6 var(--mono);
+  font: 400 13.5px/1.6 var(--mono);
   color: var(--dim);
   background: var(--bg-2);
   border: 1px solid var(--rule);
@@ -417,7 +422,7 @@ pre b {
 .back {
   display: inline-block;
   margin-bottom: 20px;
-  font: 400 12px/1.6 var(--mono);
+  font: 400 13.5px/1.6 var(--mono);
   color: var(--faint);
   text-decoration: none;
 }
