@@ -1,4 +1,4 @@
-// Measurement terrain: the eleven measured numbers as isometric columns, height
+// Measurement terrain: the ten measured numbers as isometric columns, height
 // = log₁₀(magnitude). Hover is where the data lives; the orbit is the quiet half.
 import { dpr } from './scene-core.js'
 
@@ -96,15 +96,6 @@ const M = [
     m: 5 / 2,
     ko: '동시 접속 500명에서의 검색 응답',
     en: 'search response at 500 concurrent users',
-  },
-  {
-    v: '82%',
-    p: 'BeautyMinder',
-    y: 2023,
-    k: 'level',
-    m: 82,
-    ko: 'JaCoCo 테스트 커버리지',
-    en: 'JaCoCo test coverage',
   },
 ]
 

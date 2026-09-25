@@ -34,7 +34,7 @@ Success is that the reader can say what he measured, not just what he built.
 
 Platform engineering is the claim: Go and Kubernetes operators and control
 planes for managed databases, performance work grounded in Redis internals,
-release pipeline automation. The eleven measured numbers on the landing page are
+release pipeline automation. The ten measured numbers on the landing page are
 the evidence underneath that claim — they are not themselves the positioning.
 
 The owner chose this over two alternatives: measurement-as-the-thesis, and
@@ -100,7 +100,7 @@ measurement plus the Redis visualizers as equal halves.
 - Assets: `resume/seokwon-resume-{ko,en}.pdf`, `portfolio/` screenshots,
   `deck-232ebf/` slides, `img/`, ten Redis visualizers under `redis/`.
 - Absences future work must not fill in: no testimonials, no named customers,
-  no pricing, no employer endorsement, and no benchmark beyond the eleven
+  no pricing, no employer endorsement, and no benchmark beyond the ten
   already listed.
 - `css/site.css` records the contrast ratio each `--faint` value was lifted to
   clear 4.5:1 per theme. Those numbers are measured too; do not regress them.

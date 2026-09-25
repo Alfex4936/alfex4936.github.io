@@ -146,7 +146,7 @@ const daysSince = (iso) => Math.floor((Date.now() - new Date(iso)) / 86400000)
 const words = () => document.querySelector('.session').innerText.split(/\s+/).filter(Boolean).length
 
 const KV = () => ({
-  name: T('최석원', 'Choi Seokwon'),
+  name: T('최석원', 'Seokwon Choi'),
   role: T('백엔드·플랫폼 엔지니어', 'Backend & Platform Engineer'),
   email: 'seok.engineer@gmail.com',
   github: 'github.com/Alfex4936',

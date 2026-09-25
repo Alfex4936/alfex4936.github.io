@@ -83,6 +83,10 @@
             <dt>loc</dt>
             <dd><span lang="ko">성남, 대한민국</span><span lang="en">Seongnam, South Korea</span></dd>
           </div>
+          <div>
+            <dt>cv</dt>
+            <dd><a lang="ko" href="resume/seokwon-resume-ko.pdf" target="_blank" rel="noreferrer" data-reader>이력서 (PDF)</a><a lang="en" href="resume/seokwon-resume-en.pdf" target="_blank" rel="noreferrer" data-reader>Résumé (PDF)</a></dd>
+          </div>
         </dl>
         <p class="welcome__tips-title"><span lang="ko">시작하는 법:</span><span lang="en">Tips for getting started:</span></p>
         <ol class="welcome__tips">
@@ -106,8 +110,8 @@
         <h2 class="prompt" id="q-about"><span lang="ko">자기소개</span><span lang="en">who are you</span></h2>
         <div class="reply">
           <h1 class="name">
-            <span lang="ko">최석원<span class="name__alt">Choi Seokwon</span></span>
-            <span lang="en">Choi Seokwon<span class="name__alt">최석원</span></span>
+            <span lang="ko">최석원<span class="name__alt">Seokwon Choi</span></span>
+            <span lang="en">Seokwon Choi<span class="name__alt">최석원</span></span>
             <span class="name__ipa">/sʰɘ(ː)k̚ wʌn ʧɔɪ/</span>
           </h1>
           <p class="role">
@@ -245,20 +249,12 @@
               <span class="row__where"><a href="https://github.com/Alfex4936/BeautyMinder" target="_blank" rel="noreferrer">BeautyMinder</a> · 2023</span>
             </span>
           </li>
-          <li class="row">
-            <span class="row__num"><span class="n">82%</span></span>
-            <span class="row__what">
-              <span lang="ko">JaCoCo 테스트 커버리지</span>
-              <span lang="en">JaCoCo test coverage</span>
-              <span class="row__where"><a href="https://github.com/Alfex4936/BeautyMinder" target="_blank" rel="noreferrer">BeautyMinder</a> · 2023</span>
-            </span>
-          </li>
         </ol>
         <figure class="fig" hidden>
           <div class="scene scene--terrain" id="scene-terrain"></div>
           <figcaption>
-            <span lang="ko">같은 열한 줄을 프로젝트·연도·규모로 놓은 것입니다. 막대에 커서를 올리면 값이 나옵니다.</span>
-            <span lang="en">The same eleven lines, placed by project, year and magnitude. Hover a column for the value.</span>
+            <span lang="ko">같은 열 줄을 프로젝트·연도·규모로 놓은 것입니다. 막대에 커서를 올리면 값이 나옵니다.</span>
+            <span lang="en">The same ten lines, placed by project, year and magnitude. Hover a column for the value.</span>
           </figcaption>
         </figure>
         <p class="reply">
@@ -518,7 +514,7 @@ master   +FULLRESYNC -&gt; fork -&gt; rdb
       </div>
     </form>
 
-    <script src="js/site.js?v=8"></script>
+    <script src="js/site.js?v=9"></script>
     <script type="module" src="js/reader.js?v=2"></script>
     <script type="module">
       // three itself is not fetched until a mount comes near the viewport, and
@@ -541,7 +537,7 @@ master   +FULLRESYNC -&gt; fork -&gt; rdb
       scene('./js/scene-city.js?v=13', 'scene-city')
 
       // The figure only earns its space once its own scene is going to run.
-      if (await scene('./js/scene-terrain.js?v=2', 'scene-terrain'))
+      if (await scene('./js/scene-terrain.js?v=3', 'scene-terrain'))
         for (const fig of document.querySelectorAll('.fig')) fig.hidden = false
     </script>
   </body>

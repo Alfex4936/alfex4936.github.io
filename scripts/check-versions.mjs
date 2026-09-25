@@ -31,10 +31,10 @@ const htmlFiles = git('ls-files', '*.html')
   .split('\n')
   .filter(Boolean)
 
-// href="css/site.css?v=16", src="js/site.js?v=7", from './js/scene-city.js?v=13'
+// href="css/site.css?v=16", src="js/site.js?v=7", from './x.js?v=1', scene('./js/scene-city.js?v=13')
 // The version group is optional: an asset referenced with no ?v= at all is the
 // same hazard as a stale one, and is the easier of the two to miss.
-const REF = /(?:href|src|from)\s*=?\s*["']((?:\.{0,2}\/)?[\w./-]+\.(?:css|js))(\?v=(\d+))?["']/g
+const REF = /(?:(?:href|src|from)\s*=?\s*|\(\s*)["']((?:\.{0,2}\/)?[\w./-]+\.(?:css|js))(\?v=(\d+))?["']/g
 
 // A ref is either rooted at the site ("/css/site.css") or relative to the page
 // that holds it — and a page in redis/ saying "viz.css" means redis/viz.css,
