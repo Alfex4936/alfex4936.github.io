@@ -907,7 +907,10 @@ button {
   color: var(--faint);
 }
 
+/* 24px of touch target: at 12px/1.7 the bare line box is 20.4px, under the
+   minimum, and these are the smallest things on the page a thumb has to hit. */
 .composer__hint button {
+  padding-block: 2px;
   color: var(--dim);
 }
 
@@ -1018,6 +1021,13 @@ button {
 
   .composer {
     padding: 8px 16px 12px;
+  }
+
+  /* The tail is keyboard advice — press / anywhere, tab completes — which means
+     nothing on a phone, and wrapping it took the hint from one line to three.
+     Same move .st-legend .st-ex makes on a narrow terrain. */
+  .composer__ex {
+    display: none;
   }
 }
 
