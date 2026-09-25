@@ -1,597 +1,795 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Redis MULTI/EXEC Visualizer</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #111827; /* Tailwind gray-900 */
-        }
-        .command-item {
-            transition: all 0.5s cubic-bezier(0.25, 1, 0.5, 1);
-            transform-origin: left center;
-        }
-        .command-item.entering {
-            opacity: 0;
-            transform: translateX(-50px);
-        }
-        .command-item.executing {
-            transform: scale(1.05) translateX(20px);
-            background-color: #3B82F6 !important; /* Tailwind blue-500 */
-            color: white !important;
-        }
-        .command-item.leaving {
-            opacity: 0;
-            transform: translateX(50px) scale(0.8);
-        }
-        .status-indicator, .dirty-flag {
-            transition: all 0.3s ease-in-out;
-        }
-        .console-line {
-            border-bottom: 1px solid #374151; /* Tailwind gray-700 */
-            padding-bottom: 8px;
-            margin-bottom: 8px;
-        }
-        #toast-notification {
-            transition: opacity 0.3s, transform 0.3s;
-        }
-        .flag-indicator {
-            transition: all 0.3s ease-in-out;
-        }
-        .flag-indicator.active {
-            background-color: #22C55E; /* green-500 */
-            box-shadow: 0 0 8px #22C55E;
-        }
-        .flag-indicator.error {
-            background-color: #EF4444; /* red-500 */
-            box-shadow: 0 0 8px #EF4444;
-        }
-        .flag-indicator.temp-active {
-            background-color: #3B82F6; /* blue-500 */
-            box-shadow: 0 0 8px #3B82F6;
-        }
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #1F2937; }
-        ::-webkit-scrollbar-thumb { background: #4B5563; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #6B7280; }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
-        
-        /* Modal Styles */
-        #export-modal { transition: opacity 0.3s; }
-        #export-modal pre {
-            background-color: #0d1117;
-            border-radius: 8px;
-            padding: 1rem;
-            color: #c9d1d9;
-            overflow-x: auto;
-        }
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Redis Transaction Visualizer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+<link rel="stylesheet" href="viz.css" />
+<style>
+  /* Page-specific only: viz.css has no command queue, flag grid or modal. */
+  /* grid--side stretches both columns to the taller one; keep rows at content height. */
+  .stack { display: grid; gap: 12px; align-content: start; }
+  .log { min-height: 8rem; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .row > input { flex: 1 1 18ch; min-width: 0; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
 
-        /* Custom Tooltip Styles */
-        .has-tooltip { position: relative; cursor: help; }
-        .tooltip {
-            visibility: hidden; opacity: 0; position: absolute;
-            bottom: 125%; left: 50%;
-            transform: translateX(-50%);
-            background-color: #1F2937; color: #D1D5DB;
-            text-align: left; padding: 8px 12px; border-radius: 6px;
-            z-index: 10; width: max-content; max-width: 280px;
-            font-size: 0.8rem; line-height: 1.4;
-            transition: opacity 0.2s; pointer-events: none;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-        }
-        .has-tooltip:hover .tooltip { visibility: visible; opacity: 1; }
-        
-        /* Custom styles for range slider */
-        input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 20px;
-            height: 20px;
-            background: #EF4444; /* red-500 */
-            cursor: pointer;
-            border-radius: 50%;
-            margin-top: -6px; /* centers thumb on the track */
-        }
-        input[type="range"]::-moz-range-thumb {
-            width: 20px;
-            height: 20px;
-            background: #EF4444; /* red-500 */
-            cursor: pointer;
-            border-radius: 50%;
-        }
-    </style>
+  .flags { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 6px 14px; }
+  .flag { display: flex; gap: 8px; align-items: baseline; font: 400 12px/1.7 var(--mono); color: var(--faint); }
+  .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--bg-3);
+         border: 1px solid var(--rule); transition: background-color .2s, border-color .2s; }
+  .flag[data-on="set"] .dot { background: var(--ok); border-color: var(--ok); }
+  .flag[data-on="set"] { color: var(--dim); }
+  .flag[data-on="bad"] .dot { background: var(--red); border-color: var(--red); }
+  .flag[data-on="bad"] { color: var(--red); }
+  .flag[data-on="tmp"] .dot { background: var(--warn); border-color: var(--warn); }
+  .flag[data-on="tmp"] { color: var(--warn); }
+
+  .well { min-height: 4.5rem; max-height: 11rem; overflow-y: auto; padding: 8px 10px;
+          font: 400 12px/1.7 var(--mono); background: var(--bg); border: 1px solid var(--rule);
+          border-radius: 5px; }
+  .well .empty { color: var(--faint); }
+  .qrow { padding: 3px 6px; margin-bottom: 4px; color: var(--dim); background: var(--bg-3);
+          border: 1px solid var(--rule); border-radius: 3px; overflow-wrap: anywhere;
+          transition: color .2s, border-color .2s, background-color .2s; }
+  .qrow:last-child { margin-bottom: 0; }
+  .qrow[data-run="1"] { color: var(--fg); border-color: var(--red); }
+  .krow { overflow-wrap: anywhere; color: var(--dim); }
+  .krow b { font-weight: 400; color: var(--red); }
+  .krow .v { color: var(--fg); }
+
+  .log > .in { color: var(--red); overflow-wrap: anywhere; }
+  .log > .in::before { content: "> "; color: var(--faint); }
+  .log > .note { color: var(--warn); overflow-wrap: anywhere; }
+  .log > .el { color: var(--dim); padding-left: 2ch; text-indent: -2ch; overflow-wrap: anywhere; }
+  .log p { overflow-wrap: anywhere; }
+
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translate(-50%, 8px);
+           max-width: min(46ch, 90vw); padding: 8px 12px; font: 400 12px/1.6 var(--mono);
+           color: var(--fg); background: var(--bg-2); border: 1px solid var(--red);
+           border-radius: 5px; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; }
+  .toast[data-show="1"] { opacity: 1; transform: translate(-50%, 0); }
+
+  .modal { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center;
+           justify-content: center; padding: 16px; background: rgba(9, 26, 35, .82);
+           opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .modal[data-open="1"] { opacity: 1; pointer-events: auto; }
+  .modal__box { width: min(46rem, 100%); max-height: 86vh; overflow-y: auto;
+                padding: 14px 16px; background: var(--bg-2); border: 1px solid var(--rule);
+                border-radius: 6px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+</style>
 </head>
-<body class="text-white p-4 md:p-8">
+<body>
+<div class="wrap">
 
-    <div class="max-w-7xl mx-auto">
-        <!-- Header -->
-        <header class="text-center mb-8">
-            <h1 class="text-3xl md:text-4xl font-bold text-red-500">Redis Transaction Visualizer</h1>
-            <p class="text-gray-400 mt-2">See how `MULTI`, `EXEC`, `WATCH`, and `DISCARD` work behind the scenes.</p>
-        </header>
-        
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            
-            <!-- Left Panel: Client and Console -->
-            <div class="bg-gray-800 rounded-lg shadow-2xl p-6 flex flex-col">
-                <div class="flex items-center justify-between mb-4">
-                    <div class="flex items-center">
-                        <svg class="w-6 h-6 text-blue-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                        <h2 class="text-xl font-semibold">Redis Client CLI</h2>
-                    </div>
-                    <button id="example-reset" class="bg-gray-700 hover:bg-red-700 text-gray-300 hover:text-white p-2 rounded-full transition duration-200" title="Reset State">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" /></svg>
-                    </button>
-                </div>
-                <div id="console-output" class="flex-grow bg-black rounded-md p-4 text-sm font-mono overflow-y-auto h-80 mb-4">
-                    <div class="text-gray-500">Welcome! Try an example or type commands below.</div>
-                </div>
-                <div class="flex items-center gap-2">
-                    <div class="relative flex-grow">
-                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-red-500 font-bold">&gt;</span>
-                        <input type="text" id="command-input" class="w-full bg-gray-900 border-2 border-gray-700 rounded-md py-2 pl-8 pr-4 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500" placeholder="e.g., WATCH key">
-                    </div>
-                    <div id="export-btn-wrapper" class="relative">
-                        <button id="export-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 disabled:bg-blue-800 disabled:text-gray-400" disabled>
-                            Export Script
-                        </button>
-                        <div class="tooltip" style="text-align: center; left: 50%; transform: translateX(-50%);">Start a transaction (MULTI) and<br>queue a command to enable.</div>
-                    </div>
-                </div>
-                 <div class="text-xs text-gray-500 mt-2">Supported: MULTI, EXEC, DISCARD, WATCH, UNWATCH, SET, GET, INCR, DECR, PING, SADD, LPUSH, LPOP, RPOP, SPOP, RESET.</div>
-                 
-                 <!-- Example Buttons -->
-                 <div class="mt-6">
-                    <h3 class="text-lg font-semibold mb-3 text-gray-300">Example Scenarios</h3>
-                    <div class="flex flex-wrap gap-3">
-                        <button id="example-watch" class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">Optimistic Locking</button>
-                        <button id="example-fcfs" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">FCFS Registration</button>
-                        <button id="example-queue" class="bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">Queue Processing</button>
-                        <button id="example-latency" class="bg-sky-600 hover:bg-sky-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">Latency Demo</button>
-                        <button id="example-error" class="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">Transaction Error</button>
-                        <button id="example-discard" class="bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">Discard Transaction</button>
-                        <button id="example-complex-fail" class="bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm">Complex Failure</button>
-                    </div>
-                </div>
-            </div>
+  <a class="back" href="../index.html">&larr; index</a>
+  <h1>Redis Transaction Visualizer</h1>
+  <p class="src">Modelled on <a href="https://github.com/redis/redis/blob/7.2.14/src/multi.c">src/multi.c</a>, Redis 7.2.14, with the queueing path from <code>processCommand</code> in <code>src/server.c</code>.</p>
 
-            <!-- Right Panel: Server State -->
-            <div class="bg-gray-800 rounded-lg shadow-2xl p-6 space-y-4">
-                <div class="flex items-center mb-2">
-                    <svg class="w-6 h-6 text-red-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
-                    <h2 class="text-xl font-semibold">Redis Server State</h2>
-                </div>
-                
-                <!-- Client Flags -->
-                <div>
-                    <h3 class="font-semibold text-gray-300 mb-2">Client Flags</h3>
-                     <div class="bg-gray-900 rounded-lg p-3 grid grid-cols-2 gap-x-4 gap-y-2 font-mono text-sm">
-                        <div class="has-tooltip flex items-center">
-                            <span class="flag-indicator w-3 h-3 rounded-full mr-3 bg-gray-600" id="flag-multi"></span>
-                            <span class="text-gray-400">CLIENT_MULTI</span>
-                            <div class="tooltip"><strong>CLIENT_MULTI (1&lt;&lt;3):</strong><br>This client is in a MULTI context.</div>
-                        </div>
-                        <div class="has-tooltip flex items-center">
-                            <span class="flag-indicator w-3 h-3 rounded-full mr-3 bg-gray-600" id="flag-dirty-cas"></span>
-                            <span class="text-gray-400">CLIENT_DIRTY_CAS</span>
-                            <div class="tooltip"><strong>CLIENT_DIRTY_CAS (1&lt;&lt;5):</strong><br>Watched keys modified. EXEC will fail.</div>
-                        </div>
-                        <div class="has-tooltip flex items-center">
-                            <span class="flag-indicator w-3 h-3 rounded-full mr-3 bg-gray-600" id="flag-dirty-exec"></span>
-                            <span class="text-gray-400">CLIENT_DIRTY_EXEC</span>
-                            <div class="tooltip"><strong>CLIENT_DIRTY_EXEC (1&lt;&lt;12):</strong><br>EXEC will fail for errors while queueing commands.</div>
-                        </div>
-                        <div class="has-tooltip flex items-center">
-                            <span class="flag-indicator w-3 h-3 rounded-full mr-3 bg-gray-600" id="flag-deny-blocking"></span>
-                            <span class="text-gray-400">CLIENT_DENY_BLOCKING</span>
-                            <div class="tooltip"><strong>CLIENT_DENY_BLOCKING (1ULL&lt;&lt;41):</strong><br>Client should not be blocked (e.g., during EXEC).</div>
-                        </div>
-                    </div>
-                </div>
+  <p class="lede">
+    A transaction gives you <b>isolation, not rollback</b>. Between EXEC and the last queued
+    command no other client's command runs, but if one command fails partway through, the
+    commands before it stay applied and the ones after it still run (multi.c:190&ndash;243).
+    The two ways a transaction can fail are not the same thing, and the page exists to show
+    the difference.
+  </p>
 
-                <!-- Transaction State -->
-                <div>
-                    <div class="flex justify-between items-center mb-2">
-                        <h3 class="font-semibold text-gray-300">Transaction State</h3>
-                        <div id="transaction-status" class="status-indicator px-3 py-1 text-sm font-bold rounded-full bg-gray-600 text-gray-200">INACTIVE</div>
-                    </div>
-                    <div class="bg-gray-900 rounded-lg p-4 h-40 flex flex-col">
-                        <h4 class="font-medium text-gray-400 mb-2 border-b border-gray-700 pb-2 flex-shrink-0">Command Queue</h4>
-                        <div id="command-queue" class="space-y-2 overflow-y-auto flex-grow"><div class="text-center text-gray-500 pt-4">Queue is empty</div></div>
-                    </div>
-                </div>
+  <div class="grid grid--side">
+    <div class="stack">
 
-                <!-- Watched Keys -->
-                <div>
-                    <h3 class="font-semibold text-gray-300 mb-2">Watched Keys</h3>
-                    <div id="watched-keys" class="bg-gray-900 rounded-lg p-4 h-24 overflow-y-auto"><div class="text-center text-gray-500 pt-2">Not watching any keys</div></div>
-                </div>
-
-                <!-- Data Store -->
-                <div>
-                    <h3 class="font-semibold text-gray-300 mb-2">In-Memory Data</h3>
-                    <div id="data-store" class="bg-gray-900 rounded-lg p-4 h-32 overflow-y-auto"><div class="text-center text-gray-500 pt-4">No data yet</div></div>
-                </div>
-            </div>
+      <section class="panel">
+        <div class="panel__head">
+          <h2>Client</h2>
+          <span class="cite">server.c:4159 processCommand</span>
         </div>
-
-        <!-- Latency Simulator -->
-        <div class="max-w-xl mx-auto mt-8 bg-gray-800 p-4 rounded-lg shadow-lg">
-            <div class="flex items-center justify-between">
-                <label for="latency-slider" class="font-medium text-gray-300 flex items-center">
-                    <svg class="w-5 h-5 mr-2 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    Simulated Network Latency:
-                </label>
-                <span id="latency-value" class="font-mono text-lg text-yellow-400">0 ms</span>
-            </div>
-            <input type="range" id="latency-slider" min="0" max="500" step="10" value="0" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer mt-2">
+        <div class="log" id="log">
+          <div class="faint">Type a command, or run one of the scenarios below.</div>
         </div>
+        <div class="row" style="margin-top:10px">
+          <input id="cmd-in" type="text" spellcheck="false" autocomplete="off"
+                 aria-label="Redis command" placeholder="WATCH balance" />
+          <button id="export-btn" disabled>Export</button>
+          <button id="reset-btn">Reset</button>
+        </div>
+        <p class="cite" style="margin-top:8px">
+          MULTI, EXEC, DISCARD, WATCH, UNWATCH, RESET, SET, GET, INCR, DECR, SADD, LPUSH,
+          LPOP, RPOP, SPOP, PING.
+        </p>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head"><h2>Scenarios</h2></div>
+        <div class="btns">
+          <button class="btn--go" data-demo="queueerr">Queue-time error</button>
+          <button data-demo="execerr">Execution-time error</button>
+          <button data-demo="watch">Optimistic lock</button>
+          <button data-demo="selfwatch">Watching your own write</button>
+          <button data-demo="unwatch">UNWATCH inside MULTI</button>
+          <button data-demo="discard">DISCARD</button>
+          <button data-demo="latency">Round trips</button>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <label for="lat">Network latency</label>
+          <input id="lat" type="range" min="0" max="400" step="20" value="0" style="flex:1 1 12ch" />
+          <span class="num mono faint" id="lat-val">0 ms</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head"><h2>The two failures are different</h2><span class="cite">multi.c:165&ndash;176</span></div>
+        <p class="muted" style="margin-bottom:8px">
+          <b>A command that fails to queue</b> &mdash; unknown command, or the wrong number of
+          arguments &mdash; is rejected before it is ever stored (server.c:3885), and the
+          rejection sets <code>CLIENT_DIRTY_EXEC</code> (multi.c:107). EXEC then discards
+          everything and replies:
+        </p>
+        <pre>-EXECABORT Transaction discarded because of previous errors.</pre>
+        <p class="cite" style="margin:6px 0 12px">server.c:1873, replied at multi.c:172</p>
+        <p class="muted" style="margin-bottom:8px">
+          <b>A command that queues cleanly and then fails at EXEC</b> &mdash; INCR on a string,
+          a wrong-type operation &mdash; does not abort anything. The loop at multi.c:190 has no
+          break: that command's error becomes one element of the reply array and every other
+          command still runs. Nothing is rolled back; multi.c:253 only frees the queue.
+        </p>
+        <p class="muted">
+          <b>A watched key that changed</b> is a third outcome and not an error at all. EXEC
+          replies a null array (multi.c:174) &mdash; <code>(nil)</code> in redis-cli.
+        </p>
+      </section>
+
     </div>
 
-    <!-- Toast Notification -->
-    <div id="toast-notification" class="fixed bottom-8 left-1/2 -translate-x-1/2 bg-purple-600 text-white py-2 px-5 rounded-lg shadow-lg text-sm opacity-0 transform translate-y-4">
-        A watched key was modified!
-    </div>
-    
-    <!-- Export Modal -->
-    <div id="export-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50 opacity-0 pointer-events-none">
-        <div class="bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl transform scale-95 transition-transform duration-300" id="export-modal-content">
-            <div class="flex justify-between items-center p-4 border-b border-gray-700">
-                <h2 class="text-xl font-semibold">Export Transaction Script</h2>
-                <button id="close-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
-            </div>
-            <div class="p-4">
-                <div id="modal-tabs" class="flex border-b border-gray-700 mb-4">
-                    <!-- Tabs will be generated here -->
-                </div>
-                <div id="modal-content-area" class="max-h-[70vh] overflow-y-auto">
-                    <!-- Code snippets will be shown here -->
-                </div>
-            </div>
+    <div class="stack">
+
+      <section class="panel">
+        <div class="panel__head"><h2>Client flags</h2><span class="cite">server.h:338</span></div>
+        <div class="flags">
+          <span class="flag" id="f-multi"><span class="dot"></span>
+            <span class="tip">CLIENT_MULTI<span class="tip__body">1&lt;&lt;3. The client is inside a MULTI, so commands are queued instead of run (server.c:4159).</span></span>
+          </span>
+          <span class="flag" id="f-cas"><span class="dot"></span>
+            <span class="tip">CLIENT_DIRTY_CAS<span class="tip__body">1&lt;&lt;5. A watched key was touched. EXEC replies a null array, not an error (multi.c:174).</span></span>
+          </span>
+          <span class="flag" id="f-exec"><span class="dot"></span>
+            <span class="tip">CLIENT_DIRTY_EXEC<span class="tip__body">1&lt;&lt;12. A command failed to queue. EXEC replies EXECABORT and discards the transaction (multi.c:172).</span></span>
+          </span>
+          <span class="flag" id="f-deny"><span class="dot"></span>
+            <span class="tip">CLIENT_DENY_BLOCKING<span class="tip__body">1ULL&lt;&lt;41. Set for the duration of EXEC so a queued command cannot block (multi.c:183).</span></span>
+          </span>
         </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head"><h2>Command queue</h2><span class="pill" id="tx-pill">INACTIVE</span></div>
+        <div class="well" id="queue"><div class="empty">Queue is empty</div></div>
+        <p class="cite" style="margin-top:8px">
+          Once the client is dirty, queueMultiCommand stores nothing further, though the
+          client still gets +QUEUED (multi.c:67, server.c:4168).
+        </p>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head"><h2>Watched keys</h2><span class="cite">multi.c:377 touchWatchedKey</span></div>
+        <div class="well" id="watched"><div class="empty">Not watching any keys</div></div>
+        <p class="cite" style="margin-top:8px">
+          A write is not the only thing that breaks a watch. Expiry (db.c:1687) and eviction
+          (evict.c:679) both reach touchWatchedKey, and FLUSHDB, FLUSHALL and SWAPDB mark every
+          watcher at once (db.c:619, db.c:1525). A watched key that merely expires between
+          WATCH and EXEC is enough on its own &mdash; EXEC checks for it at multi.c:160.
+        </p>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head"><h2>Keyspace</h2></div>
+        <div class="well" id="data"><div class="empty">No data yet</div></div>
+      </section>
+
     </div>
+  </div>
 
+  <div class="toast" id="toast" role="status"></div>
 
-    <script>
-        // DOM Elements
-        const commandInput = document.getElementById('command-input');
-        const consoleOutput = document.getElementById('console-output');
-        const transactionStatus = document.getElementById('transaction-status');
-        const commandQueue = document.getElementById('command-queue');
-        const dataStore = document.getElementById('data-store');
-        const watchedKeysEl = document.getElementById('watched-keys');
-        const toastElement = document.getElementById('toast-notification');
-        const latencySlider = document.getElementById('latency-slider');
-        const latencyValue = document.getElementById('latency-value');
-        
-        // Flag Elements
-        const flagMulti = document.getElementById('flag-multi');
-        const flagDirtyCas = document.getElementById('flag-dirty-cas');
-        const flagDirtyExec = document.getElementById('flag-dirty-exec');
-        const flagDenyBlocking = document.getElementById('flag-deny-blocking');
-        
-        // Example Buttons
-        const exampleWatchBtn = document.getElementById('example-watch');
-        const exampleFcfsBtn = document.getElementById('example-fcfs');
-        const exampleQueueBtn = document.getElementById('example-queue');
-        const exampleLatencyBtn = document.getElementById('example-latency');
-        const exampleErrorBtn = document.getElementById('example-error');
-        const exampleDiscardBtn = document.getElementById('example-discard');
-        const exampleComplexFailBtn = document.getElementById('example-complex-fail');
-        const exampleResetBtn = document.getElementById('example-reset');
-        
-        // Export Elements
-        const exportBtn = document.getElementById('export-btn');
-        const exportModal = document.getElementById('export-modal');
-        const exportModalContent = document.getElementById('export-modal-content');
-        const closeModalBtn = document.getElementById('close-modal-btn');
-        const modalTabs = document.getElementById('modal-tabs');
-        const modalContentArea = document.getElementById('modal-content-area');
+  <div class="modal" id="modal">
+    <div class="modal__box">
+      <div class="panel__head">
+        <h2>Export this transaction</h2>
+        <button id="modal-close">Close</button>
+      </div>
+      <div class="tabs" id="tabs"></div>
+      <div id="tab-body"></div>
+      <p class="cite" style="margin-top:10px">
+        A WATCH, if you use one, must be issued on this same connection before MULTI.
+      </p>
+    </div>
+  </div>
 
-        // Application State
-        const state = {
-            inTransaction: false,
-            queue: [],
-            data: {},
-            watchedKeys: [],
-            isDemoRunning: false,
-            networkLatency: 0,
-            flags: {
-                multi: false,
-                dirtyCas: false,
-                dirtyExec: false,
-                denyBlocking: false
-            }
-        };
-        let toastTimeout;
+</div>
 
-        // --- Toast Notifier ---
-        function showToast(message) {
-            clearTimeout(toastTimeout);
-            toastElement.textContent = message;
-            toastElement.classList.remove('opacity-0', 'translate-y-4');
-            toastTimeout = setTimeout(() => {
-                toastElement.classList.add('opacity-0', 'translate-y-4');
-            }, 4500);
-        }
+<script>
+'use strict'
 
-        // --- Event Listeners ---
-        commandInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && commandInput.value.trim() !== '') {
-                if (state.isDemoRunning) return;
-                processCommand(commandInput.value.trim());
-                commandInput.value = '';
-            }
-        });
-        
-        latencySlider.addEventListener('input', (e) => {
-            state.networkLatency = parseInt(e.target.value, 10);
-            latencyValue.textContent = `${state.networkLatency} ms`;
-        });
+const $ = (id) => document.getElementById(id)
+const logEl = $('log'), queueEl = $('queue'), watchedEl = $('watched'), dataEl = $('data')
+const cmdIn = $('cmd-in'), txPill = $('tx-pill'), toastEl = $('toast')
+const modal = $('modal'), tabsEl = $('tabs'), tabBody = $('tab-body'), exportBtn = $('export-btn')
 
-        // --- Demo Runner ---
-        async function runCommandsSequentially(commands) {
-            if (state.isDemoRunning) return;
-            state.isDemoRunning = true;
-            const buttons = [exampleWatchBtn, exampleFcfsBtn, exampleQueueBtn, exampleLatencyBtn, exampleDiscardBtn, exampleResetBtn, exampleErrorBtn, exampleComplexFailBtn];
-            buttons.forEach(btn => btn.disabled = true);
-            for (const cmd of commands) {
-                if (cmd.startsWith('//')) {
-                    logToConsole(cmd, 'comment');
-                    await new Promise(r => setTimeout(r, 1200));
-                    continue;
-                }
-                commandInput.value = cmd; commandInput.focus();
-                await new Promise(r => setTimeout(r, 150));
-                await processCommand(commandInput.value.trim());
-                commandInput.value = '';
-                await new Promise(r => setTimeout(r, 500)); // Shorter delay between commands in demo
-            }
-            buttons.forEach(btn => btn.disabled = false);
-            state.isDemoRunning = false;
-        }
+const WRONGTYPE = '(error) WRONGTYPE Operation against a key holding the wrong kind of value'
+const NOT_INT = '(error) ERR value is not an integer or out of range'
 
-        // --- Example Button Listeners ---
-        exampleWatchBtn.addEventListener('click', () => runCommandsSequentially(['// --- Simulating Optimistic Lock with WATCH --- //', 'SET balance 100', 'WATCH balance', 'GET balance', "// --- Another client modifies 'balance' while we are watching! --- //", 'SET balance 500', 'MULTI', 'SET balance 80', 'EXEC']));
-        exampleFcfsBtn.addEventListener('click', () => { const studentId = `student:${Math.floor(1000 + Math.random() * 9000)}`; runCommandsSequentially([`// --- Simulating Course Registration (수강신청) for ${studentId} --- //`, '// --- All commands must succeed or fail together atomically. --- //', 'SET course:CS101:spots 5', 'MULTI', 'DECR course:CS101:spots', `SADD course:CS101:registered ${studentId}`, `LPUSH course:CS101:log "Registered ${studentId} at ${new Date().toLocaleTimeString('en-US', { hour12: false})}"`, 'EXEC']); });
-        exampleQueueBtn.addEventListener('click', () => runCommandsSequentially(['// --- Simulating atomic task processing from a queue --- //', 'LPUSH tasks "process:video:123"', 'LPUSH tasks "send:email:456"', 'LPUSH tasks "generate:report:789"', 'MULTI', 'RPOP tasks', 'SET last_processed_by worker-01', 'EXEC']));
-        exampleLatencyBtn.addEventListener('click', () => runCommandsSequentially(['// --- Demonstrating Network Latency Impact --- //', '// First, set latency to 300ms.', 'SET_LATENCY 300', '// Run 3 commands individually. Each will be delayed.', 'SET user:1:name alice', 'SET user:1:email alice@example.com', 'INCR user:1:logins', '// Now, run the same commands in a transaction.', '// The whole batch is sent at once, paying the latency cost only once.', 'MULTI', 'SET user:2:name bob', 'SET user:2:email bob@example.com', 'INCR user:2:logins', 'EXEC', '// Set latency back to 0ms', 'SET_LATENCY 0']));
-        exampleErrorBtn.addEventListener('click', () => runCommandsSequentially(['// --- Simulating a Transaction Error --- //', 'SET product:stock 10', 'MULTI', 'INCR product:stock', '// --- This command has a syntax error (missing value) --- //', 'SET product:price', 'GET product:stock', 'EXEC']));
-        exampleDiscardBtn.addEventListener('click', () => runCommandsSequentially(['// --- Simulating a Discarded Transaction --- //', 'SET user:status active', 'MULTI', 'SET user:status inactive', 'GET user:status', 'DISCARD', 'GET user:status']));
-        exampleComplexFailBtn.addEventListener('click', () => runCommandsSequentially(['// --- A scenario where everything goes wrong --- //', 'SET account:balance 1000', '// 1. WATCH the key for changes.', 'WATCH account:balance', '// 2. Another client changes the key, setting CLIENT_DIRTY_CAS.', 'SET account:balance 50', '// 3. Start a transaction, setting CLIENT_MULTI.', 'MULTI', '// 4. Queue a command with a syntax error, setting CLIENT_DIRTY_EXEC.', 'SET transaction:log', '// 5. Attempt to EXEC. It will fail due to the dirty flags.', 'EXEC']));
-        exampleResetBtn.addEventListener('click', () => { if (state.isDemoRunning) return; consoleOutput.innerHTML = ''; resetState(); logToConsole('State has been reset.', 'redis'); });
+const state = {
+  inTx: false,
+  queue: [],
+  data: {},
+  watched: [],
+  demoRunning: false,
+  latency: 0,
+  flags: { multi: false, dirtyCas: false, dirtyExec: false, denyBlocking: false },
+}
+let qid = 0
 
-        // --- Export Modal Logic ---
-        exportBtn.addEventListener('click', () => {
-            generateExportScripts();
-            exportModal.classList.remove('opacity-0', 'pointer-events-none');
-            exportModalContent.classList.remove('scale-95');
-        });
-        closeModalBtn.addEventListener('click', () => {
-             exportModal.classList.add('opacity-0', 'pointer-events-none');
-             exportModalContent.classList.add('scale-95');
-        });
+/* Arity as [min, max] extra arguments, from the command table in 7.2.14.
+   PING is -1 but pingCommand rejects argc > 2 (server.c:4523); SPOP is -2 and
+   takes an optional count (t_set.c:971); LPOP/RPOP reject argc > 3 (t_list.c:785). */
+const ARITY = {
+  MULTI: [0, 0], EXEC: [0, 0], DISCARD: [0, 0], UNWATCH: [0, 0], RESET: [0, 0],
+  WATCH: [1, Infinity], PING: [0, 1],
+  SET: [2, 2], GET: [1, 1], INCR: [1, 1], DECR: [1, 1],
+  SADD: [2, Infinity], LPUSH: [2, Infinity],
+  LPOP: [1, 2], RPOP: [1, 2], SPOP: [1, 2],
+}
+/* spopWithCountCommand answers a third argument with a syntax error, not an
+   arity error (t_set.c:975). */
+const EXCESS_IS_SYNTAX = new Set(['SPOP'])
 
-        // --- Core Logic ---
-        function simulateLatency() { if (state.networkLatency === 0) return Promise.resolve(); logToConsole(`... waiting ${state.networkLatency}ms (network latency) ...`, 'comment'); return new Promise(r => setTimeout(r, state.networkLatency)); }
-        function resetState() { unwatchAllKeys(); state.inTransaction = false; state.queue = []; state.flags.multi = false; state.flags.dirtyExec = false; Object.keys(state.data).forEach(key => delete state.data[key]); updateAllUI(); }
-        async function processCommand(commandStr) { logToConsole(commandStr, 'user'); const parts = commandStr.split(/\s+/); const command = parts[0].toUpperCase(); const args = parts.slice(1); if (command === 'SET_LATENCY') { const newLatency = parseInt(args[0], 10); if (!isNaN(newLatency)) { state.networkLatency = newLatency; latencySlider.value = newLatency; latencyValue.textContent = `${newLatency} ms`; logToConsole(`(visualizer) Network latency set to ${newLatency}ms`, 'redis'); } return; } const modifyingCommands = ['SET', 'INCR', 'DECR', 'SADD', 'LPUSH', 'LPOP', 'RPOP', 'SPOP']; if (modifyingCommands.includes(command)) touchWatchedKey(args[0]); if (state.inTransaction && !['EXEC', 'DISCARD', 'WATCH', 'UNWATCH'].includes(command)) { queueCommand(command, args, commandStr); return; } await simulateLatency(); switch (command) { case 'MULTI': handleMulti(); break; case 'EXEC': await handleExec(); break; case 'DISCARD': handleDiscard(true); break; case 'WATCH': handleWatch(args); break; case 'UNWATCH': unwatchAllKeys(); logToConsole('OK', 'redis'); break; case 'RESET': handleResetCommand(); break; case 'SET': handleSet(args[0], args[1], true); break; case 'GET': handleGet(args[0], true); break; case 'INCR': handleIncr(args[0], true); break; case 'DECR': handleDecr(args[0], true); break; case 'SADD': handleSadd(args[0], args.slice(1), true); break; case 'LPUSH': handleLpush(args[0], args.slice(1), true); break; case 'LPOP': handleLpop(args[0], true); break; case 'RPOP': handleRpop(args[0], true); break; case 'SPOP': handleSpop(args[0], true); break; case 'PING': logToConsole('PONG', 'redis'); break; default: logToConsole(`(error) ERR unknown command '${command}'`, 'redis'); } }
-        function validateCommand(command, args) { const specs = { 'SET': 2, 'GET': 1, 'INCR': 1, 'DECR': 1, 'SADD': -2, 'LPUSH': -2, 'LPOP': 1, 'RPOP': 1, 'SPOP': 1, 'WATCH': -1, 'UNWATCH': 0, 'MULTI': 0, 'EXEC': 0, 'DISCARD': 0, 'RESET': 0, 'PING': 0 }; const arity = specs[command]; if (arity === undefined) return `unknown command '${command}'`; if (arity >= 0 && args.length !== arity) return `wrong number of arguments for '${command.toLowerCase()}' command`; if (arity < 0 && args.length < Math.abs(arity)) return `wrong number of arguments for '${command.toLowerCase()}' command`; return null; }
-        function handleResetCommand() { resetState(); logToConsole('OK', 'redis'); }
-        function handleWatch(keys) { if (state.inTransaction) { logToConsole('(error) ERR WATCH inside MULTI is not allowed', 'redis'); return; } keys.forEach(key => { if (!state.watchedKeys.includes(key)) state.watchedKeys.push(key); }); updateWatchedKeysUI(); logToConsole('OK', 'redis'); }
-        function unwatchAllKeys() { state.watchedKeys = []; state.flags.dirtyCas = false; updateWatchedKeysUI(); updateFlagsUI(); }
-        function touchWatchedKey(key) { if (state.watchedKeys.includes(key)) { state.flags.dirtyCas = true; showToast(`Key "${key}" was modified. Transaction will be aborted, and all watches are cleared.`); state.watchedKeys = []; updateWatchedKeysUI(); updateFlagsUI(); } }
-        function handleMulti() { if (state.inTransaction) { logToConsole('(error) ERR MULTI calls can not be nested', 'redis'); return; } state.inTransaction = true; state.flags.multi = true; updateTransactionStatus(true); updateFlagsUI(); logToConsole('OK', 'redis'); }
-        async function handleExec() { if (!state.inTransaction) { logToConsole('(error) ERR EXEC without MULTI', 'redis'); return; } if (state.flags.dirtyExec) { logToConsole('(error) EXECABORT Transaction discarded because of previous errors.', 'redis'); } else if (state.flags.dirtyCas) { logToConsole('(nil)', 'redis'); } else if (state.queue.length === 0) { logToConsole('(empty array)', 'redis'); } else { logToConsole(`(array) ${state.queue.length} replies:`, 'redis-array-start'); await executeQueue(); return; } state.queue = []; state.inTransaction = false; state.flags.multi = false; state.flags.dirtyExec = false; unwatchAllKeys(); updateAllUI(); }
-        function handleDiscard(shouldLog) { if (!state.inTransaction) { if(shouldLog) logToConsole('(error) ERR DISCARD without MULTI', 'redis'); return; } state.queue = []; state.inTransaction = false; state.flags.multi = false; state.flags.dirtyExec = false; unwatchAllKeys(); updateAllUI(); if(shouldLog) logToConsole('OK', 'redis'); }
-        function handleSet(key, value, shouldLog) { if (!key || value === undefined) { if(shouldLog) logToConsole(`(error) ERR wrong number of arguments for 'set' command`, 'redis'); return '(error)'; } state.data[key] = value; updateDataStoreUI(); if(shouldLog) logToConsole('OK', 'redis'); return 'OK'; }
-        function handleGet(key, shouldLog) { const value = state.data[key] === undefined ? '(nil)' : `"${state.data[key]}"`; if(shouldLog) logToConsole(value, 'redis'); return value; }
-        function handleIncr(key, shouldLog) { let value = parseInt(state.data[key], 10); if (isNaN(value)) { if (state.data[key] !== undefined) { if(shouldLog) logToConsole('(error) ERR value is not an integer or out of range', 'redis'); return '(error)'; } value = 0; } value++; state.data[key] = value.toString(); updateDataStoreUI(); const result = `(integer) ${value}`; if(shouldLog) logToConsole(result, 'redis'); return result; }
-        function handleDecr(key, shouldLog) { let value = parseInt(state.data[key], 10); if (isNaN(value)) { if (state.data[key] !== undefined) { if(shouldLog) logToConsole('(error) ERR value is not an integer or out of range', 'redis'); return '(error)'; } value = 0; } value--; state.data[key] = value.toString(); updateDataStoreUI(); const result = `(integer) ${value}`; if(shouldLog) logToConsole(result, 'redis'); return result; }
-        function handleSadd(key, values, shouldLog) { if (state.data[key] === undefined) state.data[key] = []; if (!Array.isArray(state.data[key])) { if (shouldLog) logToConsole(`(error) WRONGTYPE Operation against a key holding the wrong kind of value`, 'redis'); return '(error)'; } let added = 0; values.forEach(value => { if (!state.data[key].includes(value)) { state.data[key].push(value); added++; } }); updateDataStoreUI(); const result = `(integer) ${added}`; if (shouldLog) logToConsole(result, 'redis'); return result; }
-        function handleLpush(key, values, shouldLog) { if (state.data[key] === undefined) state.data[key] = []; if (!Array.isArray(state.data[key])) { if (shouldLog) logToConsole(`(error) WRONGTYPE Operation against a key holding the wrong kind of value`, 'redis'); return '(error)'; } values.reverse().forEach(value => state.data[key].unshift(value)); updateDataStoreUI(); const result = `(integer) ${state.data[key].length}`; if (shouldLog) logToConsole(result, 'redis'); return result; }
-        function handleLpop(key, shouldLog) { if (!Array.isArray(state.data[key])) { const result = state.data[key] === undefined ? '(nil)' : `(error) WRONGTYPE Operation against a key holding the wrong kind of value`; if (shouldLog) logToConsole(result, 'redis'); return result; } const value = state.data[key].shift(); const result = value === undefined ? '(nil)' : `"${value}"`; if (shouldLog) logToConsole(result, 'redis'); updateDataStoreUI(); return result; }
-        function handleRpop(key, shouldLog) { if (!Array.isArray(state.data[key])) { const result = state.data[key] === undefined ? '(nil)' : `(error) WRONGTYPE Operation against a key holding the wrong kind of value`; if (shouldLog) logToConsole(result, 'redis'); return result; } const value = state.data[key].pop(); const result = value === undefined ? '(nil)' : `"${value}"`; if (shouldLog) logToConsole(result, 'redis'); updateDataStoreUI(); return result; }
-        function handleSpop(key, shouldLog) { if (!Array.isArray(state.data[key])) { const result = state.data[key] === undefined ? '(nil)' : `(error) WRONGTYPE Operation against a key holding the wrong kind of value`; if (shouldLog) logToConsole(result, 'redis'); return result; } const value = state.data[key].pop(); /* Simplification: real SPOP is random */ const result = value === undefined ? '(nil)' : `"${value}"`; if (shouldLog) logToConsole(result, 'redis'); updateDataStoreUI(); return result; }
-        function queueCommand(command, args, commandStr) { const error = validateCommand(command, args); if (error) { logToConsole(`(error) ERR ${error}`, 'redis'); state.flags.dirtyExec = true; updateFlagsUI(); } else { logToConsole('QUEUED', 'redis'); } const cmdObj = { command, args, commandStr, id: `cmd-${Date.now()}-${Math.random()}` }; state.queue.push(cmdObj); updateQueueUI(); }
-        async function executeQueue() {
-            state.flags.denyBlocking = true;
-            updateFlagsUI();
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            const executionQueue = [...state.queue];
-            
-            for (let i = 0; i < executionQueue.length; i++) {
-                const { command, args, id } = executionQueue[i];
-                const queueItem = document.getElementById(id);
+/* server.c:4160-4165. Everything else is queued inside MULTI — including
+   UNWATCH, which is not in this list. QUIT is not simulated here. */
+const NOT_QUEUED = new Set(['EXEC', 'DISCARD', 'MULTI', 'WATCH', 'RESET'])
 
-                if (queueItem) {
-                    queueItem.classList.add('executing');
-                }
-                
-                await new Promise(resolve => setTimeout(resolve, 700));
+/* ------------------------------------------------------------------ log */
 
-                let result;
-                switch (command) {
-                    case 'SET': result = handleSet(args[0], args[1], false); break;
-                    case 'GET': result = handleGet(args[0], false); break;
-                    case 'INCR': result = handleIncr(args[0], false); break;
-                    case 'DECR': result = handleDecr(args[0], false); break;
-                    case 'SADD': result = handleSadd(args[0], args.slice(1), false); break;
-                    case 'LPUSH': result = handleLpush(args[0], args.slice(1), false); break;
-                    case 'LPOP': result = handleLpop(args[0], false); break;
-                    case 'RPOP': result = handleRpop(args[0], false); break;
-                    case 'SPOP': result = handleSpop(args[0], false); break;
-                    case 'PING': result = 'PONG'; break;
-                    default: result = `(error) ERR unknown command '${command}'`;
-                }
-                logToConsole(`${i+1}) ${result}`, 'redis-array');
+function put(cls, text) {
+  const el = document.createElement(cls === 'reply' ? 'p' : 'div')
+  if (cls !== 'reply') el.className = cls
+  el.textContent = text
+  logEl.appendChild(el)
+  logEl.scrollTop = logEl.scrollHeight
+  return el
+}
+const echo = (t) => put('in', t)
+const note = (t) => put('note', t)
 
-                if (queueItem) {
-                    queueItem.classList.remove('executing');
-                    queueItem.classList.add('leaving');
-                    // Wait for the leaving animation to finish, then remove the element
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    queueItem.remove();
-                }
-            }
-            
-            state.queue = []; // Clear the state queue *after* the loop is finished
-            state.flags.denyBlocking = false;
-            state.inTransaction = false;
-            state.flags.multi = false;
-            unwatchAllKeys();
-            updateAllUI(); // Final UI sync
-        }
-        function updateAllUI() { updateTransactionStatus(state.inTransaction); updateFlagsUI(); updateQueueUI(); updateDataStoreUI(); updateWatchedKeysUI(); }
-        function updateFlagsUI() { flagMulti.classList.toggle('active', state.flags.multi); flagDirtyCas.classList.toggle('error', state.flags.dirtyCas); flagDirtyExec.classList.toggle('error', state.flags.dirtyExec); flagDenyBlocking.classList.toggle('temp-active', state.flags.denyBlocking); }
-        function updateTransactionStatus(active) {
-            const isDisabled = !active || state.queue.length === 0;
-            exportBtn.disabled = isDisabled;
-            
-            const wrapper = document.getElementById('export-btn-wrapper');
-            if (isDisabled) {
-                wrapper.classList.add('has-tooltip');
-            } else {
-                wrapper.classList.remove('has-tooltip');
-            }
+function reply(v, tone) {
+  if (typeof v === 'object' && v !== null) return replyArray(v.arr, '')
+  const el = put('reply', v)
+  if (tone) el.className = tone
+  return el
+}
 
-            if (active) {
-                transactionStatus.textContent = 'ACTIVE';
-                transactionStatus.classList.remove('bg-gray-600');
-                transactionStatus.classList.add('bg-green-500', 'text-white');
-            } else {
-                transactionStatus.textContent = 'INACTIVE';
-                transactionStatus.classList.remove('bg-green-500', 'text-white');
-                transactionStatus.classList.add('bg-gray-600');
-            }
-        }
-        function updateWatchedKeysUI() { if (state.watchedKeys.length === 0) { watchedKeysEl.innerHTML = `<div class="text-center text-gray-500 pt-2">Not watching any keys</div>`; return; } watchedKeysEl.innerHTML = state.watchedKeys.map(key => ` <div class="flex items-center font-mono text-sm"> <svg class="w-4 h-4 text-purple-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg> <span class="text-purple-300">${key}</span> </div>`).join(''); }
-        function updateQueueUI() { updateTransactionStatus(state.inTransaction); if (state.queue.length === 0) { commandQueue.innerHTML = `<div class="text-center text-gray-500 pt-4">Queue is empty</div>`; return; } if (commandQueue.querySelector('.text-gray-500')) commandQueue.innerHTML = ''; const existingIds = [...commandQueue.children].map(c => c.id); const newCommands = state.queue.filter(cmd => !existingIds.includes(cmd.id)); newCommands.forEach(cmd => { const div = document.createElement('div'); div.id = cmd.id; div.className = 'command-item entering bg-gray-700 p-2 rounded-md font-mono text-sm'; div.textContent = cmd.commandStr; commandQueue.appendChild(div); requestAnimationFrame(() => div.classList.remove('entering')); }); existingIds.forEach(id => { if (!state.queue.find(cmd => cmd.id === id)) { const el = document.getElementById(id); if (el && !el.classList.contains('leaving')) el.remove(); } }); }
-        function updateDataStoreUI() { const keys = Object.keys(state.data); if (keys.length === 0) { dataStore.innerHTML = `<div class="text-center text-gray-500 pt-4">No data yet</div>`; return; } dataStore.innerHTML = keys.map(key => { const value = state.data[key]; let displayValue; if (Array.isArray(value)) { const items = value.length > 5 ? [...value.slice(0, 5), '...'] : value; displayValue = `<span class="text-gray-400">(list/set)</span> [${items.map(v => `<span class="text-green-400">"${v}"</span>`).join(', ')}]`; } else { displayValue = `"${value}"`; } return `<div class="flex items-start font-mono text-sm mb-2"> <div class="font-bold text-red-400 mr-2 flex-shrink-0">${key}:</div> <div class="text-blue-300 break-all">${displayValue}</div> </div>` }).join(''); }
-        function logToConsole(message, source) { const line = document.createElement('div'); let content; switch (source) { case 'user': content = `<span class="text-red-500">&gt; ${message}</span>`; break; case 'redis': content = `<span class="text-green-400">${message}</span>`; break; case 'redis-array-start': content = `<span class="text-gray-400">${message}</span>`; break; case 'redis-array': content = `<span class="text-green-400 ml-2">${message}</span>`; break; case 'comment': content = `<span class="text-yellow-500">${message}</span>`; break; default: content = `<span>${message}</span>`; } line.innerHTML = content; line.className = 'console-line'; consoleOutput.appendChild(line); consoleOutput.scrollTop = consoleOutput.scrollHeight; }
-        
-        // --- SCRIPT GENERATION ---
-        function generateExportScripts() {
-            const languages = {
-                'redis-cli': generateCliScript,
-                'Python': generatePythonScript,
-                'Go': generateGoScript,
-                'Java': generateJavaJedisScript,
-            };
-            
-            modalTabs.innerHTML = '';
-            modalContentArea.innerHTML = '';
-            
-            Object.keys(languages).forEach((lang, index) => {
-                const tab = document.createElement('button');
-                tab.textContent = lang;
-                tab.className = 'px-4 py-2 -mb-px border-b-2 transition-colors duration-200';
-                tab.dataset.lang = lang;
-                
-                const content = document.createElement('div');
-                content.dataset.lang = lang;
-                content.innerHTML = languages[lang]();
-                
-                if (index === 0) {
-                    tab.classList.add('border-blue-500', 'text-blue-400');
-                    content.classList.remove('hidden');
-                } else {
-                    tab.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-200');
-                    content.classList.add('hidden');
-                }
-                
-                tab.addEventListener('click', (e) => {
-                    // Deactivate all tabs and hide all content panels
-                    modalTabs.querySelectorAll('button').forEach(t => {
-                        t.classList.remove('border-blue-500', 'text-blue-400');
-                        t.classList.add('border-transparent', 'text-gray-500');
-                    });
-                    // Use .children to only select direct descendants (the content wrappers)
-                    // This was the source of the bug. querySelectorAll('div') was too broad.
-                    for (const child of modalContentArea.children) {
-                        child.classList.add('hidden');
-                    }
+function replyArray(items, indent) {
+  if (!items.length) { put('el', indent + '(empty array)'); return }
+  items.forEach((item, i) => {
+    const head = `${indent}${i + 1}) `
+    if (typeof item === 'object' && item !== null) replyArray(item.arr, head)
+    else put('el', head + item)
+  })
+}
 
-                    // Activate the clicked tab and show its content panel
-                    e.target.classList.remove('border-transparent', 'text-gray-500');
-                    e.target.classList.add('border-blue-500', 'text-blue-400');
-                    modalContentArea.querySelector(`div[data-lang="${lang}"]`).classList.remove('hidden');
-                });
-                
-                modalTabs.appendChild(tab);
-                modalContentArea.appendChild(content);
-            });
-        }
-        
-        function copyCode(element) {
-            const code = element.parentElement.previousElementSibling.textContent;
-            navigator.clipboard.writeText(code).then(() => {
-                element.textContent = 'Copied!';
-                setTimeout(() => { element.textContent = 'Copy'; }, 2000);
-            });
-        }
-        
-        function formatCommand(parts) {
-            return parts.map(p => {
-                // Check if it's a number, otherwise quote it
-                if (!isNaN(p) && !isNaN(parseFloat(p))) return p;
-                // If it contains spaces or is empty, quote it.
-                return `"${p.replace(/"/g, '\\"')}"`;
-            }).join(', ');
-        }
-        
-        function generateCliScript() {
-            let script = 'MULTI\n';
-            state.queue.forEach(cmd => {
-                script += `  ${cmd.commandStr}\n`;
-            });
-            script += 'EXEC';
-            return `<div class="relative"><pre><code>${script}</code></pre><button onclick="copyCode(this)" class="absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-1 px-3 rounded-lg text-xs">Copy</button></div>`;
-        }
-        
-        function generatePythonScript() {
-            let script = `import redis\n\nr = redis.Redis(decode_responses=True)\n\n`;
-            script += `pipe = r.pipeline()\n`;
-            state.queue.forEach(cmd => {
-                const parts = [cmd.command, ...cmd.args];
-                script += `pipe.${cmd.command.toLowerCase()}(${formatCommand(cmd.args)})\n`;
-            });
-            script += `results = pipe.execute()\nprint(results)`;
-            return `<div class="relative"><pre><code>${script}</code></pre><button onclick="copyCode(this)" class="absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-1 px-3 rounded-lg text-xs">Copy</button></div>`;
-        }
+function toast(msg) {
+  toastEl.textContent = msg
+  toastEl.dataset.show = '1'
+  clearTimeout(toast.t)
+  toast.t = setTimeout(() => { toastEl.dataset.show = '0' }, 4200)
+}
 
-        function generateGoScript() {
-            let script = `package main\n\nimport (\n\t"context"\n\t"fmt"\n\t"github.com/go-redis/redis/v9"\n)\n\n`;
-            script += `var ctx = context.Background()\n\nfunc main() {\n\trdb := redis.NewClient(&redis.Options{\n\t\tAddr: "localhost:6379",\n\t})\n\n`;
-            script += `\tpipe := rdb.TxPipeline()\n`;
-            state.queue.forEach(cmd => {
-                 const capitalized = cmd.command.charAt(0).toUpperCase() + cmd.command.slice(1).toLowerCase();
-                script += `\tpipe.${capitalized}(ctx, ${formatCommand(cmd.args)})\n`;
-            });
-            script += `\t_, err := pipe.Exec(ctx)\n\tif err != nil {\n\t\tpanic(err)\n\t}\n\n\tfmt.Println("Transaction successful")\n}`;
-            return `<div class="relative"><pre><code>${script}</code></pre><button onclick="copyCode(this)" class="absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-1 px-3 rounded-lg text-xs">Copy</button></div>`;
-        }
-        
-        function generateJavaJedisScript() {
-             let script = `import redis.clients.jedis.Jedis;\nimport redis.clients.jedis.Response;\nimport redis.clients.jedis.Transaction;\n\npublic class RedisTransaction {\n\tpublic static void main(String[] args) {\n\t\tJedis jedis = new Jedis("localhost");\n\n`;
-            script += `\t\tTransaction t = jedis.multi();\n`;
-            state.queue.forEach(cmd => {
-                script += `\t\tt.${cmd.command.toLowerCase()}(${formatCommand(cmd.args)});\n`;
-            });
-            script += `\t\tjava.util.List<Object> results = t.exec();\n\n\t\tSystem.out.println(results);\n\t\tjedis.close();\n\t}\n}`;
-             return `<div class="relative"><pre><code>${script}</code></pre><button onclick="copyCode(this)" class="absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-1 px-3 rounded-lg text-xs">Copy</button></div>`;
-        }
+/* --------------------------------------------------------------- render */
 
-        // Initialize the UI on page load to reflect the initial state
-        updateAllUI();
-    </script>
+function renderFlags() {
+  $('f-multi').dataset.on = state.flags.multi ? 'set' : ''
+  $('f-cas').dataset.on = state.flags.dirtyCas ? 'bad' : ''
+  $('f-exec').dataset.on = state.flags.dirtyExec ? 'bad' : ''
+  $('f-deny').dataset.on = state.flags.denyBlocking ? 'tmp' : ''
+}
+
+function renderQueue() {
+  txPill.textContent = state.inTx ? 'ACTIVE' : 'INACTIVE'
+  txPill.className = 'pill' + (state.inTx ? ' pill--ok' : '')
+  exportBtn.disabled = !state.inTx || state.queue.length === 0
+  if (!state.queue.length) {
+    queueEl.innerHTML = '<div class="empty">Queue is empty</div>'
+    return
+  }
+  queueEl.innerHTML = ''
+  for (const q of state.queue) {
+    const d = document.createElement('div')
+    d.className = 'qrow'
+    d.id = q.id
+    d.textContent = q.line
+    queueEl.appendChild(d)
+  }
+}
+
+function renderWatched() {
+  if (!state.watched.length) {
+    watchedEl.innerHTML = '<div class="empty">Not watching any keys</div>'
+    return
+  }
+  watchedEl.innerHTML = ''
+  for (const k of state.watched) {
+    const d = document.createElement('div')
+    d.className = 'krow'
+    d.textContent = k
+    watchedEl.appendChild(d)
+  }
+}
+
+function renderData() {
+  const keys = Object.keys(state.data)
+  if (!keys.length) {
+    dataEl.innerHTML = '<div class="empty">No data yet</div>'
+    return
+  }
+  dataEl.innerHTML = ''
+  for (const k of keys) {
+    const v = state.data[k]
+    const d = document.createElement('div')
+    d.className = 'krow'
+    const b = document.createElement('b')
+    b.textContent = k + ' '
+    const s = document.createElement('span')
+    s.className = 'v'
+    s.textContent = Array.isArray(v) ? `[${v.map((x) => `"${x}"`).join(', ')}]` : `"${v}"`
+    d.append(b, s)
+    dataEl.appendChild(d)
+  }
+}
+
+const renderAll = () => { renderFlags(); renderQueue(); renderWatched(); renderData() }
+
+/* ---------------------------------------------------------- watch state */
+
+/* multi.c:333 unwatchAllKeys — drops the watches, leaves CLIENT_DIRTY_CAS to
+   the caller. */
+function clearWatches() { state.watched = []; renderWatched() }
+
+/* multi.c:377 touchWatchedKey: mark the watcher dirty, then unwatch it
+   (multi.c:407-411). Callers only reach here on a real modification. */
+function signalModifiedKey(key) {
+  if (!state.watched.includes(key)) return
+  state.flags.dirtyCas = true
+  clearWatches()
+  renderFlags()
+  toast(`"${key}" was modified. EXEC will reply (nil) and the watches are cleared.`)
+}
+
+/* multi.c:98 discardTransaction */
+function discardTransaction() {
+  state.queue = []
+  state.inTx = false
+  state.flags.multi = false
+  state.flags.dirtyCas = false
+  state.flags.dirtyExec = false
+  clearWatches()
+  renderAll()
+}
+
+/* ------------------------------------------------------------- keyspace */
+
+function doSet(key, val) { state.data[key] = val; signalModifiedKey(key); return 'OK' }
+
+function doGet(key) {
+  const v = state.data[key]
+  if (v === undefined) return '(nil)'
+  if (Array.isArray(v)) return WRONGTYPE
+  return `"${v}"`
+}
+
+function doIncrBy(key, by) {
+  const cur = state.data[key]
+  if (Array.isArray(cur)) return WRONGTYPE
+  if (cur !== undefined && !/^-?\d+$/.test(cur)) return NOT_INT
+  const n = (cur === undefined ? 0 : parseInt(cur, 10)) + by
+  state.data[key] = String(n)
+  signalModifiedKey(key)
+  return `(integer) ${n}`
+}
+
+function doSadd(key, members) {
+  const cur = state.data[key]
+  if (cur !== undefined && !Array.isArray(cur)) return WRONGTYPE
+  const set = cur === undefined ? [] : cur
+  let added = 0
+  for (const m of members) if (!set.includes(m)) { set.push(m); added++ }
+  state.data[key] = set
+  if (added) signalModifiedKey(key) // t_set.c:622 — only when something was added
+  return `(integer) ${added}`
+}
+
+function doLpush(key, values) {
+  const cur = state.data[key]
+  if (cur !== undefined && !Array.isArray(cur)) return WRONGTYPE
+  const list = cur === undefined ? [] : cur
+  for (const v of values) list.unshift(v)
+  state.data[key] = list
+  signalModifiedKey(key)
+  return `(integer) ${list.length}`
+}
+
+/* t_list.c:780 popGenericCommand. A missing key returns before anything is
+   signalled, and the key is deleted once the list is empty (t_list.c:768). */
+function doPop(key, where, countArg) {
+  const cur = state.data[key]
+  if (cur === undefined) return '(nil)'
+  if (!Array.isArray(cur)) return WRONGTYPE
+  const hasCount = countArg !== undefined
+  const n = hasCount ? parseInt(countArg, 10) : 1
+  if (hasCount && (isNaN(n) || n < 0)) return NOT_INT
+  if (hasCount && n === 0) return { arr: [] }
+  const out = []
+  for (let i = 0; i < n && cur.length; i++) out.push(where === 'head' ? cur.shift() : cur.pop())
+  if (out.length) signalModifiedKey(key)
+  if (!cur.length) delete state.data[key]
+  renderData()
+  if (!hasCount) return out.length ? `"${out[0]}"` : '(nil)'
+  return { arr: out.map((v) => `"${v}"`) }
+}
+
+/* SPOP here pops the tail. Real SPOP picks at random; the choice does not
+   change anything this page is about. */
+const doSpop = (key, countArg) => doPop(key, 'tail', countArg)
+
+function runQueued(cmd, args) {
+  switch (cmd) {
+    case 'SET': return doSet(args[0], args[1])
+    case 'GET': return doGet(args[0])
+    case 'INCR': return doIncrBy(args[0], 1)
+    case 'DECR': return doIncrBy(args[0], -1)
+    case 'SADD': return doSadd(args[0], args.slice(1))
+    case 'LPUSH': return doLpush(args[0], args.slice(1))
+    case 'LPOP': return doPop(args[0], 'head', args[1])
+    case 'RPOP': return doPop(args[0], 'tail', args[1])
+    case 'SPOP': return doSpop(args[0], args[1])
+    case 'PING': return args.length ? `"${args[0]}"` : 'PONG'
+    case 'UNWATCH': clearWatches(); state.flags.dirtyCas = false; renderFlags(); return 'OK'
+    default: return `(error) ERR unknown command '${cmd}'`
+  }
+}
+
+/* ---------------------------------------------------------- transaction */
+
+function checkArity(cmd, args) {
+  const spec = ARITY[cmd]
+  if (!spec) return `unknown command '${cmd}'`
+  if (args.length > spec[1] && EXCESS_IS_SYNTAX.has(cmd)) return 'syntax error'
+  if (args.length < spec[0] || args.length > spec[1])
+    return `wrong number of arguments for '${cmd.toLowerCase()}' command`
+  return null
+}
+
+/* server.c:4167 queueMultiCommand, then the unconditional +QUEUED at
+   server.c:4168. multi.c:67: a dirty client stores nothing further. */
+function queueCommand(cmd, args, line) {
+  reply('QUEUED')
+  if (state.flags.dirtyExec || state.flags.dirtyCas) return
+  state.queue.push({ cmd, args, line, id: `q${++qid}` })
+  renderQueue()
+}
+
+function handleMulti() {
+  if (state.inTx) { reply('(error) ERR MULTI calls can not be nested'); return } // multi.c:114
+  state.inTx = true
+  state.flags.multi = true
+  renderAll()
+  reply('OK')
+}
+
+function handleDiscard() {
+  if (!state.inTx) { reply('(error) ERR DISCARD without MULTI'); return } // multi.c:124
+  discardTransaction()
+  reply('OK')
+}
+
+function handleWatch(keys) {
+  if (state.inTx) { reply('(error) ERR WATCH inside MULTI is not allowed'); return } // multi.c:474
+  if (state.flags.dirtyCas) { reply('OK'); return } // multi.c:478 — no point watching
+  for (const k of keys) if (!state.watched.includes(k)) state.watched.push(k)
+  renderWatched()
+  reply('OK')
+}
+
+/* networking.c:2990 resetCommand — clears connection state and replies +RESET.
+   It does not touch the keyspace (networking.c:1521-1565). */
+function handleReset() {
+  discardTransaction()
+  reply('RESET')
+}
+
+async function handleExec() {
+  if (!state.inTx) { reply('(error) ERR EXEC without MULTI'); return } // multi.c:155
+
+  // multi.c:170-176: DIRTY_EXEC is tested first, and the two replies differ.
+  if (state.flags.dirtyExec) {
+    reply('(error) EXECABORT Transaction discarded because of previous errors.')
+    discardTransaction()
+    return
+  }
+  if (state.flags.dirtyCas) {
+    reply('(nil)')
+    discardTransaction()
+    return
+  }
+  if (!state.queue.length) {
+    reply('(empty array)')
+    discardTransaction()
+    return
+  }
+
+  clearWatches() // multi.c:187 — unwatched before the loop, never during it
+  state.flags.denyBlocking = true
+  renderFlags()
+
+  const batch = state.queue.slice()
+  for (let i = 0; i < batch.length; i++) {
+    const row = $(batch[i].id)
+    if (row) row.dataset.run = '1'
+    await pause(520)
+    const out = runQueued(batch[i].cmd, batch[i].args)
+    const head = `${i + 1}) `
+    if (typeof out === 'object' && out !== null) replyArray(out.arr, head)
+    else put('el', head + out)
+    renderData()
+    if (row) row.remove()
+  }
+
+  state.flags.denyBlocking = false
+  discardTransaction()
+}
+
+/* ------------------------------------------------------------ dispatch */
+
+const pause = (ms) => new Promise((r) => setTimeout(r, ms))
+
+function networkDelay() {
+  if (!state.latency) return Promise.resolve()
+  note(`... ${state.latency} ms round trip ...`)
+  return pause(state.latency)
+}
+
+async function processCommand(line) {
+  const parts = line.trim().split(/\s+/)
+  const cmd = parts[0].toUpperCase()
+  const args = parts.slice(1)
+
+  // Visualizer control, not a Redis command.
+  if (cmd === 'SET_LATENCY') {
+    setLatency(parseInt(args[0], 10))
+    note(`... latency now ${state.latency} ms ...`)
+    return
+  }
+
+  echo(line)
+
+  // server.c:3885-3892: existence and arity are checked before the MULTI
+  // branch, and the rejection flags the transaction dirty (server.c:3724 ->
+  // multi.c:107). The bad command never reaches the queue.
+  const err = checkArity(cmd, args)
+  if (err) {
+    reply(`(error) ERR ${err}`)
+    if (state.inTx) { state.flags.dirtyExec = true; renderFlags() }
+    return
+  }
+
+  if (state.inTx && !NOT_QUEUED.has(cmd)) { queueCommand(cmd, args, line); return }
+
+  await networkDelay()
+
+  switch (cmd) {
+    case 'MULTI': handleMulti(); break
+    case 'EXEC': await handleExec(); break
+    case 'DISCARD': handleDiscard(); break
+    case 'WATCH': handleWatch(args); break
+    case 'RESET': handleReset(); break
+    default: {
+      const out = runQueued(cmd, args)
+      reply(out)
+      renderAll()
+    }
+  }
+}
+
+/* ------------------------------------------------------------ scenarios */
+
+const DEMOS = {
+  queueerr: [
+    '// A command that fails to queue poisons the whole transaction.',
+    'SET product:stock 10',
+    'MULTI',
+    'INCR product:stock',
+    '// SET with no value: the wrong number of arguments, rejected before it is stored.',
+    'SET product:price',
+    'GET product:stock',
+    '// CLIENT_DIRTY_EXEC is set, so nothing after it was queued either.',
+    'EXEC',
+  ],
+  execerr: [
+    '// A command that queues cleanly and then fails at EXEC aborts nothing.',
+    'SET counter hello',
+    'MULTI',
+    'SET audit:before written',
+    '// INCR on a string queues fine. It can only fail once it runs.',
+    'INCR counter',
+    'SET audit:after written',
+    'EXEC',
+    '// Element 2 is an error, 1 and 3 are OK. Both writes are still there:',
+    'GET audit:before',
+    'GET audit:after',
+  ],
+  watch: [
+    '// Optimistic locking: WATCH, read, then decide.',
+    'SET balance 100',
+    'WATCH balance',
+    'GET balance',
+    '// Another client writes balance while we are watching.',
+    'SET balance 500',
+    'MULTI',
+    'SET balance 80',
+    '// CLIENT_DIRTY_CAS is set, so EXEC replies (nil). That is not an error.',
+    'EXEC',
+  ],
+  selfwatch: [
+    '// Writing the key you watched, from inside the transaction, is fine.',
+    'SET balance 100',
+    'WATCH balance',
+    'MULTI',
+    'SET balance 80',
+    '// EXEC unwatches before it runs anything (multi.c:187), so this cannot self-abort.',
+    'EXEC',
+    'GET balance',
+  ],
+  unwatch: [
+    '// UNWATCH is not exempt from queueing (server.c:4160), so it only runs at EXEC.',
+    'SET stock 5',
+    'WATCH stock',
+    '// Another client writes stock. CLIENT_DIRTY_CAS is set.',
+    'SET stock 4',
+    'MULTI',
+    '// UNWATCH replies QUEUED, not OK. It cannot clear the flag from inside the queue.',
+    'UNWATCH',
+    'DECR stock',
+    '// Neither command was even stored: multi.c:67 skips a dirty client.',
+    'EXEC',
+  ],
+  discard: [
+    '// DISCARD throws the queue away and clears every watch (multi.c:127).',
+    'SET user:status active',
+    'MULTI',
+    'SET user:status inactive',
+    'GET user:status',
+    'DISCARD',
+    'GET user:status',
+  ],
+  latency: [
+    '// Three commands, three round trips.',
+    'SET_LATENCY 200',
+    'SET user:1:name alice',
+    'INCR user:1:logins',
+    '// Queued commands are pipelined, so the batch pays for one round trip.',
+    'MULTI',
+    'SET user:2:name bob',
+    'INCR user:2:logins',
+    'EXEC',
+    'SET_LATENCY 0',
+  ],
+}
+
+async function runDemo(name) {
+  if (state.demoRunning) return
+  state.demoRunning = true
+  const buttons = document.querySelectorAll('[data-demo]')
+  buttons.forEach((b) => { b.disabled = true })
+  for (const line of DEMOS[name]) {
+    if (line.startsWith('//')) { note(line); await pause(1100); continue }
+    cmdIn.value = line
+    await pause(160)
+    await processCommand(line)
+    cmdIn.value = ''
+    await pause(420)
+  }
+  buttons.forEach((b) => { b.disabled = false })
+  state.demoRunning = false
+}
+
+/* --------------------------------------------------------------- export */
+
+function quoteArgs(args) {
+  return args.map((a) => (/^-?\d+$/.test(a) ? a : `"${a.replace(/"/g, '\\"')}"`)).join(', ')
+}
+
+const EXPORTS = {
+  'redis-cli': () =>
+    ['MULTI', ...state.queue.map((q) => '  ' + q.line), 'EXEC'].join('\n'),
+
+  Python: () =>
+    'import redis\n\nr = redis.Redis(decode_responses=True)\n\n' +
+    '# Pipeline() is transactional by default: it wraps the batch in MULTI/EXEC.\n' +
+    'pipe = r.pipeline()\n' +
+    state.queue.map((q) => `pipe.${q.cmd.toLowerCase()}(${quoteArgs(q.args)})\n`).join('') +
+    'print(pipe.execute())',
+
+  Go: () =>
+    'package main\n\nimport (\n\t"context"\n\t"fmt"\n\n\t"github.com/redis/go-redis/v9"\n)\n\n' +
+    'func main() {\n\tctx := context.Background()\n' +
+    '\trdb := redis.NewClient(&redis.Options{Addr: "localhost:6379"})\n\n' +
+    '\tpipe := rdb.TxPipeline()\n' +
+    state.queue
+      .map((q) => `\tpipe.${q.cmd[0] + q.cmd.slice(1).toLowerCase()}(ctx, ${quoteArgs(q.args)})\n`)
+      .join('') +
+    '\tres, err := pipe.Exec(ctx)\n\tif err != nil {\n\t\tpanic(err)\n\t}\n\tfmt.Println(res)\n}',
+
+  Java: () =>
+    'import java.util.List;\nimport redis.clients.jedis.Jedis;\nimport redis.clients.jedis.Transaction;\n\n' +
+    'public class Tx {\n\tpublic static void main(String[] args) {\n' +
+    '\t\ttry (Jedis jedis = new Jedis("localhost")) {\n\t\t\tTransaction t = jedis.multi();\n' +
+    state.queue.map((q) => `\t\t\tt.${q.cmd.toLowerCase()}(${quoteArgs(q.args)});\n`).join('') +
+    '\t\t\tList<Object> res = t.exec();\n\t\t\tSystem.out.println(res);\n\t\t}\n\t}\n}',
+}
+
+function openExport() {
+  tabsEl.innerHTML = ''
+  tabBody.innerHTML = ''
+  const pre = document.createElement('pre')
+  tabBody.appendChild(pre)
+  const names = Object.keys(EXPORTS)
+  const show = (name) => {
+    pre.textContent = EXPORTS[name]()
+    for (const b of tabsEl.children) b.setAttribute('aria-pressed', String(b.textContent === name))
+  }
+  for (const name of names) {
+    const b = document.createElement('button')
+    b.className = 'btn'
+    b.textContent = name
+    b.addEventListener('click', () => show(name))
+    tabsEl.appendChild(b)
+  }
+  show(names[0])
+  modal.dataset.open = '1'
+}
+
+/* ---------------------------------------------------------------- wire */
+
+function setLatency(ms) {
+  if (isNaN(ms)) return
+  state.latency = ms
+  $('lat').value = String(ms)
+  $('lat-val').textContent = `${ms} ms`
+}
+
+cmdIn.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || !cmdIn.value.trim() || state.demoRunning) return
+  const line = cmdIn.value.trim()
+  cmdIn.value = ''
+  processCommand(line)
+})
+
+for (const b of document.querySelectorAll('[data-demo]'))
+  b.addEventListener('click', () => runDemo(b.dataset.demo))
+
+$('lat').addEventListener('input', (e) => setLatency(parseInt(e.target.value, 10)))
+
+$('reset-btn').addEventListener('click', () => {
+  if (state.demoRunning) return
+  logEl.innerHTML = ''
+  state.data = {}
+  discardTransaction()
+  put('reply', 'Visualizer state cleared.')
+})
+
+exportBtn.addEventListener('click', openExport)
+$('modal-close').addEventListener('click', () => { modal.dataset.open = '0' })
+modal.addEventListener('click', (e) => { if (e.target === modal) modal.dataset.open = '0' })
+
+renderAll()
+</script>
 </body>
 </html>
-
-
-
