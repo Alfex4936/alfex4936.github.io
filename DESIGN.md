@@ -6,7 +6,7 @@ colors:
   ink-raised: "#1c1b19"
   cream: "#f0eee6"
   dim: "#a3a19b"
-  faint: "#807d76"
+  faint: "#817e77"
   rule: "#2b2a27"
   signal-terracotta: "#d97757"
   tool-call-green: "#4eba65"
@@ -130,7 +130,7 @@ A warm near-black ground with cream text, and two accents held in reserve so
 that seeing one means something.
 
 ### Primary
-- **Signal Terracotta** (#d97757; #b35a37 on light): the page's only attention
+- **Signal Terracotta** (#d97757; #b25936 on light): the page's only attention
   colour. It appears on the spinning `✻` spark, on measured numbers, on the
   composer caret, on link and focus states, and on the border a control reveals
   when hovered. It marks nothing decorative.
@@ -146,7 +146,7 @@ that seeing one means something.
 - **Ink Raised** (#1c1b19): the one step up — control backgrounds, thumb plates.
 - **Cream** (#f0eee6): body text on dark, and the ground on light.
 - **Dim** (#a3a19b): secondary text — tool arguments, output lines, metadata.
-- **Faint** (#807d76): the `⎿` gutter glyphs, stack labels, placeholders, hints.
+- **Faint** (#817e77): the `⎿` gutter glyphs, stack labels, placeholders, hints.
 - **Rule** (#2b2a27): hairlines and dividers.
 - **Paper** (#f0eee6): the plate a logo sits on, whichever theme is up.
 

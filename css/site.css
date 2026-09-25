@@ -8,8 +8,9 @@
   --dim: #a3a19b;
   /* --faint carries real text (cwd/loc, the IPA line, stack labels, the
      composer placeholder), so each theme's value is the minimum lift that
-     clears 4.5:1 on its own --bg. It was 3.12:1 here, 2.54:1 on light. */
-  --faint: #807d76;
+     clears 4.5:1 on its own --bg. It was 3.12:1 here, 2.54:1 on light.
+     #807d76 measured 4.488 and did not actually clear; this is 4.551. */
+  --faint: #817e77;
   --rule: #2b2a27;
   --claude: #d97757;
   --ok: #4eba65;
@@ -33,7 +34,7 @@
   --dim: #625f59;
   --faint: #75736d;
   --rule: #e2ded4;
-  --claude: #b35a37; /* 2.5% darker than it was, to clear 4.5:1 on paper */
+  --claude: #b25936; /* darkened off the dark theme's accent; 4.556 on paper */
   --ok: #2c7a39;
   --paper: #faf9f5;
   color-scheme: light;
@@ -61,7 +62,7 @@
     --dim: #625f59;
     --faint: #75736d;
     --rule: #e2ded4;
-    --claude: #b35a37;
+    --claude: #b25936;
     --ok: #2c7a39;
     --paper: #faf9f5;
     color-scheme: light;

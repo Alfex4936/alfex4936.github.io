@@ -31,7 +31,7 @@
       "faint": {
         "role": "neutral",
         "displayName": "Faint",
-        "canonical": "oklch(59.0% 0.011 87.5)",
+        "canonical": "oklch(59.4% 0.011 87.5)",
         "tonalRamp": ["oklch(15% 0.011 87.5)", "oklch(26% 0.011 87.5)", "oklch(37% 0.011 87.5)", "oklch(48% 0.011 87.5)", "oklch(59% 0.011 87.5)", "oklch(70% 0.011 87.5)", "oklch(82% 0.011 87.5)", "oklch(95% 0.011 87.5)"]
       },
       "rule": {
@@ -69,9 +69,9 @@
     },
     "themes": [
       { "name": "dark", "note": "Default. Warm near-black ground, cream text.",
-        "tokens": { "ink": "#141413", "ink-raised": "#1c1b19", "cream": "#f0eee6", "dim": "#a3a19b", "faint": "#807d76", "rule": "#2b2a27", "signal-terracotta": "#d97757", "tool-call-green": "#4eba65", "paper": "#f0eee6" } },
+        "tokens": { "ink": "#141413", "ink-raised": "#1c1b19", "cream": "#f0eee6", "dim": "#a3a19b", "faint": "#817e77", "rule": "#2b2a27", "signal-terracotta": "#d97757", "tool-call-green": "#4eba65", "paper": "#f0eee6" } },
       { "name": "light", "note": "Paper ground. Accent darkened to clear 4.5:1 on paper.",
-        "tokens": { "ink": "#faf9f5", "ink-raised": "#f0eee6", "cream": "#141413", "dim": "#625f59", "faint": "#75736d", "rule": "#e2ded4", "signal-terracotta": "#b35a37", "tool-call-green": "#2c7a39", "paper": "#faf9f5" } },
+        "tokens": { "ink": "#faf9f5", "ink-raised": "#f0eee6", "cream": "#141413", "dim": "#625f59", "faint": "#75736d", "rule": "#e2ded4", "signal-terracotta": "#b25936", "tool-call-green": "#2c7a39", "paper": "#faf9f5" } },
       { "name": "redis", "note": "Hidden. Entered by typing a Redis command into the composer.",
         "tokens": { "ink": "#091a23", "ink-raised": "#0f2430", "cream": "#e8eef1", "dim": "#97abb5", "faint": "#678592", "rule": "#1c3542", "signal-terracotta": "#ff4438", "tool-call-green": "#4eba65", "paper": "#e8eef1" } }
     ],
