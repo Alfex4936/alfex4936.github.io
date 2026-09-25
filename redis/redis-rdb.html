@@ -11,6 +11,7 @@
   .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .row > input { flex: 1 1 12ch; min-width: 0; }
   .stack { display: grid; gap: 10px; }
+  .grid--2 { align-items: start; }
   .panel__note { margin-bottom: 8px; }
   .panel__foot { margin-top: 10px; }
   .field { display: grid; gap: 4px; }
@@ -465,54 +466,52 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const nowSeconds = Math.floor(Date.now() / 1000)
 
+  /* A field is one labelled row of bytes; each byte carries its own kind so a
+   * length prefix and the payload it introduces stay on the same line. */
+  const mk = (arr, kind) => arr.map((v) => ({ v, kind }))
+
   function emit(keys) {
     const fields = []
-    const put = (label, cite, kind, bytes, note) => fields.push({ label, cite, kind, bytes, note })
+    const put = (label, cite, bytes, note) => fields.push({ label, cite, bytes, note })
     const putString = (label, cite, s) => {
       const { pre, data } = saveStr(s)
-      const isInt = pre[0] >= 0xc0
-      put(label, cite, 'enc', pre,
-        isInt ? `Integer encoding 0x${pre[0].toString(16).toUpperCase()}: "${s}" fits, so no separate length is written.`
-              : `Length ${bytesOf(s).length}, as UTF-8 bytes.`)
-      if (data.length) put(`${label} bytes`, '', 'data', data, `"${s}" verbatim.`)
+      const how = pre[0] >= 0xc0
+        ? `Integer encoding 0x${pre[0].toString(16).toUpperCase()}: "${s}" parses as an integer, so the digits are not stored.`
+        : `A ${pre.length === 1 ? '6-bit' : pre.length === 2 ? '14-bit' : '32-bit'} length of ${bytesOf(s).length}, then "${s}" as UTF-8 bytes.`
+      put(label, cite, [...mk(pre, 'enc'), ...mk(data, 'data')], how)
     }
-    const putBlob = (label, cite, blob, note) => {
-      const pre = saveLen(blob.length)
-      put(label, cite, 'enc', pre, `The blob is written as an ordinary RDB string: length ${blob.length}.`)
-      put(`${label} bytes`, '', 'data', blob, note)
-    }
+    const putBlob = (label, cite, blob, note) =>
+      put(label, cite, [...mk(saveLen(blob.length), 'enc'), ...mk(blob, 'data')],
+        `Written as an ordinary RDB string: a length of ${blob.length}, then the blob. ${note}`)
 
-    put('Magic', 'rdb.c:1384', 'hdr', [...bytesOf(`REDIS${String(RDB_VERSION).padStart(4, '0')}`)],
+    put('Magic', 'rdb.c:1384', mk([...bytesOf(`REDIS${String(RDB_VERSION).padStart(4, '0')}`)], 'hdr'),
       `"REDIS" and the RDB version as four decimal digits. 7.2.14 writes RDB_VERSION ${RDB_VERSION} (rdb.h:41).`)
 
     const aux = [['redis-ver', '7.2.14'], ['redis-bits', '64'],
                  ['ctime', String(nowSeconds)], ['used-mem', '1048576'], ['aof-base', '0']]
     for (const [k, v] of aux) {
-      put(`AUX ${k}`, 'rdb.c:1168', 'hdr', [OP.AUX], 'Opcode 0xFA: an auxiliary field follows as two strings.')
-      putString(`  field "${k}"`, '', k)
-      putString(`  value "${v}"`, '', v)
+      put(`AUX opcode`, 'rdb.c:1168', mk([OP.AUX], 'hdr'), 'Opcode 0xFA: an auxiliary field follows as two strings, name then value.')
+      putString(`  ${k}`, '', k)
+      putString(`  = "${v}"`, '', v)
     }
 
     if (keys.length) {
-      put('SELECTDB', 'rdb.c:1313', 'hdr', [OP.SELECTDB], 'Opcode 0xFE. Every key after this belongs to the database named next.')
-      put('  db number', '', 'enc', saveLen(0), 'Length-encoded 0.')
       const expires = keys.filter((k) => k.ttl != null).length
-      put('RESIZEDB', 'rdb.c:1324', 'hdr', [OP.RESIZEDB], 'Opcode 0xFB. A sizing hint so the loader can presize both tables.')
-      put('  key count', '', 'enc', saveLen(keys.length), `${keys.length} keys in this database.`)
-      put('  expires count', '', 'enc', saveLen(expires), `${expires} of them carry an expiry.`)
+      put('SELECTDB', 'rdb.c:1313', [...mk([OP.SELECTDB], 'hdr'), ...mk(saveLen(0), 'enc')],
+        'Opcode 0xFE and a length-encoded database number. Every key after this belongs to db 0.')
+      put('RESIZEDB', 'rdb.c:1324',
+        [...mk([OP.RESIZEDB], 'hdr'), ...mk(saveLen(keys.length), 'enc'), ...mk(saveLen(expires), 'enc')],
+        `Opcode 0xFB and two lengths: ${keys.length} keys, ${expires} of them with an expiry. A sizing hint so the loader can presize both tables.`)
 
       for (const item of keys) {
         const encoding = chooseEncoding(item)
         fields.push({ record: item.key, encoding })
 
-        if (item.ttl != null) {
-          put('EXPIRETIME_MS', 'rdb.c:1130', 'hdr', [OP.EXPIRETIME_MS],
-            'Opcode 0xFC. This comes before the type byte and the key, not after.')
-          put('  expiry', 'rdb.c:140', 'data', millis8(item.ttl),
-            `${new Date(item.ttl).toISOString()} as a signed 64-bit millisecond time, little-endian.`)
-        }
+        if (item.ttl != null)
+          put('EXPIRETIME_MS', 'rdb.c:1130', [...mk([OP.EXPIRETIME_MS], 'hdr'), ...mk(millis8(item.ttl), 'data')],
+            `Opcode 0xFC then ${new Date(item.ttl).toISOString()} as a signed 64-bit millisecond time, little-endian. This comes before the type byte and the key, not after.`)
 
-        put('Value type', 'rdb.c:1156', 'hdr', [encoding.rdbType],
+        put('Value type', 'rdb.c:1156', mk([encoding.rdbType], 'hdr'),
           `0x${encoding.rdbType.toString(16).toUpperCase().padStart(2, '0')} — chosen because this value is ${encoding.name} encoded in memory (rdb.c:661).`)
         putString('Key', 'rdb.c:1157', item.key)
 
@@ -520,13 +519,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    put('EOF', 'rdb.c:1402', 'eof', [OP.EOF], 'Opcode 0xFF. Nothing follows but the checksum.')
-    const body = fields.filter((f) => f.bytes).flatMap((f) => f.bytes)
+    put('EOF', 'rdb.c:1402', mk([OP.EOF], 'eof'), 'Opcode 0xFF. Nothing follows but the checksum.')
+    const body = fields.filter((f) => f.bytes).flatMap((f) => f.bytes.map((b) => b.v))
     const sum = crc64(new Uint8Array(body))
     const d = new DataView(new ArrayBuffer(8))
     d.setBigUint64(0, sum, true)
-    put('CRC64', 'rdb.c:1406', 'back', [...new Uint8Array(d.buffer)],
-      `CRC-64/Jones over every byte above, including the EOF opcode. Little-endian. A zero here means the file was saved with rdbchecksum off and the loader skips the check (rdb.c:3334).`)
+    put('CRC64', 'rdb.c:1406', mk([...new Uint8Array(d.buffer)], 'back'),
+      'CRC-64/Jones over every byte above, including the EOF opcode. Little-endian. A zero here would mean the file was saved with rdbchecksum off, and the loader skips the check (rdb.c:3334).')
 
     return { fields, sum, size: body.length + 8 }
   }
@@ -538,10 +537,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (type === 'list') {
       const nodes = listNodes(value.map(bytesOf))
-      put('Node count', 'rdb.c:827', 'enc', saveLen(nodes.length),
-        'A quicklist is a list of nodes; a small list is a quicklist with one.')
+      put('Node count', 'rdb.c:827', mk(saveLen(nodes.length), 'enc'),
+        `A quicklist is a list of nodes and this one has ${nodes.length}. A list stays a single node until that node would pass 8192 bytes.`)
       nodes.forEach((node, i) => {
-        put(`Node ${i} container`, 'rdb.c:831', 'enc', saveLen(QUICKLIST_NODE_CONTAINER_PACKED),
+        put(`Node ${i} container`, 'rdb.c:831', mk(saveLen(QUICKLIST_NODE_CONTAINER_PACKED), 'enc'),
           '2 = packed, meaning the node holds a listpack. 1 would mean a single oversized element stored plain.')
         putBlob(`Node ${i} listpack`, 'listpack.c', listpack(node),
           `${node.length} elements: 4-byte total size, 2-byte count, one entry each, then the 0xFF terminator.`)
@@ -552,11 +551,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (type === 'set') {
       if (encoding.rdbType === T.SET_INTSET)
         return putBlob('Intset', 'intset.h:42', intsetBlob(value.map((m) => string2ll(m))),
-          '4-byte width, 4-byte count, then the members sorted ascending — all little-endian.')
+          '4-byte value width, 4-byte count, then the members sorted ascending — all little-endian.')
       if (encoding.rdbType === T.SET_LISTPACK)
         return putBlob('Listpack', 'listpack.c', listpack(value.map(bytesOf)),
           `${value.length} members, one listpack entry each.`)
-      put('Member count', 'rdb.c:865', 'enc', saveLen(value.length), `${value.length} members follow, one string each.`)
+      put('Member count', 'rdb.c:865', mk(saveLen(value.length), 'enc'), `${value.length} members follow, one string each.`)
       value.forEach((m, i) => putString(`Member ${i}`, '', m))
       return
     }
@@ -565,7 +564,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (encoding.rdbType === T.HASH_LISTPACK)
         return putBlob('Listpack', 'listpack.c', listpack(value.flat().map(bytesOf)),
           `${value.length} pairs, flattened to field, value, field, value.`)
-      put('Field count', 'rdb.c:941', 'enc', saveLen(value.length), `${value.length} field/value pairs follow.`)
+      put('Field count', 'rdb.c:941', mk(saveLen(value.length), 'enc'), `${value.length} field/value pairs follow.`)
       value.forEach(([f, v], i) => { putString(`Field ${i}`, '', f); putString(`Value ${i}`, '', v) })
       return
     }
@@ -576,11 +575,12 @@ document.addEventListener('DOMContentLoaded', () => {
       return putBlob('Listpack', 'listpack.c', listpack(flat),
         `${value.length} members, ascending by score, each followed by its score as a listpack entry.`)
     }
-    put('Member count', 'rdb.c:905', 'enc', saveLen(value.length), `${value.length} members follow.`)
+    put('Member count', 'rdb.c:905', mk(saveLen(value.length), 'enc'),
+      `${value.length} members follow, walked from the skiplist tail so the highest score is written first.`)
     for (const e of [...value].reverse()) {
       putString(`Member "${e.member}"`, 'rdb.c:916', e.member)
-      put(`  score ${e.score}`, 'rdb.c:634', 'data', double8(e.score),
-        'An IEEE 754 double, little-endian. Members are walked from the skiplist tail, so the highest score is written first.')
+      put(`  score ${e.score}`, 'rdb.c:634', mk(double8(e.score), 'data'),
+        'An IEEE 754 double, little-endian, always 8 bytes — no decimal text.')
     }
   }
 
@@ -647,7 +647,7 @@ document.addEventListener('DOMContentLoaded', () => {
       line.append(head)
       const bytes = el('div', 'bytes')
       for (const b of f.bytes) {
-        const cell = el('span', `byte byte--${f.kind}`, b.toString(16).toUpperCase().padStart(2, '0'))
+        const cell = el('span', `byte byte--${b.kind}`, b.v.toString(16).toUpperCase().padStart(2, '0'))
         cell.title = f.note || f.label
         bytes.append(cell)
       }
@@ -775,9 +775,7 @@ document.addEventListener('DOMContentLoaded', () => {
     refresh()
   })
   $('dl').addEventListener('click', () => {
-    const out = emit(keys)
-    const bytes = new Uint8Array(out.fields.filter((f) => f.bytes).flatMap((f) => f.bytes))
-    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }))
+    const url = URL.createObjectURL(new Blob([rdbBytes()], { type: 'application/octet-stream' }))
     const a = document.createElement('a')
     a.href = url
     a.download = 'dump.rdb'
@@ -787,8 +785,10 @@ document.addEventListener('DOMContentLoaded', () => {
     URL.revokeObjectURL(url)
   })
 
-  /* Used by scripts/redis-check.mjs and by hand, to diff against a real dump. */
-  window.rdbBytes = () => new Uint8Array(emit(keys).fields.filter((f) => f.bytes).flatMap((f) => f.bytes))
+  /* Exposed so the file can be pulled out and diffed against a real dump. */
+  const rdbBytes = () =>
+    new Uint8Array(emit(keys).fields.filter((f) => f.bytes).flatMap((f) => f.bytes.map((b) => b.v)))
+  window.rdbBytes = rdbBytes
   window.rdbLoadSample = () => { keys.length = 0; for (const s of SAMPLE) keys.push({ ...s }); refresh() }
 
   syncHint()
