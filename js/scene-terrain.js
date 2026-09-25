@@ -642,6 +642,7 @@ export default function terrain({ THREE, canvas, width, height, tokens, still })
     if (hover === d) return
     const was = hover
     hover = d
+    lastThin = -1 // thin against the new callout this frame, not up to 160ms later
     if (was) {
       paintBody(was)
       paintEdges(was, was.rimC, C.rule)

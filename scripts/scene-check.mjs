@@ -170,18 +170,22 @@ const READER_PROBE = `(async () => {
   const dlg = document.querySelector('.reader');
   const opened = await wait(() => dlg.hasAttribute('open'));
   await wait(() => document.querySelectorAll('.page__slot').length > 0);
-  await new Promise(r => setTimeout(r, 2500));
+  // Polled, not slept: pdf.js comes off a CDN, and a fixed 2.5s failed on slow fetches.
+  await wait(() => document.querySelectorAll('.page__slot.is-printed').length >= 2);
   const pct0 = document.querySelector('.reader__pct').textContent;
   document.querySelector('[data-zoom="in"]').click();
   await new Promise(r => setTimeout(r, 700));
   const pctIn = document.querySelector('.reader__pct').textContent;
   document.querySelector('.reader__close').click();
-  await new Promise(r => setTimeout(r, 500));
-  return JSON.stringify({ ran: true, opened,
+  // A 240ms close waits on popstate and animationend, and under SwiftShader frames
+  // run slow enough that a fixed 500ms sleep failed a close that worked.
+  const tc = Date.now();
+  const closed = await wait(() => !dlg.hasAttribute('open'), 3000);
+  return JSON.stringify({ ran: true, opened, closed, closeMs: Date.now() - tc,
     slots: document.querySelectorAll('.page__slot').length,
     printed: document.querySelectorAll('.page__slot.is-printed').length,
     pageno: document.querySelector('.reader__pageno').textContent.trim(),
-    zoomed: pctIn !== pct0, closed: !dlg.hasAttribute('open') });
+    zoomed: pctIn !== pct0 });
 })()`
 
 async function run() {
@@ -248,7 +252,7 @@ async function run() {
       else if (!/^1 \/ \d+$/.test(r.pageno)) fail('résumé reader', `page counter reads "${r.pageno}"`)
       else if (!r.zoomed) fail('résumé reader', 'zoom in did not change the percentage')
       else if (!r.closed) fail('résumé reader', 'close left the dialog open')
-      else ok('résumé reader', `${r.printed} pages painted, ${r.pageno}, zoom and close work`)
+      else ok('résumé reader', `${r.printed} pages painted, ${r.pageno}, zoom works, closed in ${r.closeMs}ms`)
     }
 
     if (errors.length) fail(`${page} console`, errors.slice(0, 4).join(' | '))
