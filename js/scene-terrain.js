@@ -13,8 +13,8 @@ const M = [
     y: 2026,
     k: 'ratio',
     m: 373 / 4,
-    ko: '서비스 상태 평가 1회당 List 호출, 20샤드 기준. 회귀 테스트로 호출 수를 고정',
-    en: 'List calls per service phase evaluation on a 20-shard service, pinned by a regression test',
+    ko: '서비스 상태 평가 1회당 List 호출. 샤드 수에 비례하던 것을 상수로 바꿈(20샤드 기준), 회귀 테스트로 고정',
+    en: 'List calls per service status check on a 20-shard service; now constant instead of growing with shard count, pinned by a regression test',
   },
   {
     v: '90%·50%',
@@ -22,8 +22,8 @@ const M = [
     y: 2026,
     k: 'level',
     m: 90,
-    ko: '재구축한 E2E 스위트가 실제 호출로 덮는 사용자 API·어드민 API 비율, CI에서 매일 실행',
-    en: 'user and admin API surface the rebuilt E2E suite covers with real calls, daily in CI',
+    ko: '사용자 API·어드민 API를 실제 호출로 덮는 비율. 멈춰 있던 E2E 스위트를 재구축, CI 매일·PR 단위 표적 실행',
+    en: 'user APIs · admin APIs covered with real calls by the E2E suite, rebuilt after it had stalled; daily in CI, targeted runs per PR',
   },
   {
     v: '27·301',
@@ -31,8 +31,8 @@ const M = [
     y: 2026,
     k: 'level',
     m: 27 + 301,
-    ko: '접근제어·감사 로깅 Redis 모듈의 감사 이벤트 종류와 분류한 커맨드 수',
-    en: 'audit event types and classified commands in the access-control Redis module',
+    ko: '감사 이벤트 종류·분류한 커맨드 수. 설계를 전담한 접근제어 모듈',
+    en: 'audit event types · commands classified in the access-control module (sole designer)',
   },
   {
     v: '66×·85%',

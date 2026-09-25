@@ -172,24 +172,24 @@
           <li class="row">
             <span class="row__num"><span class="was">373</span><span class="a">→</span><span class="n">4</span></span>
             <span class="row__what">
-              <span lang="ko">서비스 상태 평가 1회당 List 호출, 20샤드 기준. 회귀 테스트로 호출 수를 고정</span>
-              <span lang="en">List calls per service phase evaluation on a 20-shard service, pinned by a regression test</span>
+              <span lang="ko">서비스 상태 평가 1회당 List 호출. 샤드 수에 비례하던 것을 상수로 바꿈(20샤드 기준), 회귀 테스트로 고정</span>
+              <span lang="en">List calls per service status check on a 20-shard service; now constant instead of growing with shard count, pinned by a regression test</span>
               <span class="row__where"><span lang="ko">Kubernetes 오퍼레이터</span><span lang="en">Kubernetes operator</span> · 2026</span>
             </span>
           </li>
           <li class="row">
             <span class="row__num"><span class="n">90%</span><span class="a">·</span><span class="n">50%</span></span>
             <span class="row__what">
-              <span lang="ko">재구축한 E2E 스위트가 실제 호출로 덮는 사용자 API·어드민 API 비율, CI에서 매일 실행</span>
-              <span lang="en">user and admin API surface the rebuilt E2E suite covers with real calls, daily in CI</span>
+              <span lang="ko">사용자 API·어드민 API를 실제 호출로 덮는 비율. 멈춰 있던 E2E 스위트를 재구축, CI 매일·PR 단위 표적 실행</span>
+              <span lang="en">user APIs · admin APIs covered with real calls by the E2E suite, rebuilt after it had stalled; daily in CI, targeted runs per PR</span>
               <span class="row__where">LINE Plus · 2026</span>
             </span>
           </li>
           <li class="row">
             <span class="row__num"><span class="n">27</span><span class="a">·</span><span class="n">301</span></span>
             <span class="row__what">
-              <span lang="ko">접근제어·감사 로깅 Redis 모듈의 감사 이벤트 종류와 분류한 커맨드 수. 보안 감사 조직의 스펙 기준선으로 채택</span>
-              <span lang="en">audit event types and classified commands in the access-control Redis module, adopted as the security org's spec baseline</span>
+              <span lang="ko">감사 이벤트 종류·분류한 커맨드 수. 설계를 전담한 접근제어 모듈로, 사내 보안 감사 조직과 합의해 스펙 기준선으로 채택</span>
+              <span lang="en">audit event types · commands classified in the access-control module (sole designer); signed off by the security audit org as its spec baseline</span>
               <span class="row__where"><span lang="ko">Redis 모듈, C</span><span lang="en">Redis module, C</span> · 2026</span>
             </span>
           </li>
@@ -537,7 +537,7 @@ master   +FULLRESYNC -&gt; fork -&gt; rdb
       scene('./js/scene-city.js?v=13', 'scene-city')
 
       // The figure only earns its space once its own scene is going to run.
-      if (await scene('./js/scene-terrain.js?v=4', 'scene-terrain'))
+      if (await scene('./js/scene-terrain.js?v=5', 'scene-terrain'))
         for (const fig of document.querySelectorAll('.fig')) fig.hidden = false
     </script>
   </body>
