@@ -33,11 +33,17 @@
 
   .ents { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
   .ent { padding: 6px 8px; background: var(--bg-3); border: 1px solid var(--rule); border-radius: 4px; position: relative; }
-  .ent__id { font: 500 11px/1.6 var(--mono); color: var(--fg); overflow-wrap: anywhere; padding-right: 16px; }
+  .ent__id { position: relative; font: 500 11px/1.6 var(--mono); color: var(--fg); overflow-wrap: anywhere; padding-right: 16px; }
   .ent__d { font: 400 11px/1.6 var(--mono); color: var(--faint); overflow-wrap: anywhere; }
   .ent__f { font: 400 11px/1.6 var(--mono); color: var(--dim); overflow-wrap: anywhere; }
   .ent--tomb { opacity: 0.42; border-style: dashed; }
-  .ent--tomb .ent__id { color: var(--dim); text-decoration: line-through; }
+  .ent--tomb .ent__id { color: var(--dim); padding-right: 0; }
+  /* A drawable rule, so XDEL can strike the entry where it sits instead of
+     repainting it. line-through cannot be animated. */
+  .ent--tomb .ent__id::after {
+    content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px;
+    background: var(--red); transform-origin: left center;
+  }
   .ent__x {
     position: absolute; top: 2px; right: 3px; padding: 0 4px; line-height: 1.4;
     font: 400 12px/1.4 var(--mono); border: 0; color: var(--faint);
@@ -54,6 +60,28 @@
   .cons { padding: 7px 9px; background: var(--bg-3); border: 1px solid var(--rule); border-radius: 4px; }
   .cons + .cons { margin-top: 6px; }
   .sub { font: 400 11px/1.7 var(--mono); color: var(--faint); margin: 8px 0 4px; }
+  .cpel { font: 400 11px/1.6 var(--mono); color: var(--dim); overflow-wrap: anywhere; padding: 2px 0; }
+
+  /* ------------------------------------------------------------- motion */
+
+  @keyframes strike { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  @keyframes dim-out { from { opacity: 1; } to { opacity: 0.42; } }
+  @keyframes land {
+    from { border-color: var(--red); box-shadow: 0 0 0 1px color-mix(in srgb, var(--red) 50%, transparent); }
+    to { box-shadow: 0 0 0 1px transparent; }
+  }
+  @keyframes pulse {
+    from { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--red) 55%, transparent); }
+    to { box-shadow: inset 0 0 0 1px transparent; }
+  }
+  .ent--tomb.is-striking { animation: dim-out 0.42s ease-out both; }
+  .ent--tomb.is-striking .ent__id::after { animation: strike 0.42s cubic-bezier(0.4, 0, 0.2, 1) both; }
+  .ent.is-new, .node.is-new { animation: land 0.7s ease-out both; }
+  .pel.is-changed, .cpel.is-changed { animation: pulse 0.8s ease-out both; }
+
+  /* An element the model removed, held at its last position long enough to
+     be seen leaving. Fixed, so it cannot affect layout or scroll width. */
+  .ghost { position: fixed; z-index: 20; pointer-events: none; margin: 0 !important; }
 </style>
 </head>
 <body>
@@ -822,7 +850,7 @@ function el(tag, cls, text) {
   return n;
 }
 
-function render() {
+function paint() {
   const stats = $("stats");
   stats.textContent = "";
   const tombs = nodeList().reduce((a, n) => a + n.deleted, 0);
@@ -848,6 +876,7 @@ function render() {
   } else {
     for (const node of s.nodes.values()) {
       const box = el("div", "node");
+      box.dataset.key = "node:" + node.masterId;
       box.appendChild(el("div", "node__key", "radix key  " + node.masterId));
       const m = el("div", "master");
       m.appendChild(el("b", "", "master entry  "));
@@ -859,6 +888,8 @@ function render() {
       const ents = el("div", "ents");
       for (const e of node.entries) {
         const cell = el("div", "ent" + (e.deleted ? " ent--tomb" : ""));
+        cell.dataset.key = "ent:" + e.id;
+        cell.dataset.state = e.deleted ? "tomb" : "live";
         cell.appendChild(el("div", "ent__id", e.id.toString()));
         cell.appendChild(el("div", "ent__d",
           "+" + (e.id.ms - node.masterId.ms) + "/" + (e.id.seq - node.masterId.seq) +
@@ -894,6 +925,8 @@ function render() {
       for (const [id, nack] of g.pel) {
         const orphan = !entryExists(parseID(id, 0n).id);
         const row = el("div", "pel" + (orphan ? " pel--orphan" : ""));
+        row.dataset.key = "gpel:" + g.name + ":" + id;
+        row.dataset.state = nack.consumer.name + "/" + nack.deliveryCount;
         row.appendChild(el("b", "", id));
         row.appendChild(el("span", "", "  owner " + nack.consumer.name +
           "  delivery_count " + nack.deliveryCount + "  idle "));
@@ -908,8 +941,17 @@ function render() {
       if (!g.consumers.size) box.appendChild(el("p", "faint", "none"));
       for (const c of g.consumers.values()) {
         const cb = el("div", "cons");
+        cb.dataset.key = "cons:" + g.name + ":" + c.name;
         cb.appendChild(el("div", "ent__id", c.name + "  —  PEL " + c.pel.size));
-        cb.appendChild(el("div", "ent__f", c.pel.size ? [...c.pel.keys()].join("  ") : "no pending entries"));
+        if (!c.pel.size) cb.appendChild(el("div", "ent__f", "no pending entries"));
+        /* One element per pending ID, keyed by group and ID rather than by
+         * consumer, so a claim is the same element in a new box. */
+        for (const [id, nack] of c.pel) {
+          const row = el("div", "cpel", id + "  ×" + nack.deliveryCount);
+          row.dataset.key = "cpel:" + g.name + ":" + id;
+          row.dataset.state = c.name + "/" + nack.deliveryCount;
+          cb.appendChild(row);
+        }
         box.appendChild(cb);
       }
       groups.appendChild(box);
@@ -942,6 +984,93 @@ function syncSelects() {
   if (!$("ack-id").value && ids.length) $("ack-id").value = ids[0];
   $("rg-go").disabled = !names.length;
   $("ac-go").disabled = !names.length;
+}
+
+/* ------------------------------------------------------------- motion */
+
+/* FLIP. The only input is the difference between the DOM the model produced
+ * last time and the DOM it produces now, so an animation cannot describe a
+ * transition the model did not make. Nothing here reads a command or a flag. */
+
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)");
+const EASE = "cubic-bezier(0.4, 0, 0.2, 1)";
+
+function snapshot() {
+  const m = new Map();
+  for (const node of document.querySelectorAll("[data-key]")) {
+    const parent = node.parentElement && node.parentElement.closest("[data-key]");
+    m.set(node.dataset.key, {
+      rect: node.getBoundingClientRect(),
+      state: node.dataset.state || "",
+      parent: parent ? parent.dataset.key : null,
+      clone: node.cloneNode(true),
+    });
+  }
+  return m;
+}
+
+function move(node, dx, dy, ms) {
+  node.animate([{ transform: "translate(" + dx + "px, " + dy + "px)" }, { transform: "none" }],
+    { duration: ms, easing: EASE });
+}
+
+/* A new PEL row is a delivery, so it comes from wherever its entry is sitting;
+ * anything else simply arrives. */
+function enter(node) {
+  const m = /^[gc]pel:[^:]+:(.+)$/.exec(node.dataset.key);
+  const src = m && document.querySelector('[data-key="ent:' + m[1] + '"]');
+  const to = node.getBoundingClientRect();
+  if (src) {
+    const from = src.getBoundingClientRect();
+    node.animate([
+      { transform: "translate(" + (from.left - to.left) + "px, " + (from.top - to.top) + "px) scale(0.92)", opacity: 0 },
+      { transform: "none", opacity: 1 },
+    ], { duration: 460, easing: EASE });
+    return;
+  }
+  node.animate([{ opacity: 0, transform: "scale(0.97)" }, { opacity: 1, transform: "none" }],
+    { duration: 300, easing: EASE });
+  if (node.classList.contains("ent") || node.classList.contains("node")) node.classList.add("is-new");
+}
+
+function animate(before) {
+  if (REDUCED.matches) return;
+  const after = new Map();
+  for (const node of document.querySelectorAll("[data-key]")) after.set(node.dataset.key, node);
+
+  /* Gone from the model: show it leaving from where it was. A child whose
+   * container also went is skipped, so a trimmed node leaves once. */
+  for (const [key, b] of before) {
+    if (after.has(key) || (b.parent && !after.has(b.parent))) continue;
+    const ghost = b.clone;
+    ghost.removeAttribute("data-key");
+    for (const d of ghost.querySelectorAll("[data-key]")) d.removeAttribute("data-key");
+    ghost.classList.add("ghost");
+    ghost.style.left = b.rect.left + "px";
+    ghost.style.top = b.rect.top + "px";
+    ghost.style.width = b.rect.width + "px";
+    document.body.appendChild(ghost);
+    ghost.animate([{ opacity: 1 }, { opacity: 0, transform: "translateY(5px) scale(0.97)" }],
+      { duration: 380, easing: "ease-out" }).finished.then(() => ghost.remove(), () => ghost.remove());
+  }
+
+  for (const [key, node] of after) {
+    const b = before.get(key);
+    if (!b) { enter(node); continue; }
+    const r = node.getBoundingClientRect();
+    const dx = b.rect.left - r.left, dy = b.rect.top - r.top;
+    /* A claim carries the row across the page, so it gets longer to read. */
+    if (Math.abs(dx) > 1 || Math.abs(dy) > 1) move(node, dx, dy, key.startsWith("cpel:") ? 520 : 300);
+    if (b.state === node.dataset.state) continue;
+    if (node.dataset.state === "tomb") node.classList.add("is-striking");
+    else if (key.startsWith("gpel:") || key.startsWith("cpel:")) node.classList.add("is-changed");
+  }
+}
+
+function render() {
+  const before = snapshot();
+  paint();
+  animate(before);
 }
 
 /* Idle time is the input to min-idle-time, so it has to keep moving. */
