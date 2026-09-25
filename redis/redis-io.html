@@ -1,882 +1,813 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Redis I/O Buffer Management Visualizer</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #111827;
-            color: #d1d5db;
-        }
-        .font-code {
-            font-family: 'Fira Code', monospace;
-        }
-        .buffer {
-            border: 1px solid #374151;
-            background-color: #1f2937;
-            min-height: 80px;
-            transition: all 0.3s ease;
-        }
-        .buffer-block {
-            border: 1px solid #4b5563;
-            background-color: #374151;
-            padding: 8px;
-            margin: 4px;
-            border-radius: 4px;
-            transition: all 0.3s ease;
-            opacity: 0;
-            transform: scale(0.95);
-            animation: fadeIn 0.5s forwards;
-        }
-        .buffer-content {
-            white-space: pre-wrap;
-            word-break: break-all;
-            color: #9ca3af;
-        }
-        .highlight-red { color: #f87171; }
-        .highlight-blue { color: #60a5fa; }
-        .highlight-green { color: #4ade80; }
-        .highlight-yellow { color: #facc15; }
-        
-        .icon-btn {
-            background-color: #374151;
-            border: 1px solid #4b5563;
-            transition: background-color 0.2s ease, transform 0.2s ease;
-        }
-        .icon-btn:hover {
-            background-color: #4b5563;
-            transform: translateY(-2px);
-        }
-        .icon-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .info-box {
-            background-color: rgba(31, 41, 55, 0.8);
-            backdrop-filter: blur(5px);
-            border: 1px solid #374151;
-            position: relative; /* Needed for z-index to apply */
-            transition: z-index 0s 0.3s; /* Delay z-index change to prevent flicker */
-        }
-
-        @keyframes fadeIn {
-            to {
-                opacity: 1;
-                transform: scale(1);
-            }
-        }
-        
-        @keyframes flash {
-            0% { background-color: #374151; }
-            50% { background-color: #4b5563; }
-            100% { background-color: #374151; }
-        }
-
-        .processing-flash {
-            animation: flash 0.5s ease-in-out;
-        }
-
-        /* --- Tooltip Styles --- */
-        .tooltip {
-            position: relative;
-            display: inline-block;
-            border-bottom: 1px dotted #6b7280;
-            cursor: help;
-        }
-        .tooltip:hover {
-            z-index: 30; /* Elevate the tooltip on hover to appear above sibling columns */
-        }
-        .tooltip .tooltip-text {
-            visibility: hidden;
-            width: 320px;
-            background-color: #111827;
-            color: #d1d5db;
-            text-align: left;
-            border-radius: 6px;
-            padding: 10px;
-            position: absolute;
-            z-index: 50;
-            top: 110%; /* Positioned below the button */
-            left: 50%;
-            margin-left: -160px; /* Centered horizontally */
-            opacity: 0;
-            transition: opacity 0.3s;
-            border: 1px solid #4b5563;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-            font-size: 0.85rem;
-            line-height: 1.5;
-        }
-        .tooltip:hover .tooltip-text {
-            visibility: visible;
-            opacity: 1;
-        }
-        .tooltip .tooltip-text .tooltip-title {
-            font-weight: bold;
-            color: #facc15;
-            font-family: 'Fira Code', monospace;
-        }
-         .tooltip .tooltip-text pre {
-            background-color: #1f2937;
-            padding: 8px;
-            border-radius: 4px;
-            margin-top: 8px;
-            white-space: pre-wrap;
-        }
-        .tooltip .tooltip-text .list-disc {
-            padding-left: 1.25rem;
-        }
-
-        .client-flags-display {
-            background-color: #1f2937;
-            border: 1px solid #374151;
-            padding: 0.5rem 1rem;
-            border-radius: 0.5rem;
-            font-family: 'Fira Code', monospace;
-            color: #facc15;
-        }
-
-
-        .collapsible-content {
-            position: relative;
-            overflow: hidden;
-            transition: max-height 0.4s ease-in-out;
-        }
-        .collapsible-content.is-collapsed {
-            max-height: 70px; /* Approx 3-4 lines */
-        }
-        .collapsible-content.is-collapsed::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 30px;
-            background: linear-gradient(to top, #1f2937, transparent);
-        }
-        .toggle-collapse-btn {
-            color: #9ca3af;
-            background-color: #374151;
-            border: 1px solid #4b5563;
-            cursor: pointer;
-            margin-top: 8px;
-            float: right;
-            transition: all 0.2s ease;
-            width: 28px;
-            height: 28px;
-            border-radius: 9999px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .toggle-collapse-btn:hover {
-            color: #e5e7eb;
-            background-color: #4b5563;
-            transform: scale(1.1);
-        }
-    </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Redis Client I/O Buffers</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+<link rel="stylesheet" href="viz.css" />
+<style>
+  /* Page-specific only: viz.css has no fill bar, reply-block stack or stat grid. */
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .row--gap { gap: 8px 14px; }
+  .stack { display: grid; gap: 12px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 8px 14px;
+           margin-top: 10px; font: 400 12px/1.5 var(--mono); }
+  .stat { display: grid; gap: 2px; min-width: 0; }
+  .stat span { color: var(--faint); font-size: 11px; }
+  .stat b { font-weight: 500; color: var(--fg); overflow-wrap: anywhere; }
+  .bar { position: relative; height: 20px; margin-top: 10px; background: var(--bg);
+         border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+  .bar__fill { position: absolute; top: 0; bottom: 0; left: 0; width: 0;
+               background: color-mix(in srgb, var(--red) 34%, transparent); transition: width .2s; }
+  .bar__sent { position: absolute; top: 0; bottom: 0; left: 0; width: 0;
+               background: color-mix(in srgb, var(--ok) 32%, transparent); transition: width .2s; }
+  .bar__mark { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--warn); }
+  .blocks { display: grid; gap: 6px; margin-top: 10px; }
+  .block { padding: 7px 9px; background: var(--bg-3); border: 1px solid var(--rule);
+           border-radius: 4px; font: 400 11px/1.6 var(--mono); color: var(--dim); }
+  .block b { font-weight: 500; color: var(--fg); }
+  .block .sent { color: var(--ok); }
+  .block--part { border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+  select { max-width: 100%; }
+  .empty { margin-top: 10px; font: 400 12px/1.6 var(--mono); color: var(--faint); }
+  .dimmed { opacity: .42; }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font: 400 12px/1.7 var(--mono); }
+  th { text-align: left; font-weight: 500; color: var(--faint); padding: 4px 14px 4px 0; white-space: nowrap; }
+  td { padding: 4px 14px 4px 0; color: var(--dim); vertical-align: top; }
+  tr + tr td { border-top: 1px solid var(--rule); }
+  td.now { color: var(--fg); }
+  tr.sel td { color: var(--fg); }
+  .note { margin-top: 10px; font: 400 12px/1.65 var(--mono); color: var(--faint); }
+  .flags { font: 500 12px/1.6 var(--mono); color: var(--warn); }
+</style>
 </head>
-<body class="p-4 md:p-8">
+<body>
+<div class="wrap">
 
-    <div class="max-w-7xl mx-auto">
-        <!-- Header -->
-        <header class="text-center mb-8">
-            <div class="flex items-center justify-center gap-4">
-                 <svg class="w-12 h-12 text-red-500" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16.994 6.232a1 1 0 0 1 1.414 0l2.475 2.475a1 1 0 0 1 0 1.414l-2.475 2.475a1 1 0 0 1-1.414-1.414l1.06-1.061h-2.11a5.002 5.002 0 0 0-4.99 4.783V17a1 1 0 1 1-2 0v-2.082A7.002 7.002 0 0 1 15.944 8.11H13.88l1.058-1.058a1 1 0 0 1 .056-1.82Zm-9.988 11.536a1 1 0 0 1-1.414 0L3.117 15.293a1 1 0 0 1 0-1.414l2.475-2.475a1 1 0 0 1 1.414 1.414L5.948 13.88h2.11a5.002 5.002 0 0 0 4.99-4.783V7a1 1 0 1 1 2 0v2.082A7.002 7.002 0 0 1 8.056 15.89H10.12l-1.058 1.058a1 1 0 0 1-.056 1.82Z" fill="currentColor"></path></svg>
-                <h1 class="text-3xl md:text-4xl font-bold text-white">Redis Client Connection I/O Visualizer</h1>
-            </div>
-            <p class="mt-2 text-lg text-gray-400">A deep-dive into how Redis handles client command parsing and response buffering.</p>
-        </header>
+  <a class="back" href="../index.html">&larr; index</a>
+  <h1>Redis Client I/O Buffers</h1>
+  <p class="src">Modelled on <a href="https://github.com/redis/redis/blob/7.2.14/src/networking.c">src/networking.c</a> and <a href="https://github.com/redis/redis/blob/7.2.14/src/server.c">src/server.c</a>, Redis 7.2.14. Defaults read from that release's <code>src/config.c</code>; buffer constants from <code>src/server.h</code>.</p>
 
-        <!-- Controls -->
-        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8 text-white">
-            <button id="sendSmallCmd" class="icon-btn p-3 rounded-lg flex flex-col items-center justify-center tooltip">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                <span>Small Command</span>
-                <span class="text-xs text-gray-400 font-code">GET mykey</span>
-                <span class="tooltip-text">
-                    <span class="tooltip-title">Fast Path: Static Buffer</span>
-                    <p class="mt-2">Simulates a common command like GET or PING. The reply is small and fits entirely in the static `client->buf`. This is the most efficient path as it avoids any `malloc` overhead.</p>
-                </span>
-            </button>
-            <button id="sendLargeCmd" class="icon-btn p-3 rounded-lg flex flex-col items-center justify-center tooltip">
-                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 15 4 4 4-4"/><path d="M7 19V5"/><path d="m21 9-4-4-4 4"/><path d="M17 5v14"/></svg>
-                <span>Large Command</span>
-                <span class="text-xs text-gray-400 font-code">MSET k1..v5</span>
-                 <span class="tooltip-text">
-                    <span class="tooltip-title">Overflow: Dynamic List</span>
-                    <p class="mt-2">Simulates a command with a large reply that exceeds the 16KB static buffer. Redis fills the static buffer first, then allocates heap blocks and adds them to the `client->reply` linked list to handle the rest. This demonstrates the hybrid strategy's overflow mechanism.</p>
-                </span>
-            </button>
-            <button id="sendPipelinedCmd" class="icon-btn p-3 rounded-lg flex flex-col items-center justify-center tooltip">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>
-                <span>Pipelined</span>
-                 <span class="text-xs text-gray-400 font-code">Mixed Batch</span>
-                  <span class="tooltip-text">
-                    <span class="tooltip-title">Pipelining & Sticky Dynamic List</span>
-                    <p class="mt-2">Simulates a client sending multiple commands at once. This shows how once the dynamic list (`client->reply`) is used for a large reply, even subsequent small replies are appended to it to preserve order and prepare for an efficient `writev()` call.</p>
-                </span>
-            </button>
-             <button id="slowClientCmd" class="icon-btn p-3 rounded-lg flex flex-col items-center justify-center tooltip">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2c-1.5 0-3 1.2-3 3v1c0 1.2 1.5 3 3 3s3-1.8 3-3V5c0-1.8-1.5-3-3-3z"/><path d="M10 10c-1.5 0-3 1.2-3 3v1c0 1.2 1.5 3 3 3s3-1.8 3-3v-1c0-1.8-1.5-3-3-3z"/><path d="M10 18c-1.5 0-3 1.2-3 3v1c0 .6.4 1 1 1h4c.6 0 1-.4 1-1v-1c0-1.8-1.5-3-3-3z"/></svg>
-                <span>Slow Client</span>
-                <span class="text-xs text-gray-400 font-code">Buffer Limit</span>
-                 <span class="tooltip-text">
-                    <span class="tooltip-title">How slow is "slow"?</span>
-                    <p class="mt-2">Redis defines this with the <code class="text-xs">client-output-buffer-limit</code> config. It has two conditions for disconnecting a client:</p>
-                    <ul class="list-disc list-inside mt-2 space-y-1">
-                        <li><b>Hard Limit:</b> If the buffer size immediately exceeds this value (e.g., `256mb`), the client is disconnected right away.</li>
-                        <li><b>Soft Limit:</b> If the buffer size exceeds a smaller value (e.g., `64mb`) and stays above it for a continuous period (e.g., `60` seconds), the client is disconnected.</li>
-                    </ul>
-                     <p class="mt-2">This is a crucial defense mechanism to prevent a single slow or buggy client from consuming all the server's memory and causing an outage.</p>
-                </span>
-            </button>
-            <button id="writeToClient" class="icon-btn p-3 rounded-lg flex flex-col items-center justify-center tooltip">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17v-2.2a2 2 0 0 0-.5-1.5L5.8 9.7a2 2 0 0 1-1.6-2V4a2 2 0 0 1 2-2h11.2a2 2 0 0 1 2 2v3.6a2 2 0 0 1-1.6 2l-3.7 3.5a2 2 0 0 0-.5 1.5V17"/><path d="M6 22h12"/></svg>
-                <span>Write to Client</span>
-                <span class="text-xs text-gray-400 font-code">write() / writev()</span>
-                <span class="tooltip-text">
-                    <span class="tooltip-title">Kernel Syscall Simulation</span>
-                    <p class="mt-2">Simulates the network write operation. Redis calls `write()` if only the static buffer is used, or the more efficient `writev()` if the dynamic list has blocks. This action flushes the output buffers and sends the data over the network to the client.</p>
-                </span>
-            </button>
-            <button id="resetSim" class="icon-btn p-3 rounded-lg flex flex-col items-center justify-center bg-red-800/50 border-red-600 hover:bg-red-700/50 tooltip">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v6h6"/><path d="M21 12A9 9 0 0 0 6 5.3L3 8"/><path d="M21 22v-6h-6"/><path d="M3 12a9 9 0 0 0 15 6.7l3-2.7"/></svg>
-                <span>Reset</span>
-                <span class="text-xs text-gray-400">Clear State</span>
-                 <span class="tooltip-text">
-                    <span class="tooltip-title">Reset Simulation</span>
-                    <p class="mt-2">Clears all buffers and logs, returning the visualizer to its initial state, ready for a new scenario.</p>
-                </span>
-            </button>
-        </div>
+  <p class="lede">
+    A client costs Redis three buffers: one <code>sds</code> for what it sent, one flat
+    reply buffer, and a list of heap blocks for whatever did not fit. Only the third is
+    policed by <code>client-output-buffer-limit</code>, and for a <b>normal</b> client that
+    limit is <code>0 0 0</code> &mdash; off (config.c:170). The page most people remember
+    says 256mb/64mb/60; that is the <b>replica</b> preset. Pick a class, run a scenario, and
+    watch which checks actually fire.
+  </p>
 
-        <!-- Main Visualization Grid -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-            <!-- INPUT BUFFER -->
-            <div class="flex flex-col gap-4">
-                <h2 class="text-2xl font-semibold text-center text-white">1. Input Buffer Management</h2>
-                <div class="info-box p-4 rounded-lg">
-                    <h3 class="font-bold text-lg font-code text-cyan-400">
-                        <span class="tooltip">client->querybuf
-                            <span class="tooltip-text">
-                                <span class="tooltip-title">sds querybuf</span>
-                                <p class="mt-2">The query buffer is an SDS (Simple Dynamic String), Redis's custom string library. It automatically grows to accommodate incoming data from the client's socket. This single buffer is highly efficient as it minimizes the number of `read()` syscalls needed.</p>
-                            </span>
-                        </span>
-                        <span class="text-sm text-gray-400">(sds)</span>
-                    </h3>
-                    <p class="text-sm text-gray-400 mt-1">A single, dynamic string that grows as data arrives from the socket. Redis parses commands directly from this buffer.</p>
-                    <div class="mt-4 flex items-center justify-between font-code text-sm">
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2">
-                             <div>
-                                <span class="tooltip">qbuf
-                                    <span class="tooltip-text">
-                                        <span class="tooltip-title">sdslen(c->querybuf)</span>
-                                        <p class="mt-2">Represents the total number of bytes currently stored in the query buffer, equivalent to its string length. This is the `qbuf` field you see in the `CLIENT LIST` command.</p>
-                                    </span>
-                                </span>: <span id="qbuf" class="font-bold highlight-yellow">0</span>
-                            </div>
-                            <div>
-                                 <span class="tooltip">qbuf-free
-                                    <span class="tooltip-text">
-                                        <span class="tooltip-title">sdsavail(c->querybuf)</span>
-                                        <p class="mt-2">The amount of pre-allocated, unused space at the end of the SDS string. SDS strings often allocate more memory than needed to avoid frequent reallocations on growth, and this value shows that extra capacity. It corresponds to `qbuf-free` in `CLIENT LIST`.</p>
-                                    </span>
-                                </span>: <span id="qbuf-free" class="font-bold highlight-yellow">0</span>
-                            </div>
-                            <div>
-                                <span class="tooltip">qb_pos
-                                    <span class="tooltip-text">
-                                        <span class="tooltip-title">size_t qb_pos</span>
-                                        <p class="mt-2">The "query buffer position". This is a crucial field that marks how far Redis has parsed into the buffer. Instead of deleting processed data immediately (which is slow), Redis just advances this position marker. The buffer is only trimmed later for efficiency.</p>
-                                    </span>
-                                </span>: <span id="qb_pos" class="font-bold highlight-yellow">0</span>
-                            </div>
-                            <div>
-                                <span class="tooltip">peak
-                                    <span class="tooltip-text">
-                                        <span class="tooltip-title">size_t querybuf_peak</span>
-                                        <p class="mt-2">Tracks the maximum size the query buffer has reached since the client connected. This is useful for monitoring and debugging clients that might be sending unusually large commands.</p>
-                                    </span>
-                                </span>: <span id="querybuf_peak" class="font-bold highlight-yellow">0</span>
-                            </div>
-                        </div>
-                        <div class="text-right">
-                            <span class="text-xs text-gray-400">CLIENT FLAGS</span>
-                             <div class="tooltip">
-                                <div id="clientFlags" class="client-flags-display mt-1">[N]</div>
-                                <span class="tooltip-text">
-                                    <span class="tooltip-title">Client Flags</span>
-                                    <p class="mt-2">Represents the internal state of the client connection. This simulation shows:</p>
-                                    <ul class="list-disc list-inside mt-2 space-y-1 font-code">
-                                        <li><b>N</b>: Normal client</li>
-                                        <li><b>A</b>: CLIENT_CLOSE_ASAP (client will be closed asynchronously, often due to buffer limits)</li>
-                                    </ul>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div id="inputBuffer" class="buffer p-4 rounded-lg flex-grow">
-                    <div class="w-full text-gray-500">Waiting for client command...</div>
-                </div>
-                <div id="log" class="bg-gray-900 rounded-lg p-4 h-32 overflow-y-auto font-code text-sm text-gray-400">
-                    <p>> Log messages will appear here.</p>
-                </div>
-            </div>
-
-            <!-- OUTPUT BUFFERS -->
-            <div class="flex flex-col gap-4">
-                <h2 class="text-2xl font-semibold text-center text-white">2. Output Buffers (Hybrid Strategy)</h2>
-                
-                <!-- Static Buffer -->
-                <div>
-                    <div class="info-box p-4 rounded-lg">
-                        <h3 class="font-bold text-lg font-code text-fuchsia-400">
-                             <span class="tooltip">client->buf
-                                <span class="tooltip-text">
-                                    <span class="tooltip-title">char *buf</span>
-                                    <p class="mt-2">A pointer to a fixed-size buffer allocated when a client connects. Redis writes small replies here to completely avoid the overhead of a `malloc` call, which is a major performance win for common, short commands (like OK, PONG, integer replies).</p>
-                                </span>
-                            </span>
-                            <span class="text-sm text-gray-400">(char[16384])</span>
-                        </h3>
-                        <p class="text-sm text-gray-400 mt-1">A fixed-size static buffer for small replies. Avoids `malloc` overhead for common cases. <span class="font-code text-gray-300">_addReplyToBuffer()</span></p>
-                        <div class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2 font-code text-sm">
-                            <div>
-                                <span class="tooltip">bufpos
-                                    <span class="tooltip-text">
-                                        <span class="tooltip-title">int bufpos</span>
-                                        <p class="mt-2">An integer that acts as a position marker or offset. It tracks how many bytes have been written into the static `buf` so far. When `bufpos` equals the buffer's size, it's full.</p>
-                                    </span>
-                                </span>: <span id="bufpos" class="font-bold highlight-yellow">0</span>
-                            </div>
-                            <div>
-                                <span class="tooltip">size
-                                     <span class="tooltip-text">
-                                        <span class="tooltip-title">PROTO_REPLY_CHUNK_BYTES</span>
-                                        <p class="mt-2">This is a compile-time constant, typically 16KB. It's chosen to be large enough to handle the vast majority of Redis command replies without needing a heap allocation, but small enough not to waste memory for thousands of connected clients.</p>
-                                    </span>
-                                </span>: <span class="font-bold text-gray-300">16384</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="staticBuffer" class="buffer p-4 rounded-lg mt-2">
-                        <div class="text-center text-gray-500">Empty</div>
-                    </div>
-                </div>
-                
-                <!-- Dynamic List -->
-                <div>
-                    <div class="info-box p-4 rounded-lg">
-                        <h3 class="font-bold text-lg font-code text-fuchsia-400">
-                            <span class="tooltip">client->reply
-                                <span class="tooltip-text">
-                                    <span class="tooltip-title">list *reply</span>
-                                    <p class="mt-2">A pointer to a doubly linked list. When the static buffer overflows, Redis allocates reply blocks on the heap and appends them to this list. Appending to the tail is an O(1) operation, making it extremely fast.</p>
-                                    <pre><code class="language-c">// Simplified C structure for each block
-typedef struct clientReplyBlock {
-  size_t size; // Total allocated size of buf
-  size_t used; // Bytes currently used in buf
-  char buf[];  // Flexible array holding reply data
-} clientReplyBlock;</code></pre>
-                                </span>
-                            </span>
-                             <span class="text-sm text-gray-400">(list *)</span>
-                        </h3>
-                        <p class="text-sm text-gray-400 mt-1">A linked list of heap-allocated blocks for large or subsequent replies. Enables efficient `writev()` syscall. <span class="font-code text-gray-300">_addReplyProtoToList()</span></p>
-                        <div class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2 font-code text-sm">
-                            <div>
-                                <span class="tooltip">list_len
-                                     <span class="tooltip-text">
-                                        <span class="tooltip-title">listLength(c->reply)</span>
-                                        <p class="mt-2">This shows the number of separate heap-allocated blocks in the dynamic list. The size of each block is variable:</p>
-                                        <ul class="list-disc list-inside mt-2 space-y-1">
-                                            <li>If a reply is larger than 16KB, a block of the exact size is created.</li>
-                                            <li>If a reply is smaller, a block of at least 16KB (<code class="text-xs">PROTO_REPLY_CHUNK_BYTES</code>) is created to accommodate future small appends without needing another `malloc`.</li>
-                                        </ul>
-                                    </span>
-                                </span>: <span id="reply_list_len" class="font-bold highlight-yellow">0</span>
-                            </div>
-                            <div>
-                                <span class="tooltip">reply_bytes
-                                     <span class="tooltip-text">
-                                        <span class="tooltip-title">size_t reply_bytes</span>
-                                        <p class="mt-2">Tracks the total *allocated memory* (not just used bytes) of all blocks in the `client->reply` list. This value is critical for enforcing the <code class="text-xs">client-output-buffer-limit</code> to prevent a slow client from consuming all the server's memory.</p>
-                                    </span>
-                                </span>: <span id="reply_bytes" class="font-bold highlight-yellow">0</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="dynamicList" class="buffer p-4 rounded-lg mt-2">
-                         <div class="text-center text-gray-500">Empty</div>
-                    </div>
-                </div>
-            </div>
-        </div>
+  <section class="panel">
+    <div class="panel__head"><h2>Client</h2><span class="cite">networking.c:2641 readQueryFromClient</span></div>
+    <div class="row row--gap">
+      <label for="cls">getClientType</label>
+      <select id="cls">
+        <option value="normal">normal</option>
+        <option value="pubsub">pubsub</option>
+      </select>
+      <label for="obuf">client-output-buffer-limit normal</label>
+      <select id="obuf">
+        <option value="default">0 0 0 &mdash; default, no limit</option>
+        <option value="demo">64kb 32kb 5 &mdash; CONFIG SET</option>
+      </select>
+      <span class="flags" id="flags">flags=N</span>
     </div>
 
-    <script>
-        // --- DOM Elements ---
-        const sendSmallCmdBtn = document.getElementById('sendSmallCmd');
-        const sendLargeCmdBtn = document.getElementById('sendLargeCmd');
-        const sendPipelinedCmdBtn = document.getElementById('sendPipelinedCmd');
-        const writeToClientBtn = document.getElementById('writeToClient');
-        const resetSimBtn = document.getElementById('resetSim');
-        const slowClientCmdBtn = document.getElementById('slowClientCmd');
+    <div class="row" style="margin-top:10px">
+      <button id="b-small">GET mykey</button>
+      <button id="b-large">GET big &mdash; 22 KB reply</button>
+      <button id="b-pipe">Pipelined &times;3</button>
+      <button id="b-bigarg">SET huge &mdash; 64 KB argument</button>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <button id="b-slow">Slow client &mdash; 16 unread replies</button>
+      <button id="b-bulk">Bulk length 600 MB</button>
+      <button id="b-flood">Force qbuf past 1 GB</button>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <button id="b-write" class="btn--go">writeToClient &mdash; one event</button>
+      <button id="b-cron">clientsCron tick</button>
+      <button id="b-sleep">beforeSleep</button>
+      <button id="b-reset">Reset</button>
+    </div>
+  </section>
 
-        const inputBufferEl = document.getElementById('inputBuffer');
-        const staticBufferEl = document.getElementById('staticBuffer');
-        const dynamicListEl = document.getElementById('dynamicList');
-        const logEl = document.getElementById('log');
+  <div class="grid grid--2">
 
-        // Info panel elements
-        const qbufEl = document.getElementById('qbuf');
-        const qbufFreeEl = document.getElementById('qbuf-free');
-        const qbPosEl = document.getElementById('qb_pos');
-        const querybufPeakEl = document.getElementById('querybuf_peak');
-        const bufposEl = document.getElementById('bufpos');
-        const replyListLenEl = document.getElementById('reply_list_len');
-        const replyBytesEl = document.getElementById('reply_bytes');
-        const clientFlagsEl = document.getElementById('clientFlags');
+    <div class="stack">
+      <section class="panel" id="p-qbuf">
+        <div class="panel__head"><h2>c-&gt;querybuf <span class="faint">sds</span></h2><span class="cite">server.h:1163</span></div>
+        <p class="muted">One <code>sds</code> per client. Each readable event copies at most
+          <code>PROTO_IOBUF_LEN</code> = 16,384 bytes into it (networking.c:2653), then
+          <code>processInputBuffer</code> parses and trims with <code>sdsrange</code>
+          (networking.c:2626&ndash;2629).</p>
+        <div class="bar"><div class="bar__fill" id="qbuf-fill"></div><div class="bar__mark" id="qbuf-pos"></div></div>
+        <div class="stats">
+          <div class="stat"><span class="tip">qbuf<span class="tip__body">sdslen(c-&gt;querybuf) &mdash; bytes held. This is <code>qbuf</code> in CLIENT LIST.</span></span><b id="s-qbuf">0</b></div>
+          <div class="stat"><span class="tip">qbuf-free<span class="tip__body">sdsavail(c-&gt;querybuf) &mdash; allocated but unused. Reclaimed by clientsCronResizeQueryBuffer (server.c:731), not permanent.</span></span><b id="s-qfree">0</b></div>
+          <div class="stat"><span class="tip">qb_pos<span class="tip__body">How far the parser has read. Processed bytes are not deleted immediately; the trim happens once, at the end of processInputBuffer (networking.c:2626).</span></span><b id="s-qpos">0</b></div>
+          <div class="stat"><span class="tip">qbuf-peak<span class="tip__body">server.h:1165 calls it a &ldquo;Recent (100ms or more) peak&rdquo;. clientsCron resets it to sdslen every pass (server.c:757), so it is not a lifetime high-water mark.</span></span><b id="s-qpeak">0</b></div>
+          <div class="stat"><span class="tip">bulklen<span class="tip__body">Length of the bulk argument being read, or -1. At or above PROTO_MBULK_BIG_ARG (32 KB) the read is sized to the exact remainder so the argument lands alone in the buffer (networking.c:2660&ndash;2668).</span></span><b id="s-bulklen">-1</b></div>
+          <div class="stat"><span class="tip">idle<span class="tip__body">server.unixtime &minus; c-&gt;lastinteraction. Past 2 seconds the cron reclaims free space outright (server.c:739).</span></span><b id="s-idle">0s</b></div>
+        </div>
+        <p class="note" id="grow-note">Growth: sdsMakeRoomFor, greedy &mdash; doubles below SDS_MAX_PREALLOC (sds.c:263, sds.h:36).</p>
+      </section>
 
-        // --- Constants ---
-        const PROTO_REPLY_CHUNK_BYTES = 16 * 1024; // 16KB
+      <section class="panel">
+        <div class="panel__head"><h2>Input limits</h2><span class="cite">config.c:3227, config.c:3247</span></div>
+        <div class="scroll"><table>
+          <tr><th>limit</th><th>default</th><th>on breach</th></tr>
+          <tr><td class="now">client-query-buffer-limit</td><td>1 GB</td>
+              <td>WARNING log <code>Closing client that reached max query buffer length</code>, then <code>freeClientAsync</code>. <b>No error reply.</b> Checked after every read; master clients exempt. <span class="cite">networking.c:2725&ndash;2734</span></td></tr>
+          <tr><td class="now">proto-max-bulk-len</td><td>512 MB</td>
+              <td><code>-ERR Protocol error: invalid bulk length</code> to the client, then CLIENT_CLOSE_AFTER_REPLY. <span class="cite">networking.c:2356&ndash;2360, 2264</span></td></tr>
+          <tr><td class="now">PROTO_IOBUF_LEN</td><td>16 KB</td>
+              <td>Not a limit &mdash; the per-event read size. <span class="cite">server.h:176</span></td></tr>
+          <tr><td class="now">pre-AUTH bulk length</td><td>16 KB</td>
+              <td>On a password-protected server, before AUTH: <code>-ERR Protocol error: unauthenticated bulk length</code>. <span class="cite">networking.c:2361&ndash;2364</span></td></tr>
+        </table></div>
+      </section>
+    </div>
 
-        // --- Simulation State ---
-        let state = {};
+    <div class="stack">
+      <section class="panel" id="p-buf">
+        <div class="panel__head"><h2>c-&gt;buf <span class="faint">char *</span></h2><span class="cite">server.h:1273</span></div>
+        <p class="muted">Not <code>char[16384]</code>. Since 7.0 it is a heap pointer sized by
+          <code>buf_usable_size</code>, allocated once in <code>createClient</code>
+          (networking.c:133) and resized per client between <b>1 KB and 16 KB</b> by
+          <code>clientsCronResizeOutputBuffer</code> (server.c:771&ndash;812).</p>
+        <div class="bar"><div class="bar__fill" id="buf-fill"></div><div class="bar__sent" id="buf-sent"></div></div>
+        <div class="stats">
+          <div class="stat"><span class="tip">bufpos<span class="tip__body">Bytes written into c-&gt;buf. _addReplyToBuffer fills up to <code>buf_usable_size - bufpos</code> and returns a short count, so one reply can straddle buffer and list (networking.c:337&ndash;339).</span></span><b id="s-bufpos">0</b></div>
+          <div class="stat"><span class="tip">buf_usable_size<span class="tip__body">The live size. _addReplyToBuffer measures against this field, never against the constant (networking.c:331).</span></span><b id="s-bufsize">16,384</b></div>
+          <div class="stat"><span class="tip">buf_peak<span class="tip__body">Drives the resize. Below half the buffer, cron shrinks to max(PROTO_REPLY_MIN_BYTES, buf_peak+1) (server.c:782&ndash;786); at exactly the buffer size it doubles, capped at PROTO_REPLY_CHUNK_BYTES (server.c:787&ndash;790).</span></span><b id="s-bufpeak">16,384</b></div>
+          <div class="stat"><span class="tip">sentlen<span class="tip__body">Offset into the first not-yet-drained buffer. A write that stops early leaves this non-zero and the rest is sent on a later event (networking.c:1943).</span></span><b id="s-sentlen">0</b></div>
+        </div>
+        <p class="note" id="buf-note">Counted by the output buffer limit: <b>no</b> &mdash; getClientOutputBufferMemoryUsage ignores bufpos (networking.c:3799&ndash;3801).</p>
+      </section>
 
-        function getInitialState() {
-            return {
-                querybuf: '',
-                qb_pos: 0,
-                querybuf_peak: 0,
-                
-                buf: '',
-                bufpos: 0,
-                
-                reply: [], // Array of strings to simulate linked list
-                reply_bytes: 0,
-                
-                flags: ['N'], // 'N' = Normal
-                isProcessing: false
-            };
-        }
+      <section class="panel" id="p-reply">
+        <div class="panel__head"><h2>c-&gt;reply <span class="faint">list of clientReplyBlock</span></h2><span class="cite">networking.c:348</span></div>
+        <p class="muted">Sticky: once the list is non-empty, <code>_addReplyToBuffer</code> returns 0
+          immediately and every later reply goes here, to keep order (networking.c:335).
+          A new block is only allocated after the tail's free space is used up
+          (networking.c:357&ndash;366).</p>
+        <div class="blocks" id="blocks"></div>
+        <div class="stats">
+          <div class="stat"><span class="tip">list_len<span class="tip__body">Number of blocks. New blocks are max(len, PROTO_REPLY_CHUNK_BYTES) rounded up to the allocator's usable size (networking.c:371&ndash;374); this page models the request size, not the allocator's rounding.</span></span><b id="s-listlen">0</b></div>
+          <div class="stat"><span class="tip">reply_bytes<span class="tip__body">Sum of block <code>size</code>, i.e. allocated bytes, not used bytes (networking.c:378).</span></span><b id="s-replybytes">0</b></div>
+          <div class="stat"><span class="tip">used_mem<span class="tip__body">What the limit is compared against: reply_bytes plus a fixed per-node overhead of sizeof(listNode)+sizeof(clientReplyBlock), which this page omits (networking.c:3800&ndash;3801).</span></span><b id="s-usedmem">0</b></div>
+          <div class="stat"><span class="tip">soft since<span class="tip__body">obuf_soft_limit_reached_time. The first crossing only records the time; the close needs a later check to find it still over after soft_limit_seconds (networking.c:3909&ndash;3921).</span></span><b id="s-soft">&mdash;</b></div>
+        </div>
+      </section>
 
-        // --- Logging ---
-        function addLog(message, type = 'info') {
-            const p = document.createElement('p');
-            let prefix = '>';
-            if (type === 'client') prefix = '<span class="text-blue-400">[CLIENT]</span>';
-            if (type === 'server') prefix = '<span class="text-green-400">[SERVER]</span>';
-            if (type === 'error') prefix = '<span class="text-red-400">[ERROR]</span>';
-            p.innerHTML = `${prefix} ${message}`;
-            logEl.appendChild(p);
-            logEl.scrollTop = logEl.scrollHeight;
-        }
+      <section class="panel">
+        <div class="panel__head"><h2>client-output-buffer-limit</h2><span class="cite">config.c:169&ndash;173</span></div>
+        <div class="scroll"><table>
+          <tr><th>class</th><th>hard</th><th>soft</th><th>seconds</th></tr>
+          <tr id="r-normal"><td class="now">normal</td><td>0</td><td>0</td><td>0</td></tr>
+          <tr id="r-pubsub"><td class="now">pubsub</td><td>32mb</td><td>8mb</td><td>60</td></tr>
+          <tr><td class="now">replica</td><td>256mb</td><td>64mb</td><td>60</td></tr>
+        </table></div>
+        <p class="note">Zero means unconfigured: networking.c:3900&ndash;3905 only sets the hard or
+          soft flag when the configured byte count is non-zero, so a stock <b>normal</b> client
+          has no output buffer limit at all. A replica's usage is not <code>c-&gt;reply</code> at all
+          &mdash; it reads the shared replication buffer through <code>ref_repl_buf_node</code>
+          (networking.c:3788&ndash;3798), so it is out of scope here.</p>
+        <p class="note">Before AUTH on a password-protected server the class is bypassed:
+          over 1 KB of output is an immediate close (networking.c:3882&ndash;3883).</p>
+        <p class="note"><code>maxmemory-clients</code> (default <code>0</code>, disabled &mdash;
+          config.c:3248) is the other cap: a server-wide ceiling on the combined memory of all
+          normal and pubsub clients, which evicts the largest clients first
+          (networking.c:4589&ndash;4590, 4583). It is the only limit that counts querybuf, reply
+          buffer and reply list in one number (networking.c:3808&ndash;3814).</p>
+      </section>
+    </div>
+  </div>
 
-        // --- Rendering ---
-        function render() {
-            // Input Buffer
-            qbufEl.textContent = state.querybuf.length;
-            qbufFreeEl.textContent = 0; // SDS avail is complex, simplifying for viz
-            qbPosEl.textContent = state.qb_pos;
-            querybufPeakEl.textContent = state.querybuf_peak;
-            clientFlagsEl.textContent = `[${state.flags.join(', ')}]`;
+  <section class="panel">
+    <div class="panel__head"><h2>Event log</h2><span class="cite">t = simulated server.unixtime</span></div>
+    <div class="log" id="log"></div>
+  </section>
 
-            if (state.querybuf.length > 0) {
-                const processed = state.querybuf.substring(0, state.qb_pos);
-                const unprocessed = state.querybuf.substring(state.qb_pos);
-                inputBufferEl.innerHTML = `
-                    <div class="font-code buffer-content text-left w-full">
-                        <span class="text-gray-500">${escapeHtml(processed)}</span><span class="text-yellow-300 animate-pulse">|</span><span class="highlight-green">${escapeHtml(unprocessed)}</span>
-                    </div>
-                `;
-            } else {
-                inputBufferEl.innerHTML = '<div class="w-full text-gray-500">Waiting for client command...</div>';
-            }
+  <section class="panel">
+    <div class="panel__head"><h2>How a client is actually dropped</h2><span class="cite">networking.c:3940</span></div>
+    <p class="muted">Two steps, not one. <code>closeClientOnOutputBufferLimitReached</code> only
+      <b>detects</b>; it never closes the socket itself.</p>
+    <pre>detect   _addReplyProtoToList allocates a new block      networking.c:380
+         closeClientOnOutputBufferLimitReached(c, 1)
+           reply_bytes == 0 ? return 0                     networking.c:3945
+           checkClientOutputBufferLimits(c)                networking.c:3947
+           <b>freeClientAsync(c)</b>                              networking.c:3951
+             c-&gt;flags |= CLIENT_CLOSE_ASAP                 networking.c:1736
+             listAddNodeTail(server.clients_to_close, c)   networking.c:1742
+           log "Client %s <b>scheduled to be closed ASAP</b> for
+                overcoming of output buffer limits."       networking.c:3953
 
-            // Static Output Buffer
-            const COLLAPSE_THRESHOLD = 250; // characters
-            bufposEl.textContent = state.bufpos;
-            if (state.bufpos > 0) {
-                 if (state.buf.length > COLLAPSE_THRESHOLD) {
-                    staticBufferEl.innerHTML = `
-                        <div class="flow-root">
-                            <div class="collapsible-content is-collapsed">
-                                <div class="font-code buffer-content highlight-blue">${escapeHtml(state.buf)}</div>
-                            </div>
-                            <button class="toggle-collapse-btn" title="Show More">
-                                <svg class="icon-expand" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                                <svg class="icon-collapse hidden" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
-                            </button>
-                        </div>
-                    `;
-                } else {
-                    staticBufferEl.innerHTML = `<div class="font-code buffer-content highlight-blue">${escapeHtml(state.buf)}</div>`;
-                }
-            } else {
-                staticBufferEl.innerHTML = '<div class="text-center text-gray-500">Empty</div>';
-            }
+reap     beforeSleep                                      server.c:1745
+           <b>freeClientsInAsyncFreeQueue()</b>                  networking.c:1797</pre>
+    <p class="note">The check runs where a block is allocated &mdash; networking.c:380, 833 and
+      1217 &mdash; so an append that fits in the tail triggers no check at all. Separately,
+      <code>clientsCron</code> calls it with <code>async = 0</code> (server.c:1042), which takes
+      the <code>freeClient</code> branch and closes the client on the spot
+      (networking.c:3956). The same cron pass also resizes the query buffer (server.c:1028) and
+      the reply buffer &mdash; different work, same tick.</p>
+  </section>
 
-            // Dynamic Output List
-            replyListLenEl.textContent = state.reply.length;
-            replyBytesEl.textContent = state.reply_bytes;
-            if (state.reply.length > 0) {
-                dynamicListEl.innerHTML = state.reply.map((block, i) => `
-                    <div class="buffer-block">
-                         <div class="text-sm font-bold text-gray-300 tooltip">Block ${i+1} (clientReplyBlock)
-                            <span class="tooltip-text">
-                                <span class="tooltip-title">clientReplyBlock *</span>
-                                <p class="mt-2">Each block is a <code class="text-xs">clientReplyBlock</code> struct created on the heap via <code class="text-xs">zmalloc()</code>. This strategy avoids expensive <code class="text-xs">realloc()</code> calls that would be needed to grow a single large buffer. A list of blocks is also perfect for the <code class="text-xs">writev()</code> syscall, which sends multiple memory chunks in a single kernel call, drastically reducing overhead.</p>
-                            </span>
-                         </div>
-                        <div class="font-code buffer-content highlight-blue text-xs">${escapeHtml(block.substring(0, 100))}${block.length > 100 ? '...' : ''}</div>
-                    </div>
-                `).join('');
-            } else {
-                dynamicListEl.innerHTML = '<div class="text-center text-gray-500">Empty</div>';
-            }
-        }
-        
-        // --- Core Simulation Logic ---
-        function toggleButtons(disabled) {
-            state.isProcessing = disabled;
-            sendSmallCmdBtn.disabled = disabled;
-            sendLargeCmdBtn.disabled = disabled;
-            sendPipelinedCmdBtn.disabled = disabled;
-            writeToClientBtn.disabled = disabled;
-            slowClientCmdBtn.disabled = disabled;
-        }
+</div>
 
-        function escapeHtml(unsafe) {
-            return unsafe
-                 .replace(/&/g, "&amp;")
-                 .replace(/</g, "&lt;")
-                 .replace(/>/g, "&gt;")
-                 .replace(/"/g, "&quot;")
-                 .replace(/'/g, "&#039;")
-                 .replace(/\r\n/g, '<span class="text-red-400">\\r\\n</span>\n');
-        }
+<script>
+'use strict'
 
-        async function readFromClient(data) {
-            if (state.isProcessing) return;
-            toggleButtons(true);
+/* Constants, all read from the 7.2.14 tree. */
+const PROTO_IOBUF_LEN = 16 * 1024            // server.h:176
+const PROTO_REPLY_CHUNK_BYTES = 16 * 1024    // server.h:177
+const PROTO_MBULK_BIG_ARG = 32 * 1024        // server.h:179
+const PROTO_RESIZE_THRESHOLD = 32 * 1024     // server.h:180
+const PROTO_REPLY_MIN_BYTES = 1024           // server.h:181
+const NET_MAX_WRITES_PER_EVENT = 64 * 1024   // server.h:119
+const SDS_MAX_PREALLOC = 1024 * 1024         // sds.h:36
+const QUERYBUF_LIMIT = 1024 * 1024 * 1024    // config.c:3247
+const PROTO_MAX_BULK_LEN = 512 * 1024 * 1024 // config.c:3227
+const IOV_MAX = 1024                         // min(IOV_MAX, conn->iovcnt), networking.c:1832
 
-            addLog(`Client sending ${data.length} bytes.`, 'client');
-            
-            // Simulate reading data into the query buffer
-            for (const char of data) {
-                state.querybuf += char;
-                if (state.querybuf.length > state.querybuf_peak) {
-                    state.querybuf_peak = state.querybuf.length;
-                }
-                if (Math.random() < 0.2) { // Simulate network packets
-                    render();
-                    await sleep(10);
-                }
-            }
-            render();
-            await sleep(200);
+const OBUF = {                               // config.c:169-173
+  normal: { def: [0, 0, 0], demo: [64 * 1024, 32 * 1024, 5] },
+  pubsub: { def: [32 * 1024 * 1024, 8 * 1024 * 1024, 60] },
+}
 
-            await processQueryBuffer();
+const $ = (id) => document.getElementById(id)
+const n = (v) => v.toLocaleString('en-US')
+const bytes = (v) => {
+  if (v >= 1024 * 1024 * 1024) return (v / 1024 / 1024 / 1024).toFixed(v % (1024 ** 3) ? 2 : 0) + ' GB'
+  if (v >= 1024 * 1024) return (v / 1024 / 1024).toFixed(v % (1024 * 1024) ? 1 : 0) + ' MB'
+  if (v >= 1024) return (v / 1024).toFixed(v % 1024 ? 1 : 0) + ' KB'
+  return v + ' B'
+}
+const both = (v) => n(v) + (v >= 1024 ? ' · ' + bytes(v) : '')
 
-            toggleButtons(false);
-        }
+let s
+function initial() {
+  return {
+    qbuf_len: 0, qbuf_alloc: 0, qb_pos: 0, qbuf_peak: 0, bulklen: -1, idle: 0,
+    bufpos: 0, buf_usable_size: PROTO_REPLY_CHUNK_BYTES, buf_peak: PROTO_REPLY_CHUNK_BYTES,
+    reply: [], reply_bytes: 0, sentlen: 0,
+    soft_since: null, unixtime: 0,
+    asap: false, afterReply: false, gone: false, dimBuf: false,
+  }
+}
 
-        async function processQueryBuffer() {
-            addLog(`Parsing query buffer...`, 'server');
-            
-            while(state.qb_pos < state.querybuf.length) {
-                // This is a naive RESP parser to find the end of the current command in the buffer.
-                const remainingBuffer = state.querybuf.substring(state.qb_pos);
-                const commandMatch = remainingBuffer.match(/^\*(\d+)\r\n/);
-                if (!commandMatch) {
-                    addLog(`Incomplete command in buffer. Waiting for more data.`, 'info');
-                    break; 
-                }
+/* --------------------------------------------------------------------- log */
 
-                const argCount = parseInt(commandMatch[1], 10);
-                let commandStr = commandMatch[0];
-                let currentParsePos = commandMatch[0].length;
-                let argsFound = 0;
+function log(msg, kind) {
+  const p = document.createElement('p')
+  const t = document.createElement('span')
+  t.className = 't'
+  t.textContent = 't+' + s.unixtime
+  p.appendChild(t)
+  const b = document.createElement('span')
+  if (kind) b.className = kind
+  b.textContent = msg
+  p.appendChild(b)
+  const el = $('log')
+  el.appendChild(p)
+  el.scrollTop = el.scrollHeight
+}
 
-                for(let i=0; i < argCount; i++) {
-                    const bulkLenMatch = remainingBuffer.substring(currentParsePos).match(/^\$(\d+)\r\n/);
-                    if (!bulkLenMatch) break; 
-                    const bulkLen = parseInt(bulkLenMatch[1], 10);
-                    const argEndPos = currentParsePos + bulkLenMatch[0].length + bulkLen + 2; // +2 for trailing \r\n
-                    if (remainingBuffer.length < argEndPos) break; 
-                    
-                    currentParsePos = argEndPos;
-                    argsFound++;
-                }
+/* ------------------------------------------------------------------- input */
 
-                if (argsFound !== argCount) {
-                     addLog(`Incomplete command in buffer. Waiting for more data.`, 'info');
-                     break; 
-                }
+function sdsMakeRoomFor(addlen, greedy) {           // sds.c:263, sds.h:36
+  const avail = s.qbuf_alloc - s.qbuf_len
+  if (avail >= addlen) return
+  let newlen = s.qbuf_len + addlen
+  if (greedy) newlen = newlen < SDS_MAX_PREALLOC ? newlen * 2 : newlen + SDS_MAX_PREALLOC
+  s.qbuf_alloc = newlen
+}
 
-                commandStr = remainingBuffer.substring(0, currentParsePos);
-                addLog(`Found command: <code>${escapeHtml(commandStr.split('\r\n')[1])}</code>`, 'server');
+// readQueryFromClient, networking.c:2641
+function readEvent(pending) {
+  let readlen = PROTO_IOBUF_LEN                     // :2653
+  let big = false
+  if (s.bulklen >= PROTO_MBULK_BIG_ARG) {           // :2660-2661
+    const remaining = s.bulklen + 2 - (s.qbuf_len - s.qb_pos)
+    big = true
+    if (remaining > 0) readlen = remaining          // :2668
+  }
+  const qblen = s.qbuf_len
+  if (big || s.qbuf_alloc < PROTO_IOBUF_LEN) {      // :2677-2678
+    sdsMakeRoomFor(readlen, false)                  // :2684 non-greedy
+    if (s.qbuf_peak < qblen + readlen) s.qbuf_peak = qblen + readlen   // :2687
+    $('grow-note').textContent = big
+      ? 'Growth: sdsMakeRoomForNonGreedy, sized to the exact remainder of a ' + bytes(s.bulklen) +
+        ' argument (networking.c:2663, 2684).'
+      : 'Growth: sdsMakeRoomForNonGreedy — first allocation is not greedy, to avoid colliding with PROTO_RESIZE_THRESHOLD (networking.c:2681).'
+  } else {
+    sdsMakeRoomFor(readlen, true)                   // :2689 greedy
+    readlen = s.qbuf_alloc - s.qbuf_len             // :2692 read all of sdsavail
+    $('grow-note').textContent =
+      'Growth: sdsMakeRoomFor, greedy — doubles below SDS_MAX_PREALLOC, then reads all of sdsavail (sds.c:263, networking.c:2692).'
+  }
 
-                // Animate parsing this single command
-                const endOfCmdPosInQuerybuf = state.qb_pos + commandStr.length;
-                for (let i = state.qb_pos; i < endOfCmdPosInQuerybuf; i++) {
-                    state.qb_pos = i + 1;
-                    if (i % 5 === 0) {
-                        render();
-                        await sleep(1);
-                    }
-                }
-                state.qb_pos = endOfCmdPosInQuerybuf;
-                render();
-                inputBufferEl.classList.add('processing-flash');
-                await sleep(300);
-                inputBufferEl.classList.remove('processing-flash');
-                
-                addLog(`Command parsed. Generating reply.`, 'server');
-                await generateReplyForSingleCommand(commandStr);
-            }
+  const nread = Math.min(readlen, pending)
+  s.qbuf_len += nread                               // :2713
+  if (s.qbuf_peak < s.qbuf_len) s.qbuf_peak = s.qbuf_len             // :2715
+  s.idle = 0                                        // :2717 lastinteraction
+  log('read() ' + n(nread) + ' bytes, readlen was ' + n(readlen) + ' — qbuf now ' + both(s.qbuf_len))
 
-            // After the loop, trim the entire processed part of the buffer.
-            if (state.qb_pos > 0) {
-                addLog(`Trimming ${state.qb_pos} processed bytes from querybuf (sdsrange).`, 'server');
-                state.querybuf = state.querybuf.substring(state.qb_pos);
-                state.qb_pos = 0;
-                render();
-                await sleep(500);
-            }
-        }
-        
-        async function generateReplyForSingleCommand(command) {
-            // Simplified reply generation for individual commands
-            let reply = '';
-            if (command.includes('GET')) {
-                reply = `$"${Math.random().toString(36).substring(7)}"\r\n`;
-            } else if (command.includes('MSET')) {
-                 // For MSET, we generate a reply that is guaranteed to overflow the static buffer
-                let largeVal = 'long_value_'.repeat(2048); // ~30KB reply
-                reply = `$${largeVal.length}\r\n${largeVal}\r\n`;
-            } else if (command.includes('INCR')) {
-                 reply = `:${Math.floor(Math.random() * 100)}\r\n`;
-            } else if (command.includes('PING')) {
-                reply = `+PONG\r\n`;
-            }
-            
-            await _addReplyToBufferOrList(reply);
-        }
+  if (s.qbuf_len > QUERYBUF_LIMIT) {                // :2725
+    log('Closing client that reached max query buffer length — WARNING log only, no error reply sent.', 'hit')
+    freeClientAsync()
+    return nread
+  }
+  return nread
+}
 
-        async function _addReplyToBufferOrList(data) {
-            addLog(`Executing _addReplyToBufferOrList for ${data.length} bytes.`, 'server');
-            
-            // If the dynamic list is already in use, append everything there.
-            if (state.reply.length > 0) {
-                addLog(`Dynamic list is active. Appending ${data.length} bytes to a new block.`, 'info');
-                state.reply.push(data);
-                state.reply_bytes += data.length; // Approximate; doesn't account for block overhead
-                render();
-                await sleep(300);
-                return;
-            }
+// processInputBuffer, networking.c:2545
+function processInput(cmds) {
+  for (const c of cmds) {
+    if (s.gone || s.afterReply) break
+    if (c.bulklen !== undefined) {
+      s.bulklen = c.bulklen
+      // processMultibulkBuffer, networking.c:2356-2360
+      if (c.bulklen > PROTO_MAX_BULK_LEN) {
+        log('bulk length ' + bytes(c.bulklen) + ' > proto-max-bulk-len ' + bytes(PROTO_MAX_BULK_LEN) +
+            ' — replying "-ERR Protocol error: invalid bulk length"', 'hit')
+        addReply(43)                                 // the error string itself is a reply
+        s.afterReply = true                          // setProtocolError, :2264
+        s.bulklen = -1
+        log('CLIENT_CLOSE_AFTER_REPLY set — the socket closes once that error has been written.', 'hit')
+        return
+      }
+    }
+    s.qb_pos += c.cmd
+    log('parsed ' + c.name + ' — qb_pos ' + n(s.qb_pos) + '/' + n(s.qbuf_len))
+    s.bulklen = -1
+    addReply(c.reply)
+  }
+  if (s.qb_pos) {                                    // :2626-2629
+    log('sdsrange(querybuf, ' + n(s.qb_pos) + ', -1) — trimmed once, after the loop')
+    s.qbuf_len -= s.qb_pos
+    s.qb_pos = 0
+  }
+}
 
-            const available = PROTO_REPLY_CHUNK_BYTES - state.bufpos;
-            const reply_len = data.length > available ? available : data.length;
+/* ------------------------------------------------------------------ output */
 
-            if (reply_len > 0) {
-                 addLog(`Adding ${reply_len} bytes to static buffer.`, 'info');
-                state.buf += data.substring(0, reply_len);
-                state.bufpos += reply_len;
-                render();
-                await sleep(300);
-            }
+// _addReplyToBuffer, networking.c:330
+function addToBuffer(len) {
+  if (s.reply.length > 0) return 0                   // :335 sticky
+  const available = s.buf_usable_size - s.bufpos     // :331
+  const reply_len = Math.min(len, available)
+  s.bufpos += reply_len
+  if (s.buf_peak < s.bufpos) s.buf_peak = s.bufpos   // :341-342
+  return reply_len
+}
 
-            if (data.length > reply_len) {
-                const remainingData = data.substring(reply_len);
-                addLog(`${remainingData.length} bytes don't fit in static buffer. Adding to dynamic list.`, 'info');
-                state.reply.push(remainingData);
-                state.reply_bytes += remainingData.length;
-                render();
-                await sleep(300);
-            }
-        }
+// _addReplyProtoToList, networking.c:348
+function addProtoToList(len) {
+  const tail = s.reply[s.reply.length - 1]
+  if (tail) {                                        // :357-366
+    const avail = tail.size - tail.used
+    const copy = Math.min(avail, len)
+    if (copy > 0) {
+      tail.used += copy
+      len -= copy
+      log('tail block had ' + both(avail) + ' free — ' + n(copy) +
+          ' bytes copied in, no allocation', 'good')
+    }
+  }
+  if (len) {                                         // :367
+    const size = len < PROTO_REPLY_CHUNK_BYTES ? PROTO_REPLY_CHUNK_BYTES : len   // :371
+    s.reply.push({ size: size, used: len })
+    s.reply_bytes += size                            // :378
+    log('new clientReplyBlock: size ' + both(size) + ', used ' + n(len) +
+        ' — reply_bytes ' + both(s.reply_bytes))
+    closeClientOnOutputBufferLimitReached(1)         // :380
+  }
+}
 
-        async function handleWriteToClient() {
-            if (state.isProcessing) return;
-            if (state.bufpos === 0 && state.reply.length === 0) {
-                addLog('Output buffers are empty. Nothing to write.', 'info');
-                return;
-            }
-            toggleButtons(true);
+// _addReplyToBufferOrList, networking.c:394
+function addReply(len) {
+  if (len <= 0) return
+  const written = addToBuffer(len)
+  if (written > 0) log('c->buf took ' + n(written) + ' of ' + n(len) + ' bytes (available was ' +
+                       n(s.buf_usable_size - s.bufpos + written) + ')')
+  if (written < len) addProtoToList(len - written)
+}
 
-            const totalBytes = state.bufpos + state.reply.reduce((sum, block) => sum + block.length, 0);
-            
-            let syscall = 'write()';
-            let bufferCount = 1;
-            if(state.reply.length > 0) {
-                syscall = 'writev()';
-                bufferCount = state.reply.length + (state.bufpos > 0 ? 1 : 0);
-            }
-            const syscallDesc = state.reply.length > 0 ? 
-                `Gathering ${bufferCount} buffers (1 static + ${state.reply.length} dynamic).` : 
-                `Sending static buffer.`;
+// getClientOutputBufferMemoryUsage, networking.c:3787
+function usedMem() {
+  return s.reply_bytes
+}
 
+function limits() {
+  const cls = $('cls').value
+  if (cls === 'pubsub') return OBUF.pubsub.def
+  return $('obuf').value === 'demo' ? OBUF.normal.demo : OBUF.normal.def
+}
 
-            const syscallBenefit = syscall === 'writev()' ? ` (1 syscall instead of ${bufferCount})` : ` (1 syscall)`;
-            addLog(`${syscallDesc} Calling ${syscall} to send ${totalBytes} bytes.${syscallBenefit}`, 'server');
-            
-            // Animate clearing buffers
-            if (state.reply.length > 0) {
-                while(state.reply.length > 0) {
-                    state.reply.shift();
-                    render();
-                    await sleep(150);
-                }
-            }
-            if (state.bufpos > 0) {
-                 state.buf = '';
-                 state.bufpos = 0;
-                 render();
-                 await sleep(150);
-            }
+// checkClientOutputBufferLimits, networking.c:3876
+function checkLimits() {
+  const used = usedMem()
+  const lim = limits()
+  let hard = lim[0] !== 0 && used >= lim[0]          // :3900-3902
+  let soft = lim[1] !== 0 && used >= lim[1]          // :3903-3905
+  if (soft) {
+    if (s.soft_since === null) {                     // :3910-3912
+      s.soft_since = s.unixtime
+      soft = false
+      log('soft limit ' + bytes(lim[1]) + ' crossed — obuf_soft_limit_reached_time = t+' +
+          s.unixtime + '. First crossing only records the time.', 'hit')
+    } else if (s.unixtime - s.soft_since <= lim[2]) {  // :3914-3920
+      soft = false
+    }
+  } else {
+    s.soft_since = null                              // :3924
+  }
+  return soft || hard
+}
 
-            state.reply_bytes = 0;
-            addLog('Output buffers flushed.', 'server');
-            
-            toggleButtons(false);
-        }
+// closeClientOnOutputBufferLimitReached, networking.c:3940
+function closeClientOnOutputBufferLimitReached(async) {
+  s.dimBuf = true
+  if (s.reply_bytes === 0) return 0                  // :3945
+  if (s.asap) return 0                               // :3946
+  const lim = limits()
+  if (lim[0] === 0 && lim[1] === 0) {
+    log('limit check: class ' + $('cls').value + ' is 0 0 0 — no hard or soft flag can be set (networking.c:3900).')
+    return 0
+  }
+  if (!checkLimits()) return 0                       // :3947
+  if (async) {
+    freeClientAsync()
+    log('Client scheduled to be closed ASAP for overcoming of output buffer limits.', 'hit')
+  } else {
+    s.gone = true
+    s.asap = false
+    log('Client closed for overcoming of output buffer limits — freeClient, synchronous (networking.c:3956).', 'hit')
+  }
+  return 1
+}
 
-        function resetBuffersAndState() {
-            state = getInitialState();
-            render();
-        }
+// freeClientAsync, networking.c:1729
+function freeClientAsync() {
+  if (s.asap) return
+  s.asap = true                                      // :1736
+  log('CLIENT_CLOSE_ASAP set, queued on server.clients_to_close — still connected until beforeSleep.', 'hit')
+}
 
-        function initialize() {
-            resetBuffersAndState();
-            logEl.innerHTML = '<p>> Log messages will appear here.</p>';
-            addLog('Simulation reset.', 'info');
-        }
+/* ------------------------------------------------------------------- write */
 
-        function sleep(ms) {
-            return new Promise(resolve => setTimeout(resolve, ms));
-        }
-        
-        // --- Event Listeners ---
-        document.addEventListener('DOMContentLoaded', () => {
-            initialize();
+function pending() {
+  return s.bufpos > 0 || s.reply.length > 0
+}
 
-            // Tooltip z-index handler to solve stacking context issues
-            const tooltips = document.querySelectorAll('.tooltip');
-            tooltips.forEach(tooltip => {
-                const infoBox = tooltip.closest('.info-box');
-                if (infoBox) {
-                    tooltip.addEventListener('mouseenter', () => {
-                        infoBox.style.zIndex = '100';
-                        infoBox.style.transition = 'z-index 0s';
-                    });
-                    tooltip.addEventListener('mouseleave', () => {
-                        infoBox.style.zIndex = '0';
-                        infoBox.style.transition = 'z-index 0s 0.3s';
-                    });
-                }
-            });
-        });
+// _writevToClient, networking.c:1830
+function writev() {
+  let iovcnt = 0
+  let len = 0
+  if (s.bufpos > 0) {                                // :1837-1840
+    len += s.bufpos - s.sentlen
+    iovcnt++
+  }
+  let offset = s.bufpos > 0 ? 0 : s.sentlen          // :1844
+  for (const b of s.reply) {                         // :1849
+    if (iovcnt >= IOV_MAX || len >= NET_MAX_WRITES_PER_EVENT) break
+    len += b.used - offset
+    iovcnt++
+    offset = 0
+  }
+  if (iovcnt === 0) return 0
+  log('writev() gathering ' + iovcnt + ' buffer(s), ' + both(len) +
+      ' — capped at IOV_MAX and NET_MAX_WRITES_PER_EVENT (networking.c:1832, 1849)')
 
-        document.addEventListener('click', (e) => {
-            const button = e.target.closest('.toggle-collapse-btn');
-            if (button) {
-                const contentWrapper = button.previousElementSibling;
-                if (contentWrapper && contentWrapper.classList.contains('collapsible-content')) {
-                    contentWrapper.classList.toggle('is-collapsed');
-                    const isCollapsed = contentWrapper.classList.contains('is-collapsed');
-                    
-                    button.querySelector('.icon-expand').classList.toggle('hidden', !isCollapsed);
-                    button.querySelector('.icon-collapse').classList.toggle('hidden', isCollapsed);
-                    button.title = isCollapsed ? 'Show More' : 'Show Less';
-                }
-            }
-        });
+  let left = len
+  if (s.bufpos > 0) {                                // :1870-1876
+    const take = s.bufpos - s.sentlen
+    left -= take
+    s.bufpos = 0
+    s.sentlen = 0
+  }
+  while (left > 0 && s.reply.length) {               // :1880-1900
+    const b = s.reply[0]
+    const take = Math.min(left, b.used - s.sentlen)
+    if (take === b.used - s.sentlen) {
+      s.reply.shift()
+      s.reply_bytes -= b.size
+      s.sentlen = 0
+    } else {
+      s.sentlen += take
+    }
+    left -= take
+  }
+  return len
+}
 
-        sendSmallCmdBtn.addEventListener('click', () => {
-            const cmd = `*2\r\n$3\r\nGET\r\n$5\r\nmykey\r\n`;
-            readFromClient(cmd);
-        });
+// _writeToClient, networking.c:1932/1940
+function writeOnce() {
+  if (s.reply.length > 0) return writev()
+  if (s.bufpos > 0) {                                // :1941
+    const nw = s.bufpos - s.sentlen
+    s.sentlen += nw
+    log('write() ' + n(nw) + ' bytes from c->buf — one buffer, so no writev (networking.c:1940)')
+    if (s.sentlen === s.bufpos) {                    // :1947
+      s.bufpos = 0
+      s.sentlen = 0
+    }
+    return nw
+  }
+  return 0
+}
 
-        sendLargeCmdBtn.addEventListener('click', () => {
-            // This command text is used to trigger a large reply in the logic
-            const cmd = `*2\r\n$4\r\nMSET\r\n$11\r\nlarge_reply\r\n`; 
-            readFromClient(cmd);
-        });
-        
-        sendPipelinedCmdBtn.addEventListener('click', () => {
-            const cmd1 = `*2\r\n$3\r\nGET\r\n$5\r\nmykey\r\n`; // Small reply
-            const cmd2 = `*2\r\n$4\r\nMSET\r\n$11\r\nbig_trigger\r\n`; // This command text is used to trigger a large reply in the logic
-            const cmd3 = `*2\r\n$4\r\nINCR\r\n$7\r\ncounter\r\n`; // Small reply
-            const cmd = cmd1 + cmd2 + cmd3;
-            readFromClient(cmd);
-        });
+// writeToClient, networking.c:1964
+function writeEvent() {
+  if (!pending()) {
+    log('no pending replies')
+    return
+  }
+  let tot = 0
+  while (pending()) {
+    const nw = writeOnce()
+    if (nw === 0) break
+    tot += nw
+    if (tot > NET_MAX_WRITES_PER_EVENT) {            // :1986-1989
+      log('totwritten ' + both(tot) + ' > NET_MAX_WRITES_PER_EVENT — stopping so other clients get served; ' +
+          'the rest waits for the next event.', 'hit')
+      break
+    }
+  }
+  log('event done: ' + both(tot) + ' sent, ' + both(s.reply_bytes) + ' still buffered')
+  if (s.reply.length === 0 && s.bufpos === 0) s.dimBuf = false
+}
 
-        slowClientCmdBtn.addEventListener('click', async () => {
-            if (state.isProcessing) return;
-            toggleButtons(true); // Disable all buttons
+/* -------------------------------------------------------------------- cron */
 
-            // We need to call the internal logic of readFromClient without disabling buttons at the end
-            addLog(`Client sending large command...`, 'client');
-            const cmd = `*2\r\n$4\r\nMSET\r\n$11\r\nlarge_reply\r\n`; 
-            state.querybuf += cmd;
-            if (state.querybuf.length > state.querybuf_peak) {
-                state.querybuf_peak = state.querybuf.length;
-            }
-            render();
-            await sleep(200);
-            await processQueryBuffer();
-            
-            // Now, simulate the "slow client" part
-            addLog('Client is slow and not reading replies. Output buffer memory is held.', 'client');
-            writeToClientBtn.disabled = true; // Keep write disabled
-            
-            await sleep(1500);
+// clientsCronResizeQueryBuffer, server.c:731
+function cronResizeQueryBuffer() {
+  const querybuf_size = s.qbuf_alloc                 // :732
+  const avail = s.qbuf_alloc - s.qbuf_len
+  if (avail > 1024 * 4) {                            // :737
+    if (s.idle > 2) {                                // :739-741
+      s.qbuf_alloc = s.qbuf_len
+      log('cron: idle ' + s.idle + 's > 2 — sdsRemoveFreeSpace, qbuf-free ' + n(avail) + ' → 0')
+    } else if (querybuf_size > PROTO_RESIZE_THRESHOLD && querybuf_size / 2 > s.qbuf_peak) {  // :742
+      let resize = s.qbuf_len                        // :748
+      if (resize < s.qbuf_peak) resize = s.qbuf_peak // :749
+      if (s.bulklen !== -1 && resize < s.bulklen + 2) resize = s.bulklen + 2   // :750
+      s.qbuf_alloc = resize                          // :751
+      log('cron: alloc ' + both(querybuf_size) + ' over PROTO_RESIZE_THRESHOLD and more than twice the peak — sdsResize to ' + both(resize))
+    }
+  }
+  const before = s.qbuf_peak
+  s.qbuf_peak = s.qbuf_len                           // :757
+  if (s.bulklen !== -1 && s.bulklen + 2 > s.qbuf_peak) s.qbuf_peak = s.bulklen + 2   // :760
+  if (before !== s.qbuf_peak) log('cron: qbuf-peak reset ' + n(before) + ' → ' + n(s.qbuf_peak) + ' (server.c:757)')
+}
 
-            addLog('Output buffer limit reached! Flagging client with CLIENT_CLOSE_ASAP.', 'error');
-            state.flags.push('A'); // A for ASAP
-            render();
+// clientsCronResizeOutputBuffer, server.c:771
+function cronResizeOutputBuffer() {
+  const shrink = s.buf_usable_size / 2               // :775
+  const expand = s.buf_usable_size * 2               // :776
+  let next = 0
+  if (shrink >= PROTO_REPLY_MIN_BYTES && s.buf_peak < shrink) {           // :782-783
+    next = Math.max(PROTO_REPLY_MIN_BYTES, s.buf_peak + 1)                // :785
+  } else if (expand < PROTO_REPLY_CHUNK_BYTES * 2 && s.buf_peak === s.buf_usable_size) {  // :787-788
+    next = Math.min(PROTO_REPLY_CHUNK_BYTES, expand)                      // :790
+  }
+  s.buf_peak = s.bufpos                              // :799-803
+  if (next) {
+    log('cron: reply buffer ' + both(s.buf_usable_size) + ' → ' + both(next) + ' (server.c:' + (next < s.buf_usable_size ? '785' : '790') + ')')
+    s.buf_usable_size = next                         // :806-810
+  }
+}
 
-            await sleep(2500);
-            addLog('Disconnecting slow client to protect server memory. (closeClientOnOutputBufferLimitReached)', 'server');
-            
-            // Flash the whole screen red briefly
-            document.body.style.transition = 'background-color 0.2s';
-            document.body.style.backgroundColor = '#7f1d1d';
-            await sleep(200);
-            document.body.style.backgroundColor = '#111827';
-            
-            await sleep(500);
-            addLog('Client disconnected. Simulation ready for next scenario.', 'info');
-            resetBuffersAndState();
-            toggleButtons(false);
-        });
+function cronTick() {
+  s.unixtime += 1
+  s.idle += 1
+  log('clientsCron')
+  cronResizeQueryBuffer()                            // server.c:1028
+  cronResizeOutputBuffer()
+  closeClientOnOutputBufferLimitReached(0)           // server.c:1042
+  render()
+}
 
-        writeToClientBtn.addEventListener('click', handleWriteToClient);
-        resetSimBtn.addEventListener('click', initialize);
+function beforeSleep() {
+  log('beforeSleep')
+  if (s.asap) {                                      // networking.c:1797
+    log('freeClientsInAsyncFreeQueue — client freed, connection gone.', 'hit')
+    s.gone = true
+    s.asap = false
+  } else if (s.afterReply && !pending()) {
+    log('CLIENT_CLOSE_AFTER_REPLY and nothing left to write — connection closed.', 'hit')
+    s.gone = true
+    s.afterReply = false
+  } else {
+    log('nothing queued on clients_to_close')
+  }
+  render()
+}
 
-    </script>
+/* ------------------------------------------------------------------ render */
+
+function render() {
+  const pct = (v, of) => Math.max(0, Math.min(100, of ? (v / of) * 100 : 0))
+  const qAlloc = Math.max(s.qbuf_alloc, 1)
+  $('qbuf-fill').style.width = pct(s.qbuf_len, qAlloc) + '%'
+  $('qbuf-pos').style.left = pct(s.qb_pos, qAlloc) + '%'
+  $('s-qbuf').textContent = both(s.qbuf_len)
+  $('s-qfree').textContent = both(Math.max(0, s.qbuf_alloc - s.qbuf_len))
+  $('s-qpos').textContent = n(s.qb_pos)
+  $('s-qpeak').textContent = both(s.qbuf_peak)
+  $('s-bulklen').textContent = s.bulklen === -1 ? '-1' : both(s.bulklen)
+  $('s-idle').textContent = s.idle + 's'
+
+  $('buf-fill').style.width = pct(s.bufpos, s.buf_usable_size) + '%'
+  $('buf-sent').style.width = pct(s.sentlen, s.buf_usable_size) + '%'
+  $('s-bufpos').textContent = both(s.bufpos)
+  $('s-bufsize').textContent = both(s.buf_usable_size)
+  $('s-bufpeak').textContent = both(s.buf_peak)
+  $('s-sentlen').textContent = both(s.sentlen)
+  $('p-buf').classList.toggle('dimmed', s.dimBuf)
+  $('buf-note').textContent = s.dimBuf
+    ? 'Greyed out because a limit check just ran: getClientOutputBufferMemoryUsage returns reply_bytes only — these bytes are invisible to it (networking.c:3799–3801).'
+    : 'Counted by the output buffer limit: no — getClientOutputBufferMemoryUsage ignores bufpos (networking.c:3799–3801).'
+
+  const box = $('blocks')
+  box.textContent = ''
+  if (!s.reply.length) {
+    const d = document.createElement('div')
+    d.className = 'empty'
+    d.textContent = 'list empty — replies are going straight to c->buf'
+    box.appendChild(d)
+  }
+  s.reply.forEach((b, i) => {
+    const d = document.createElement('div')
+    d.className = 'block' + (i === 0 && s.sentlen > 0 ? ' block--part' : '')
+    const free = b.size - b.used
+    d.innerHTML = 'block ' + (i + 1) + ' &nbsp; used <b>' + n(b.used) + '</b> / size <b>' + n(b.size) +
+      '</b> &nbsp; <span class="faint">' + n(free) + ' free</span>' +
+      (i === 0 && s.sentlen > 0 ? ' &nbsp; <span class="sent">sentlen ' + n(s.sentlen) + '</span>' : '')
+    box.appendChild(d)
+  })
+  $('s-listlen').textContent = n(s.reply.length)
+  $('s-replybytes').textContent = both(s.reply_bytes)
+  $('s-usedmem').textContent = both(usedMem())
+  $('s-soft').textContent = s.soft_since !== null ? 't+' + s.soft_since : '—'
+
+  const f = ['N']
+  if (s.asap) f.push('A')
+  if (s.afterReply) f.push('c')
+  $('flags').textContent = s.gone ? 'client freed' : 'flags=' + f.join('')
+
+  const lim = limits()
+  const cls = $('cls').value
+  const cell = (row, vals) => {
+    const tds = $(row).children
+    tds[1].textContent = vals[0] ? bytes(vals[0]) : '0'
+    tds[2].textContent = vals[1] ? bytes(vals[1]) : '0'
+    tds[3].textContent = String(vals[2])
+  }
+  cell('r-normal', $('obuf').value === 'demo' ? OBUF.normal.demo : OBUF.normal.def)
+  cell('r-pubsub', OBUF.pubsub.def)
+  $('r-normal').classList.toggle('sel', cls === 'normal')
+  $('r-pubsub').classList.toggle('sel', cls === 'pubsub')
+
+  const dead = s.gone
+  for (const id of ['b-small', 'b-large', 'b-pipe', 'b-bigarg', 'b-slow', 'b-bulk', 'b-flood', 'b-write']) {
+    $(id).disabled = dead
+  }
+}
+
+/* --------------------------------------------------------------- scenarios */
+
+function guard() {
+  if (s.gone) {
+    log('client is gone — Reset to run another scenario')
+    return false
+  }
+  if (s.afterReply) {
+    log('CLIENT_CLOSE_AFTER_REPLY is set — no further command is read (networking.c:2566)')
+    return false
+  }
+  return true
+}
+
+function scenario(label, wire, cmds) {
+  if (!guard()) return
+  log(label, 'good')
+  let left = wire
+  let guardCount = 0
+  while (left > 0 && !s.gone && guardCount++ < 64) {
+    left -= readEvent(left)
+  }
+  if (!s.gone) processInput(cmds)
+  render()
+}
+
+function small() {
+  scenario('client sends GET mykey', 24, [{ name: 'GET mykey', cmd: 24, reply: 11 }])
+}
+function large() {
+  scenario('client sends GET big — 22,538 byte reply', 22,
+    [{ name: 'GET big', cmd: 22, reply: 22538 }])
+}
+function pipelined() {
+  scenario('client pipelines three commands in one read', 74, [
+    { name: 'GET mykey', cmd: 24, reply: 11 },
+    { name: 'GET big', cmd: 22, reply: 22538 },
+    { name: 'INCR counter', cmd: 28, reply: 5 },
+  ])
+}
+function bigarg() {
+  if (!guard()) return
+  log('client sends SET huge <64 KB value> — the big-argument read path', 'good')
+  s.bulklen = 64 * 1024                              // networking.c:2368
+  log('bulklen ' + n(s.bulklen) + ' ≥ PROTO_MBULK_BIG_ARG (' + n(PROTO_MBULK_BIG_ARG) +
+      ') — reads are now sized to the exact remainder')
+  let left = s.bulklen + 2
+  let i = 0
+  while (left > 0 && i++ < 16 && !s.gone) left -= readEvent(left)
+  if (!s.gone) processInput([{ name: 'SET huge', cmd: s.qbuf_len, reply: 5 }])
+  render()
+}
+function bulkTooBig() {
+  if (!guard()) return
+  log('client sends a bulk header of 600 MB', 'good')
+  readEvent(30)
+  processInput([{ name: 'SET huge', cmd: 30, reply: 0, bulklen: 600 * 1024 * 1024 }])
+  render()
+}
+function flood() {
+  if (!guard()) return
+  log('[forced] driving qbuf past client-query-buffer-limit — not animated; ' +
+      'a real client cannot reach this with one command, since proto-max-bulk-len caps a single argument at 512 MB.', 'good')
+  s.qbuf_alloc = QUERYBUF_LIMIT + 1
+  s.qbuf_len = QUERYBUF_LIMIT + 1
+  s.qbuf_peak = s.qbuf_len
+  log('simulated: ' + n(s.qbuf_len) + ' bytes held across ' +
+      n(Math.ceil(s.qbuf_len / PROTO_IOBUF_LEN)) + ' read events of ' + n(PROTO_IOBUF_LEN) + ' bytes')
+  log('Closing client that reached max query buffer length — WARNING log only, no error reply sent (networking.c:2729).', 'hit')
+  freeClientAsync()
+  render()
+}
+function slow() {
+  if (!guard()) return
+  const lim = limits()
+  log('client sends 16 commands and reads none of the replies', 'good')
+  if (lim[0] === 0 && lim[1] === 0) {
+    log('class ' + $('cls').value + ' limit is 0 0 0 — expect the buffer to grow and nothing to stop it.')
+  }
+  for (let i = 0; i < 16 && !s.gone; i++) {
+    readEvent(22)
+    if (s.gone) break
+    processInput([{ name: 'GET big #' + (i + 1), cmd: 22, reply: 22538 }])
+  }
+  if (!s.gone && !s.asap) {
+    log('buffered ' + both(s.reply_bytes) + ' for one client and it is still connected.',
+        limits()[0] === 0 && limits()[1] === 0 ? 'hit' : undefined)
+  }
+  render()
+}
+
+/* ------------------------------------------------------------------- wire */
+
+function reset() {
+  s = initial()
+  $('log').textContent = ''
+  $('grow-note').textContent =
+    'Growth: first read is non-greedy (allocation under PROTO_IOBUF_LEN), then greedy — doubles below SDS_MAX_PREALLOC (networking.c:2677–2692, sds.c:263).'
+  log('reset — class ' + $('cls').value + ', client-output-buffer-limit normal ' +
+      (OBUF.normal[$('obuf').value === 'demo' ? 'demo' : 'def']).map((v, i) => i === 2 ? v : (v ? bytes(v) : '0')).join(' '))
+  render()
+}
+
+$('b-small').addEventListener('click', small)
+$('b-large').addEventListener('click', large)
+$('b-pipe').addEventListener('click', pipelined)
+$('b-bigarg').addEventListener('click', bigarg)
+$('b-slow').addEventListener('click', slow)
+$('b-bulk').addEventListener('click', bulkTooBig)
+$('b-flood').addEventListener('click', flood)
+$('b-write').addEventListener('click', () => { writeEvent(); render() })
+$('b-cron').addEventListener('click', cronTick)
+$('b-sleep').addEventListener('click', beforeSleep)
+$('b-reset').addEventListener('click', reset)
+$('cls').addEventListener('change', () => {
+  log('getClientType → ' + $('cls').value)
+  s.soft_since = null
+  render()
+})
+$('obuf').addEventListener('change', () => {
+  const v = $('obuf').value === 'demo' ? OBUF.normal.demo : OBUF.normal.def
+  log('CONFIG SET client-output-buffer-limit normal ' +
+      v.map((x, i) => i === 2 ? x : (x ? bytes(x) : '0')).join(' '), 'good')
+  s.soft_since = null
+  render()
+})
+
+reset()
+</script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
