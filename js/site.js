@@ -102,10 +102,11 @@ const walk = () => {
 const COMMANDS = {
   '/help': () =>
     T(
-      '명령: /about /measurements /projects /redis /timeline /resume /lang ko|en /theme dark|light /clear … 그리고 목록에 없는 몇 개.',
-      'Commands: /about /measurements /projects /redis /timeline /resume /lang ko|en /theme dark|light /clear … and a few that are not listed.',
+      '명령: /about /languages /measurements /projects /redis /timeline /resume /lang ko|en /theme dark|light /clear … 그리고 목록에 없는 몇 개.',
+      'Commands: /about /languages /measurements /projects /redis /timeline /resume /lang ko|en /theme dark|light /clear … and a few that are not listed.',
     ),
   '/about': () => go('about'),
+  '/languages': () => go('languages'),
   '/measurements': () => go('measurements'),
   '/projects': () => go('projects'),
   '/redis': () => go('redis'),
@@ -286,7 +287,7 @@ const REDIS_SYNTAX = {
   AUTH: 'password', ACL: 'LIST|WHOAMI', QUIT: '', EXIT: '',
 }
 const SLASH_SYNTAX = {
-  '/help': '', '/about': '', '/measurements': '', '/projects': '', '/redis': '', '/timeline': '',
+  '/help': '', '/about': '', '/languages': '', '/measurements': '', '/projects': '', '/redis': '', '/timeline': '',
   '/resume': '', '/lang': 'ko|en', '/theme': 'dark|light', '/clear': '',
 }
 

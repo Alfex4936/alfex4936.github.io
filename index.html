@@ -141,7 +141,27 @@
         </div>
       </section>
 
-      <section id="measurements" class="turn" style="--i: 2" aria-labelledby="q-measurements">
+      <section id="languages" class="turn" style="--i: 2" aria-labelledby="q-languages">
+        <h2 class="prompt" id="q-languages"><span lang="ko">쓰는 언어</span><span lang="en">what languages do you work in</span></h2>
+        <p class="tool"><span class="tool__name">Bash</span><span class="tool__arg">(locale)</span></p>
+        <p class="out">안녕하세요, Hello, こんにちは</p>
+        <ol class="ledger">
+          <li class="row">
+            <span class="row__num">ko_KR</span>
+            <span class="row__what"><span lang="ko">한국어 — 네이티브</span><span lang="en">Korean — native</span></span>
+          </li>
+          <li class="row">
+            <span class="row__num">en_US</span>
+            <span class="row__what"><span lang="ko">영어 — 고급 (원어민 수준)</span><span lang="en">English — advanced (near-native)</span></span>
+          </li>
+          <li class="row">
+            <span class="row__num">ja_JP</span>
+            <span class="row__what"><span lang="ko">일본어 — 중급 (일상·회의 대화)</span><span lang="en">Japanese — intermediate (everyday and meetings)</span></span>
+          </li>
+        </ol>
+      </section>
+
+      <section id="measurements" class="turn" style="--i: 3" aria-labelledby="q-measurements">
         <h2 class="prompt" id="q-measurements"><span lang="ko">무엇을 쟀나</span><span lang="en">what have you measured</span></h2>
         <p class="tool"><span class="tool__name">Read</span><span class="tool__arg">(measurements.md)</span></p>
         <ol class="ledger">
@@ -247,7 +267,7 @@
         </p>
       </section>
 
-      <section id="projects" class="turn" style="--i: 3" aria-labelledby="q-projects">
+      <section id="projects" class="turn" style="--i: 4" aria-labelledby="q-projects">
         <h2 class="prompt" id="q-projects"><span lang="ko">프로젝트</span><span lang="en">show projects</span></h2>
         <p class="tool"><span class="tool__name">Glob</span><span class="tool__arg">(projects/**)</span></p>
         <p class="out"><span lang="ko">주요 3개, 그 외 8개</span><span lang="en">3 primary, 8 more</span></p>
@@ -319,7 +339,7 @@
         </div>
       </section>
 
-      <section id="redis" class="turn" style="--i: 4" aria-labelledby="q-redis">
+      <section id="redis" class="turn" style="--i: 5" aria-labelledby="q-redis">
         <h2 class="prompt" id="q-redis"><span lang="ko">Redis 안에는 뭐가 있나</span><span lang="en">what's inside redis</span></h2>
         <p class="tool"><span class="tool__name">Search</span><span class="tool__arg">(pattern: "redis/*.html")</span></p>
         <p class="out">
@@ -399,7 +419,7 @@ master   +FULLRESYNC -&gt; fork -&gt; rdb
         </div>
       </section>
 
-      <section id="timeline" class="turn" style="--i: 5" aria-labelledby="q-timeline">
+      <section id="timeline" class="turn" style="--i: 6" aria-labelledby="q-timeline">
         <h2 class="prompt" id="q-timeline">
           <a href="timeline.html"><span lang="ko">타임라인</span><span lang="en">timeline</span></a>
         </h2>
@@ -498,7 +518,7 @@ master   +FULLRESYNC -&gt; fork -&gt; rdb
       </div>
     </form>
 
-    <script src="js/site.js?v=7"></script>
+    <script src="js/site.js?v=8"></script>
     <script type="module" src="js/reader.js?v=1"></script>
     <script type="module">
       // three itself is not fetched until a mount comes near the viewport, and
