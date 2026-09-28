@@ -248,8 +248,8 @@ function status(next = state) {
 
 function keys() {
   statusEl.textContent = T(
-    '+ − 확대·축소 · 0 너비 맞춤 · l 언어 · t 테마 · esc 닫기',
-    '+ − zoom · 0 fit width · l language · t theme · esc close',
+    '+ − 확대·축소 · 0 너비 맞춤 · 드래그 이동 · l 언어 · t 테마 · esc 닫기',
+    '+ − zoom · 0 fit width · drag to pan · l language · t theme · esc close',
   )
   clearTimeout(hint)
   hint = setTimeout(() => status(), 6000)
@@ -284,6 +284,7 @@ function apply() {
   inBtn.setAttribute('aria-disabled', zoom >= MAX_ZOOM - 1e-3)
 }
 
+let panHinted = false
 let timer = 0
 function repaint() {
   clearTimeout(timer)
@@ -310,6 +311,12 @@ function zoomTo(next, cx, cy) {
   }
   zoom = next
   apply()
+  if (!panHinted && scroller.scrollWidth > scroller.clientWidth + 1) {
+    panHinted = true
+    statusEl.textContent = T('드래그하거나 스크롤해서 이동', 'drag or scroll to move around')
+    clearTimeout(hint)
+    hint = setTimeout(() => status(), 5000)
+  }
   if (anchor) {
     const r = anchor.el.getBoundingClientRect()
     scroller.scrollLeft += r.left + anchor.fx * r.width - cx
@@ -404,6 +411,27 @@ pagesEl.addEventListener('pointerdown', (e) => e.target.closest?.('.textLayer')?
 addEventListener('pointerup', () => {
   for (const t of pagesEl.querySelectorAll('.textLayer.selecting')) t.classList.remove('selecting')
 })
+
+// A mouse drag on anything but text moves the pages, as a hand would move paper; on text it still selects.
+let pan = null
+scroller.addEventListener('pointerdown', (e) => {
+  if (e.pointerType !== 'mouse' || e.button !== 0 || e.target.closest('.textLayer :is(span, br), a, button')) return
+  pan = { x: e.clientX, y: e.clientY, left: scroller.scrollLeft, top: scroller.scrollTop, id: e.pointerId }
+  scroller.setPointerCapture(e.pointerId)
+  scroller.classList.add('is-panning')
+  e.preventDefault()
+})
+scroller.addEventListener('pointermove', (e) => {
+  if (!pan || e.pointerId !== pan.id) return
+  scroller.scrollLeft = pan.left - (e.clientX - pan.x)
+  scroller.scrollTop = pan.top - (e.clientY - pan.y)
+})
+const endPan = () => {
+  pan = null
+  scroller.classList.remove('is-panning')
+}
+scroller.addEventListener('pointerup', endPan)
+scroller.addEventListener('pointercancel', endPan)
 
 // ---- open and close ---------------------------------------------------------------
 

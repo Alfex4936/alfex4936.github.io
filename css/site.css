@@ -1348,7 +1348,7 @@ html:has(.reader[open]) {
   touch-action: pan-x pan-y; /* pinch is ours: it zooms the pages, not the viewport */
   background: var(--bg-2);
   background: light-dark(color-mix(in srgb, var(--bg-2), var(--fg) 7%), var(--bg-2)); /* on light, white paper needs a desk under it */
-  scrollbar-color: var(--rule) transparent;
+  scrollbar-color: var(--faint) transparent; /* with a mouse, the thumb is one of the ways across a zoomed page */
 }
 
 .reader__scroll:focus-visible {
@@ -1375,6 +1375,17 @@ html:has(.reader[open]) {
 
 .page {
   margin: 0;
+}
+
+/* whitespace takes the hand and pans (reader.js); the text spans keep cursor: text and select */
+.reader__pages {
+  cursor: grab;
+}
+
+.reader__scroll.is-panning,
+.reader__scroll.is-panning * {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .page__slot {
