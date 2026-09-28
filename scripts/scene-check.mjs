@@ -173,6 +173,11 @@ const READER_PROBE = `(async () => {
   // Polled, not slept: pdf.js comes off a CDN, and a fixed 2.5s failed on slow fetches.
   await wait(() => document.querySelectorAll('.page__slot.is-printed').length >= 2);
   const pct0 = document.querySelector('.reader__pct').textContent;
+  // .click() skips hit-testing, which is how a page painted over the dock passed as "zoom works".
+  // Hit-test after the feed-in ends: its transform stacks the page under the dock only while it runs.
+  await Promise.all([...document.querySelectorAll('.page__sheet')].flatMap((e) => e.getAnimations()).map((a) => a.finished));
+  const zb = document.querySelector('[data-zoom="in"]'), zr = zb.getBoundingClientRect();
+  const zoomHit = zb.contains(document.elementFromPoint(zr.left + zr.width / 2, zr.top + zr.height / 2));
   document.querySelector('[data-zoom="in"]').click();
   await new Promise(r => setTimeout(r, 700));
   const pctIn = document.querySelector('.reader__pct').textContent;
@@ -181,7 +186,7 @@ const READER_PROBE = `(async () => {
   // run slow enough that a fixed 500ms sleep failed a close that worked.
   const tc = Date.now();
   const closed = await wait(() => !dlg.hasAttribute('open'), 3000);
-  return JSON.stringify({ ran: true, opened, closed, closeMs: Date.now() - tc,
+  return JSON.stringify({ ran: true, opened, closed, closeMs: Date.now() - tc, zoomHit,
     slots: document.querySelectorAll('.page__slot').length,
     printed: document.querySelectorAll('.page__slot.is-printed').length,
     pageno: document.querySelector('.reader__pageno').textContent.trim(),
@@ -250,6 +255,7 @@ async function run() {
       else if (r.printed < 2)
         fail('résumé reader', `${r.printed} of ${r.slots} pages actually painted, expected 2`)
       else if (!/^1 \/ \d+$/.test(r.pageno)) fail('résumé reader', `page counter reads "${r.pageno}"`)
+      else if (!r.zoomHit) fail('résumé reader', 'the page paints over the zoom dock, so a real click on + lands on the page')
       else if (!r.zoomed) fail('résumé reader', 'zoom in did not change the percentage')
       else if (!r.closed) fail('résumé reader', 'close left the dialog open')
       else ok('résumé reader', `${r.printed} pages painted, ${r.pageno}, zoom works, closed in ${r.closeMs}ms`)

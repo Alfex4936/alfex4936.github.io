@@ -3,7 +3,8 @@
 const CDNS = ['https://unpkg.com/pdfjs-dist@6.3.289/', 'https://cdn.jsdelivr.net/npm/pdfjs-dist@6.3.289/']
 const CSS_UNITS = 96 / 72
 const MAX_PX = 12e6 // per page canvas; iOS refuses anything past ~16.7M pixels
-const STEPS = [0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3]
+const MAX_ZOOM = 2 // a 2x screen hits MAX_PX at 184%; past this zoom only enlarges pixels
+const STEPS = [0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
 
 const root = document.documentElement
 const dialog = document.querySelector('.reader')
@@ -270,11 +271,17 @@ const pad = () => parseFloat(getComputedStyle(pagesEl).paddingLeft) || 0
 const widest = () => Math.max(...views.map((v) => +v.slot.style.getPropertyValue('--pw') || 595.28))
 const fitZoom = () => (scroller.clientWidth - 2 * pad()) / (widest() * CSS_UNITS)
 const autoZoom = () => Math.min(1, fitZoom())
-const clamp = (z) => Math.min(3, Math.max(Math.min(0.5, fitZoom()), z))
+const minZoom = () => Math.min(0.5, fitZoom()) // a phone opens at fit width, and below it is only margin
+const clamp = (z) => Math.min(MAX_ZOOM, Math.max(minZoom(), z))
+const outBtn = dialog.querySelector('[data-zoom="out"]')
+const inBtn = dialog.querySelector('[data-zoom="in"]')
 
 function apply() {
   pagesEl.style.setProperty('--scale-factor', zoom * CSS_UNITS)
   pctEl.textContent = `${Math.round(zoom * 100)}%`
+  // aria-disabled, not disabled: a disabled button drops focus out of the dialog and the +/- keys with it
+  outBtn.setAttribute('aria-disabled', zoom <= minZoom() + 1e-3)
+  inBtn.setAttribute('aria-disabled', zoom >= MAX_ZOOM - 1e-3)
 }
 
 let timer = 0
@@ -314,7 +321,7 @@ function zoomTo(next, cx, cy) {
 const step = (dir) => {
   const z = Math.round(zoom * 100) / 100
   const next = dir > 0 ? STEPS.find((s) => s > z + 0.001) : STEPS.findLast((s) => s < z - 0.001)
-  zoomTo(next ?? (dir > 0 ? 3 : 0))
+  zoomTo(next ?? (dir > 0 ? MAX_ZOOM : 0))
 }
 
 function fit() {

@@ -1399,6 +1399,7 @@ html:has(.reader[open]) {
 .page__sheet {
   position: absolute;
   inset: 0;
+  isolation: isolate; /* keeps the PDF layers' z-index in the page, under the zoom dock */
   background: #fff;
 }
 
@@ -1525,6 +1526,8 @@ html:has(.reader[open]) {
 }
 
 .reader__dock button {
+  min-width: 24px;
+  min-height: 24px;
   padding: 1px 8px;
   color: var(--dim);
   border-radius: 3px;
@@ -1534,6 +1537,19 @@ html:has(.reader[open]) {
 .reader__dock button:hover {
   color: var(--fg);
   background: var(--bg-2);
+}
+
+.reader__dock button[aria-disabled="true"] {
+  color: var(--faint);
+  background: none;
+  cursor: default;
+}
+
+@media (pointer: coarse) {
+  .reader__dock button {
+    min-width: 36px;
+    min-height: 36px;
+  }
 }
 
 .reader__dock .bar__sep {
