@@ -56,3 +56,12 @@ page has rendered, so an empty reader would pass without it.
 scene modules. A `?v=` on them in a page would be a second URL for the same
 file, so the browser would fetch and instantiate them twice. Version the entry
 modules, not the shared leaves.
+
+## `ssamdi/` is generated
+
+That folder is the build output of a separate Vite project
+(private repo `Alfex4936/ssamdi-days`, cloned at
+`/Users/ad03208797/Documents/0_github/ssamdi`; `npm run deploy:site` there).
+Do not edit it by hand: the next deploy replaces it wholesale. Its assets are
+content-hashed, so the `?v=` rule above does not apply to it, and
+`check-versions.mjs` passes it untouched.
