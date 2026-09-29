@@ -1,0 +1,379 @@
+{
+ "generated": "2026-09-29T09:40:12.854Z",
+ "count": 22,
+ "items": [
+  {
+   "id": "1677009dd0",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-25-07-33.jpeg",
+   "w": 654,
+   "h": 1487,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRmYAAABXRUJQVlA4IFoAAADQAwCdASoLABgAPu1iqU2ppaQiMAgBMB2JZwAAWp5tQwSrsK3+NkAA+muCI/WdLUtglcrObZI6OECKOqpiSBc7I9cVgqXJhx1dSaPNpCEP+B0pbZvV2KgAAAA=",
+   "color": "#6b6865",
+   "taken": "2026-09-29T18:25:07+09:00",
+   "source": "kakao",
+   "certain": false
+  },
+  {
+   "id": "503efb556a",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-25-07-12.jpeg",
+   "w": 1029,
+   "h": 1480,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRpYAAABXRUJQVlA4IIoAAACwBACdASoRABgAPu1mpk2ppaMiMBgMATAdiWIAxvQKGdvZiRzNByneFWXDHOEAAPxUHwwI/MEGT4nFuKUawi3hCBx/BHtdYcJGhQ/8l+Ff7GO/mJixCInutP5hIPn4gDTcCSPbvWpZ2gip3r2K6weltoYd0sujpKKsnTnnMGnxVc0rPbb3nAj4AAA=",
+   "color": "#8f867b",
+   "taken": "2026-09-29T18:25:07+09:00",
+   "source": "kakao",
+   "certain": false
+  },
+  {
+   "id": "81e7852e03",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-25-07-17.jpeg",
+   "w": 1489,
+   "h": 1096,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRoIAAABXRUJQVlA4IHYAAACQBACdASoYABIAPu1qr1CppaQiqAqpMB2JYwDNwArNLpLA2g2X41z6Tvcf5oAA/uvwUiiQEgTL0WwAnZmDZBoI8QpZJjvn31QMyidn97j7vd5zoVKeHP7Qd2B9KX3z29Yqrc4byCHa5WujirtKHkHb7gJCAAAA",
+   "color": "#736266",
+   "taken": "2026-09-29T18:25:07+09:00",
+   "source": "kakao",
+   "certain": false
+  },
+  {
+   "id": "9daaf0f0df",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-25-07-13.jpeg",
+   "w": 1029,
+   "h": 1385,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRo4AAABXRUJQVlA4IIIAAADQBACdASoSABgAPu1kpk4ppaMiMBgMATAdiUAZGoDsDF1AEylalrcK/9Nbc+wqAAD8XZJlDl+EiFq7Ii3GGgykDyN9UDoYpH5SPuDvRQdcr5jOkAeor2ORQ4Cm8FwjgAi8hrElAknw7ZaeSds1lRYPWdkOE9d6ZINbOFJb80WTfwAA",
+   "color": "#867d76",
+   "taken": "2026-09-29T18:25:07+09:00",
+   "source": "kakao",
+   "certain": false
+  },
+  {
+   "id": "d646b630e6",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-25-07-32.jpeg",
+   "w": 981,
+   "h": 1390,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRroAAABXRUJQVlA4IK4AAADwBACdASoRABgAPu1ur1IppiQiqAgBMB2JZQDKAYzGbrESF8GJpgziqupo9zC6ngAA/pgG5mEvXdUpJhfCUCA0WLwxK0lgoN9KlXLydtD/EEsJD+hv9F37M3s0IvzoZJVqZuNPOJv95XWX8Ja0gn6LxRmW4A8ooDF3OXNhpScvvOcM+I8LCcodHbSaU/GeqkoixXgbrgqMj7stHfZQK0Gclmjwaw9LlZJp5p12AAA=",
+   "color": "#918a87",
+   "taken": "2026-09-29T18:25:07+09:00",
+   "source": "kakao",
+   "certain": false
+  },
+  {
+   "id": "f8d1f8c756",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-25-07-18.png",
+   "w": 1332,
+   "h": 1181,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRgQBAABXRUJQVlA4IPgAAABQBgCdASoYABUAPu1iq1AppSOisBgIATAdiWwAuzM0OZi4IgBftBuKvzK+6NnqCgIbF/en4kqzVa7eQAD+7euhj0uqEqxFEilTWrz3g8Ge0+IPD6tZJ5WWMCgaWvRa70/jEkFwjkhAjUlFFTytZNnorUX2p5YvEO4jgZV+6WeWmM5SvqL/z0mzIQM8571mJGo8GYGNZRujqJtsyF/bqoZ51M01WM+ytFL5NAGT/80eORDKkKPqIJJ1F6A/fCEJ7Qd1hFEthYVlQ/xEPIWQ+EgLJJoHEUJfWDulw3I5YhXFgKnczzpC6GJHoD1EcLgwMEKFa2ZWDDVoAA==",
+   "color": "#98b1cc",
+   "taken": "2026-09-29T18:25:07+09:00",
+   "source": "kakao",
+   "certain": false
+  },
+  {
+   "id": "9c1a85e064",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-24-10 001.jpeg",
+   "w": 1438,
+   "h": 689,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRpIAAABXRUJQVlA4IIYAAAAQBACdASoYAAwAPu1iqU2ppaQiMAgBMB2JQBOgBDlF8fy8t0wia6OgAADhlUKggfWQNZ+NI2Rke3EnHonqKxtJNvr4EILPF9eWdn4OpiZyD8um8irBOn2YTyik4E5pDobK6EFKEm5YuaU6ml0qGILy3YIHI+2UGVJK3Tn5nHlhpg1BMIAAAA==",
+   "color": "#a28e80",
+   "taken": "2026-09-29T18:24:10+09:00",
+   "source": "kakao",
+   "certain": false
+  },
+  {
+   "id": "aec4fb5257",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-24-10 002.jpeg",
+   "w": 1071,
+   "h": 1165,
+   "sizes": [
+    480,
+    1200
+   ],
+   "lqip": "data:image/webp;base64,UklGRrYAAABXRUJQVlA4IKoAAABwBQCdASoWABgAPu1qrFEppaQiqAqpMB2JYwCsAA2Kt+UYKmVveDH8RiWTpG/gP0j03cAAAP3g6vH8pvQFEiPq95yoYLa/W8kWfYstwlyS7OdD3+PubqLyJWsHVGf1daFe9j+2PRwCYH+I7bzy/CdEERhQd+TNiAxkxlGnSoCDD3gr8g52OHkgxEB5wL/QE2/jEtx3HKMziFfhb/ZxkwY84lr8z3YmaugAAA==",
+   "color": "#a1968d",
+   "taken": "2026-09-29T18:24:10+09:00",
+   "source": "kakao",
+   "certain": false
+  },
+  {
+   "id": "301a110c1e",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-25-07-1.jpeg",
+   "w": 3000,
+   "h": 4000,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRpoAAABXRUJQVlA4II4AAADwBACdASoSABgAPu1qr1AppaQiqAqpMB2JZQAAL6NqofRNNhInR/27oaWVRP0PkgAA/eMJgaQhngqTTINsenPIAfNKvrWeRWVLTRccfKaUkK7uATjFFsH7eeepqk7N3Bs/2dFyxt2JTCj0RQ6ZT08omKoPVuiAM7/Ky4EyILkrRgW93jzFWtnQhaJW4AAA",
+   "color": "#9f9e98",
+   "taken": "2026-09-19T20:20:35+09:00",
+   "source": "exif",
+   "certain": true
+  },
+  {
+   "id": "c43220f652",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-25-07-2.jpeg",
+   "w": 1696,
+   "h": 3008,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRngAAABXRUJQVlA4IGwAAADQAwCdASoOABgAPu1kqk4ppaQiMAgBMB2JZwDG9CGfgz7XYkd71cAA+49bAo9vwrABHZQJKtTiKGfn/sMZx/klm4pK+hWy/uguJLmboDnpdDtoacT0ch9tP1264V8oVdofCpwYYhJxWAOwAAA=",
+   "color": "#686869",
+   "taken": "2026-09-16T21:13:09+09:00",
+   "source": "exif",
+   "certain": true
+  },
+  {
+   "id": "1fbd099295",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-25-07-3.jpeg",
+   "w": 1696,
+   "h": 3008,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRooAAABXRUJQVlA4IH4AAABQBACdASoOABgAPu1kq04ppaQiMAgBMB2JYwDG9CGwTIxe/FA7NkT1As/AAM2SqTXFfBURNnVNdPTbyeHk7YRhn3cuLQdRk/sf/idVRw/hKpnJS9WnQAm5feMZR/XyL3L+vE88IuAGGWcwHXSNQYcSQF7z9WppySretPkAAAA=",
+   "color": "#68696b",
+   "taken": "2026-09-16T21:13:03+09:00",
+   "source": "exif",
+   "certain": true
+  },
+  {
+   "id": "3c2015aa38",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-25-07-4.jpeg",
+   "w": 1696,
+   "h": 3008,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRoQAAABXRUJQVlA4IHgAAACQAwCdASoOABgAPu1iqU2ppaOiMAgBMB2JQBibAGbFL0Znq24AALGqVLYBPu72e96Dnwwl/neHSs+OmkdzBm5qbSuATbPbqzNaDUDPERC8DN+MXZqYCrveMEzdyWeWBF5AYC+ngEfswzlvRoL5abq4tWJ1eMYAAAA=",
+   "color": "#717172",
+   "taken": "2026-09-16T21:13:01+09:00",
+   "source": "exif",
+   "certain": true
+  },
+  {
+   "id": "e02923277d",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-25-07-22.jpeg",
+   "w": 2528,
+   "h": 4000,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRnwAAABXRUJQVlA4IHAAAADwAwCdASoPABgAPu1iqU2ppaOiMAgBMB2JYwC2yCG097khGGLkghKAAP7F5WjU2ebV+dYCKAEtUuMCkrU/vkqvAkgFb5MDGEFVFJsDHkfXYf+ckig+7WDATdhv+KOGXP4HsHec+5Gtab6c5iZ0IeAA",
+   "color": "#908987",
+   "taken": "2026-08-29T17:47:02+09:00",
+   "source": "exif",
+   "certain": true
+  },
+  {
+   "id": "205dcbfbbf",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-25-07-23.jpeg",
+   "w": 4000,
+   "h": 3000,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRrQAAABXRUJQVlA4IKgAAACwBQCdASoYABIAPu1orVCppaQiqAqpMB2JZQDLpBI2XiZU/wj0bT4hl93fapcMq9BNKET8NqAA/pBCbhz1+nsoKgJMR6fZtuv6nujAvdMzvNTnyFkwPuXTkT6zxWtg/D5DtiAFErief29uC+tDwtJlsX2WFHus5ub8B8z4YKd34x5QyZeQaepXSik7EukFvK15fFe+Hz0V2wf/yUtbmNkPI6rwtSo4YAA=",
+   "color": "#a5a19f",
+   "taken": "2026-08-27T19:24:16+09:00",
+   "source": "exif",
+   "certain": true
+  },
+  {
+   "id": "5d49d610dc",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-25-07-24.jpeg",
+   "w": 3000,
+   "h": 4000,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRnwAAABXRUJQVlA4IHAAAABwBACdASoSABgAPu1sqlEppaOiqAqpMB2JZQDLaBBdy9Ty6MOVyeJDSu9sgAD9NHYgF6RHwKUvPs6nrmDmthrwgX9VoqDETeUJsu3I74eTjChiRUIllukQlA7DJQonylArfoTjSRqwCgQaahGDxAAA",
+   "color": "#686363",
+   "taken": "2026-08-27T09:38:03+09:00",
+   "source": "exif",
+   "certain": true
+  },
+  {
+   "id": "30112c6ba6",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-25-07-25.jpeg",
+   "w": 5152,
+   "h": 8160,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRoAAAABXRUJQVlA4IHQAAAAQBACdASoPABgAPu1iqU2ppaOiMAgBMB2JZwAAX9K4ZB1KVTtDFuFLcAD+8MviVLcayEBUONL9bGOT1LvmML/uQEz261u0JPsf4l5mi0Dph75LCYARcweaWXXLieUH+Xe0znNw+MO3tSVznwTaovzH43uAAA==",
+   "color": "#85817f",
+   "taken": "2026-08-23T20:21:10+09:00",
+   "source": "exif",
+   "certain": true
+  },
+  {
+   "id": "fd93dea3ba",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-25-07-26.jpeg",
+   "w": 4000,
+   "h": 3000,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRrwAAABXRUJQVlA4ILAAAAAwBQCdASoYABIAPu1usFIppiSiqAgBMB2JZwDN/YyKUPXtQ/BmAYEYDEnnl/PK65pNAAD+oQDjHLmrWNOf403K93JM6RwOdCTnkoXtmuSksaDd88sKOuH1vV6QGrSz9VGBVx5BcMxkQDoqHmBqtnBS4wMmdGQqBOtyWWlYu8BO4P6fvB3mbxk6ZqX5FXHPYA1SF5w9eY/HL/yuLKAmPsf2/+5ctR9jCFa4v/dze+44AA==",
+   "color": "#979594",
+   "taken": "2026-08-20T19:49:36+09:00",
+   "source": "exif",
+   "certain": true
+  },
+  {
+   "id": "8738b827a3",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-25-07-28.jpeg",
+   "w": 2528,
+   "h": 4000,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRlgAAABXRUJQVlA4IEwAAABwAwCdASoPABgAPu1iqk2ppaQiMAgBMB2JZwAAPqyDRo/FioAAoMN8Gd7axyKyZLxnTduQC5J6QSE6ltruACYFPZyHsY2WYhdMIAAA",
+   "color": "#7a7775",
+   "taken": "2026-08-06T13:11:22+09:00",
+   "source": "exif",
+   "certain": true
+  },
+  {
+   "id": "904409c0a3",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-25-07-35.jpeg",
+   "w": 4284,
+   "h": 5712,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRpAAAABXRUJQVlA4IIQAAABwBACdASoSABgAPu1qrFEppaQiqAqpMB2JZwDHMBENNLQ8dqvIw8XzSkNeUAD9zEcDg0LgNHsMK29AbFsay17PMa8flawwRhoaD7I3bNWbJ+NttCoxsKTmGN1sgKaDcBlfj8tRs6TVN/LqJesRR6Z9D/oS3DeB1DrbSSajvNiNloqAAAA=",
+   "color": "#9ea2a3",
+   "taken": "2026-07-04T19:19:04+09:00",
+   "source": "gps",
+   "certain": true
+  },
+  {
+   "id": "b517fcdd1a",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-25-07-37.jpeg",
+   "w": 4284,
+   "h": 5712,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRpYAAABXRUJQVlA4IIoAAABQBQCdASoSABgAPu1mqk8ppaOiKA1RMB2JZQDLpBEbeUbsbbG4eMECewMMb4wOtkA2SAAA4MqVEZXYPH3cpZsb+7ZUIp5SlJWiljeuKDwxMzw7lfpir1h1pr8HhtUXD6Bs4NgRzXZtLiVv1V+f5K/p2CjmhbILKO22Yz1YSZ8qfmpLg7h+OWAAAAA=",
+   "color": "#999e9f",
+   "taken": "2026-07-04T19:14:36+09:00",
+   "source": "gps",
+   "certain": true
+  },
+  {
+   "id": "f68e20e9bf",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-25-07-36.jpeg",
+   "w": 5100,
+   "h": 4258,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRr4AAABXRUJQVlA4ILIAAACQBACdASoYABQAPu1ur1IppiQiqAgBMB2JQBUip3Ar7Jfei3fCqwZEYNykJXAA/c9gm3kB/a+65Bz9bQgbKOZnWF+R6oPsk6Haxt1B7Y1h6zU6q6wlrXOjPHOSnuZnz9BUHIP89tAIcFWf/BUlsAfCk89v94oUaI7DUjoso+vf4J3hjITqcfQvW4xfSusBvciE6ldTNIs8RllVBtVd7IUp03Ut1MKnUwbJ2SpU0X0AvAAA",
+   "color": "#969fa6",
+   "taken": "2026-07-04T19:13:49+09:00",
+   "source": "gps",
+   "certain": true
+  },
+  {
+   "id": "e76c8e8be7",
+   "type": "image",
+   "name": "KakaoTalk_Photo_2026-09-29-18-25-07-34.jpeg",
+   "w": 1980,
+   "h": 1750,
+   "sizes": [
+    480,
+    1200,
+    2400
+   ],
+   "lqip": "data:image/webp;base64,UklGRpQAAABXRUJQVlA4IIgAAABQBACdASoYABUAPu1mq08ppaOiKA1RMB2JQBdgAetEP3pykV3a1uQlDCB4AP3SQ+1qE83r7Nc2JnT1XPPSVyO1WEz+n5Ro0uK6Q/1oB5a1H50R/5QGL7p8t2OX9yJWGJDDdY03cUPGkYcC0tfXpqn/DikoJrm0C441X2MEHN2+dD6NZn8bAAAA",
+   "color": "#acb1b1",
+   "taken": "2026-07-04T19:11:30+09:00",
+   "source": "gps",
+   "certain": true
+  }
+ ]
+}
