@@ -1,6 +1,6 @@
 # seok · blog
 
-> Engineering notes by Seokwon Choi, platform engineer: Redis internals, Go and Kubernetes operators, performance measurement. Every post exists in Korean and English, each as plain markdown.
+> Notes by Seokwon Choi, platform engineer. Mostly technical, plus whatever else comes up along the way. Every post exists in Korean and English, each as plain markdown.
 
 ## Posts
 
