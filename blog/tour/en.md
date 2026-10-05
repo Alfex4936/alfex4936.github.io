@@ -3,7 +3,7 @@
 > The first post. Everything this blog can put inside a post, one thing at a time: a figure that follows your place, diagrams drawn at build time, math, code, and two languages.
 > 2026-10-05 · https://alfex4936.github.io/blog/tour/
 
-This blog is where I write down what I measured and how I measured it: Redis internals, Go and Kubernetes operators, performance work. Every post is written in both Korean and English. The first one is a tour of the blog itself. Every figure, formula and code block below is real output of this blog's build, and every number was measured while building it.
+This blog is my notebook: mostly technical, plus whatever else comes up along the way. Every post is written in both Korean and English. The first one is a tour of the blog itself. Every figure, formula and code block below is real output of this blog's build, and every number was measured while building it.
 
 ## A figure that follows your place
 
