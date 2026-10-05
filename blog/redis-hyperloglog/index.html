@@ -1,0 +1,1428 @@
+<!DOCTYPE html><html lang="ko" data-lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title data-ko="Redis HyperLogLog: 100만 명을 14KB로 세기 · seok" data-en="Redis HyperLogLog: counting a million users in 14 KB · seok">Redis HyperLogLog: 100만 명을 14KB로 세기 · seok</title><meta name="description" content="고유 방문자를 SET으로 세면 100만 명에 37MB, HyperLogLog로 세면 14KB입니다. 어떻게 세는지 따라가 보고, 오차가 얼마인지 직접 재 봤습니다."><meta property="og:title" content="Redis HyperLogLog: 100만 명을 14KB로 세기 · seok"><meta property="og:description" content="고유 방문자를 SET으로 세면 100만 명에 37MB, HyperLogLog로 세면 14KB입니다. 어떻게 세는지 따라가 보고, 오차가 얼마인지 직접 재 봤습니다."><meta property="og:url" content="https://alfex4936.github.io/blog/redis-hyperloglog/"><meta property="og:type" content="article"><meta property="og:locale" content="ko_KR"><meta property="og:locale:alternate" content="en_US"><meta property="article:published_time" content="2026-09-21T00:00:00.000Z"><meta property="og:image" content="https://alfex4936.github.io/blog/og/redis-hyperloglog.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="theme-color" content="#141413" media="(prefers-color-scheme: dark)"><meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)"><link rel="canonical" href="https://alfex4936.github.io/blog/redis-hyperloglog/"><link rel="icon" href="/favicon.ico"><link rel="alternate" type="application/rss+xml" title="seok · blog (한국어)" href="/blog/ko/rss.xml"><link rel="alternate" type="application/rss+xml" title="seok · blog (English)" href="/blog/en/rss.xml"><script>
+      // Same keys as the landing page, so the toggles carry across alfex4936.github.io.
+      ;(() => {
+        const q = new URLSearchParams(location.search).get('lang')
+        const stored = localStorage.getItem('portfolio:lang')
+        const lang = q === 'ko' || q === 'en' ? q : stored === 'ko' || stored === 'en' ? stored : navigator.language.startsWith('ko') ? 'ko' : 'en'
+        const root = document.documentElement
+        root.dataset.lang = root.lang = lang
+        const theme = localStorage.getItem('portfolio:theme')
+        if (theme === 'dark' || theme === 'light') root.dataset.theme = theme
+        const t = document.querySelector('title')
+        t.textContent = t.dataset[lang]
+      })()
+    </script><link rel="stylesheet" href="/blog/assets/Step.FmcF6wk0.css"><link rel="stylesheet" href="/blog/assets/all.iO4MCkCM.css"></head><body><a class="skip" href="#main"><span lang="ko">본문으로</span><span lang="en">Skip to content</span></a><header class="bar"><nav class="bar__path" aria-label="Path"><a href="/">seok</a><span class="sep">·</span><a href="/blog/">~/blog</a><span class="sep">/</span><span class="here">redis-hyperloglog</span></nav><nav class="bar__ctl" aria-label="Search, language and theme"><button type="button" class="bar__search" data-search aria-keyshortcuts="/ Control+K Meta+K"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.5"></circle><path d="M10.4 10.4 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg><span class="bar__search-label"><span lang="ko">검색</span><span lang="en">Search</span></span><kbd>/</kbd></button><span class="bar__sep" aria-hidden="true">·</span><button type="button" data-lang-set="ko" aria-pressed="false">ko</button><button type="button" data-lang-set="en" aria-pressed="false">en</button><span class="bar__sep" aria-hidden="true">·</span><button type="button" data-theme-set="dark" aria-pressed="false">dark</button><button type="button" data-theme-set="light" aria-pressed="false">light</button></nav></header><main id="main"><article class="post" lang="ko" data-minutes="4"><header class="post__head"><p class="post__cwd"><a href="/blog/">~/blog</a>/redis-hyperloglog/ko.mdx</p><h1 class="post__title" style="view-transition-name: t-redis-hyperloglog">Redis HyperLogLog: 100만 명을 14KB로 세기</h1><p class="post__dek">고유 방문자를 SET으로 세면 100만 명에 37MB, HyperLogLog로 세면 14KB입니다. 어떻게 세는지 따라가 보고, 오차가 얼마인지 직접 재 봤습니다.</p><p class="post__meta"><time datetime="2026-09-21">2026-09-21</time><span>4분</span><span><a href="/blog/?tag=redis">redis</a> · <a href="/blog/?tag=performance">performance</a></span></p></header><nav class="toc" aria-label="목차"><p class="toc__label">목차</p><ol><li><a href="#ko-정확히-세면"><span class="toc__n">§1</span><span>정확히 세면</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-hyperloglog가-세는-방법"><span class="toc__n">§2</span><span>HyperLogLog가 세는 방법</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-오차는-얼마나"><span class="toc__n">§3</span><span>오차는 얼마나</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-작을-때는-더-작게"><span class="toc__n">§4</span><span>작을 때는 더 작게</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-코드에서-쓰기"><span class="toc__n">§5</span><span>코드에서 쓰기</span><span class="toc__len" aria-hidden="true"></span></a></li></ol></nav><div class="prose"><p>하루 고유 방문자 수처럼, 누가 왔는지는 필요 없고 몇 명인지만 알면 되는 질문이 있습니다. 이 글의 숫자는 모두 로컬 Redis 8.10.2(Homebrew 빌드, libc malloc)에 <code>user:0</code>부터 <code>user:999999</code>까지 넣어 잰 값입니다.</p>
+<h2 id="ko-정확히-세면">정확히 세면</h2>
+<p>SET에 넣으면 정확한 개수가 나옵니다. 대신 원소를 전부 들고 있어야 합니다.</p>
+<div class="expressive-code"><link rel="stylesheet" href="/blog/assets/ec.u2ymx.css"/><script type="module" src="/blog/assets/ec.0vx5m.js"></script><figure class="frame is-terminal"><figcaption class="header"><span class="title"></span><span class="sr-only">Terminal window</span></figcaption><pre data-language="bash"><code><div class="ec-line"><div class="code"><span style="--0:#F3E2C4;--1:#5A4521">$</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">redis-cli</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">SCARD</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">visitors:set</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#F3E2C4;--1:#5A4521">integer</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">1000000</span></div></div><div class="ec-line"><div class="code"><span style="--0:#F3E2C4;--1:#5A4521">$</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">redis-cli</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">MEMORY</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">USAGE</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">visitors:set</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">SAMPLES</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#F3E2C4;--1:#5A4521">integer</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">37277585</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="$ redis-cli SCARD visitors:set(integer) 1000000$ redis-cli MEMORY USAGE visitors:set SAMPLES 0(integer) 37277585"><div></div></button></div></figure></div>
+<p>100만 명에 37,277,585바이트, 약 37MB입니다. 하루치가 이 크기이고, 날마다 따로 보관하면 그만큼 쌓입니다.</p>
+<h2 id="ko-hyperloglog가-세는-방법">HyperLogLog가 세는 방법</h2>
+<p>HyperLogLog는 원소를 저장하지 않고 해시값의 모양만 기억합니다. Redis 소스의 <code>hyperloglog.c</code>를 따라가면 이렇습니다.</p>
+<div class="walk"><div class="walk__fig"><figure class="diagram" data-diagram="flowchart" style="--w:868px"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 867.0699999999999 181.8" width="867.0699999999999" height="181.8" role="img" aria-label="원소, 64비트 해시, 하위 14비트, 남은 50비트, 레지스터 16384개, PFCOUNT 추정">
+
+<defs>
+  <marker id="ko-dg0-arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+  <marker id="ko-dg0-arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+</defs>
+<polyline class="edge" data-from="M" data-to="H" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="111.59,90.9 159.59,90.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="H" data-to="I" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="277.863,90.9 302.97450000000003,90.9 302.97450000000003,58.45 328.086,58.45" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="H" data-to="Z" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="277.863,90.9 302.97450000000003,90.9 302.97450000000003,123.35000000000001 328.086,123.35000000000001" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="I" data-to="R" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="441.913,58.45 469.2475,58.45 469.2475,90.9 492.13599999999997,90.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="Z" data-to="R" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="446.35900000000004,123.35000000000001 469.2475,123.35000000000001 469.2475,90.9 492.13599999999997,90.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="R" data-to="C" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="643.0129999999999,90.9 691.0129999999999,90.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<g class="node" data-id="M" data-label="원소" data-shape="rectangle">
+  <rect x="40" y="72.45" width="71.59" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="75.795" y="90.9" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">원소</text>
+</g>
+<g class="node" data-id="H" data-label="64비트 해시" data-shape="rectangle">
+  <rect x="159.59" y="72.45" width="118.273" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="218.7265" y="90.9" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">64비트 해시</text>
+</g>
+<g class="node" data-id="I" data-label="하위 14비트" data-shape="rectangle">
+  <rect x="328.086" y="40" width="113.827" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="384.9995" y="58.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">하위 14비트</text>
+</g>
+<g class="node" data-id="Z" data-label="남은 50비트" data-shape="rectangle">
+  <rect x="328.086" y="104.9" width="118.273" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="387.2225" y="123.35000000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">남은 50비트</text>
+</g>
+<g class="node" data-id="R" data-label="레지스터 16384개" data-shape="cylinder">
+  <rect x="492.13599999999997" y="72.45" width="150.877" height="36.900000000000006" fill="var(--_node-fill)" stroke="none"></rect>
+  <line x1="492.13599999999997" y1="72.45" x2="492.13599999999997" y2="109.35000000000001" stroke="var(--_node-stroke)" stroke-width="0.75"></line>
+  <line x1="643.0129999999999" y1="72.45" x2="643.0129999999999" y2="109.35000000000001" stroke="var(--_node-stroke)" stroke-width="0.75"></line>
+  <ellipse cx="567.5745" cy="109.35000000000001" rx="75.4385" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></ellipse>
+  <ellipse cx="567.5745" cy="72.45" rx="75.4385" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></ellipse>
+  <text x="567.5745" y="90.9" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">레지스터 16384개</text>
+</g>
+<g class="node" data-id="C" data-label="PFCOUNT 추정" data-shape="rectangle">
+  <rect x="691.0129999999999" y="72.45" width="136.05700000000002" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="759.0414999999999" y="90.9" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">PFCOUNT 추정</text>
+</g>
+</svg></figure></div><div class="walk__steps"><div class="step" data-show="M,H"><p>원소를 MurmurHash64A로 64비트 해시값으로 바꿉니다. 같은 원소는 언제나 같은 해시가 됩니다.</p></div><div class="step" data-show="H,I,R"><p>하위 14비트로 레지스터 하나를 고릅니다. 2의 14제곱, 16,384개입니다.</p></div><div class="step" data-show="H,Z,R"><p>남은 비트를 아래쪽부터 보면서 처음 1이 나올 때까지의 0의 개수에 1을 더합니다. 레지스터는 지금까지 본 가장 큰 값만 남깁니다. 0이 길게 이어지는 해시는 드물기 때문에, 큰 값이 보였다는 것은 그만큼 많은 원소를 봤다는 뜻입니다.</p></div><div class="step" data-show="R,C"><p>PFCOUNT는 레지스터 값들의 분포로 개수를 추정합니다. Redis는 Otmar Ertl의 추정식을 씁니다.<sup><a href="#ko-user-content-fn-1" id="ko-user-content-fnref-1" data-footnote-ref aria-describedby="ko-footnote-label">1</a></sup></p></div></div></div>
+<p>레지스터 하나는 6비트이므로 16,384 × 6비트 = 12,288바이트이고, 16바이트 헤더가 붙어 12,304바이트입니다. 잰 값도 같습니다.</p>
+<div class="expressive-code"><figure class="frame is-terminal"><figcaption class="header"><span class="title"></span><span class="sr-only">Terminal window</span></figcaption><pre data-language="bash"><code><div class="ec-line"><div class="code"><span style="--0:#F3E2C4;--1:#5A4521">$</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">redis-cli</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">STRLEN</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">visitors:hll</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#F3E2C4;--1:#5A4521">integer</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">12304</span></div></div><div class="ec-line"><div class="code"><span style="--0:#F3E2C4;--1:#5A4521">$</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">redis-cli</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">MEMORY</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">USAGE</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">visitors:hll</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">SAMPLES</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#F3E2C4;--1:#5A4521">integer</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">14367</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="$ redis-cli STRLEN visitors:hll(integer) 12304$ redis-cli MEMORY USAGE visitors:hll SAMPLES 0(integer) 14367"><div></div></button></div></figure></div>
+<p>같은 100만 명을 SET보다 약 2,600분의 1 크기로 셉니다.</p>
+<h2 id="ko-오차는-얼마나">오차는 얼마나</h2>
+<p>표준 오차는 레지스터 수 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>m</mi></mrow><annotation encoding="application/x-tex">m</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4306em"></span><span class="mord mathnormal">m</span></span></span></span>으로 정해집니다.</p>
+<span class="katex-display"><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mi>σ</mi><mo>≈</mo><mfrac><mn>1.04</mn><msqrt><mi>m</mi></msqrt></mfrac><mo>=</mo><mfrac><mn>1.04</mn><msqrt><mn>16384</mn></msqrt></mfrac><mo>=</mo><mfrac><mn>1.04</mn><mn>128</mn></mfrac><mo>≈</mo><mn>0.81</mn><mi mathvariant="normal">%</mi></mrow><annotation encoding="application/x-tex">\sigma \approx \frac{1.04}{\sqrt{m}} = \frac{1.04}{\sqrt{16384}} = \frac{1.04}{128} \approx 0.81\%</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4831em"></span><span class="mord mathnormal" style="margin-right:0.0359em">σ</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:2.2514em;vertical-align:-0.93em"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.3214em"><span style="top:-2.3097em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord sqrt"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8003em"><span class="svg-align" style="top:-3em"><span class="pstrut" style="height:3em"></span><span class="mord" style="padding-left:0.833em"><span class="mord mathnormal">m</span></span></span><span style="top:-2.7603em"><span class="pstrut" style="height:3em"></span><span class="hide-tail" style="min-width:0.853em;height:1.08em"><svg xmlns="http://www.w3.org/2000/svg" width="400em" height="1.08em" viewBox="0 0 400000 1080" preserveAspectRatio="xMinYMin slice"><path d="M95,702
+c-2.7,0,-7.17,-2.7,-13.5,-8c-5.8,-5.3,-9.5,-10,-9.5,-14
+c0,-2,0.3,-3.3,1,-4c1.3,-2.7,23.83,-20.7,67.5,-54
+c44.2,-33.3,65.8,-50.3,66.5,-51c1.3,-1.3,3,-2,5,-2c4.7,0,8.7,3.3,12,10
+s173,378,173,378c0.7,0,35.3,-71,104,-213c68.7,-142,137.5,-285,206.5,-429
+c69,-144,104.5,-217.7,106.5,-221
+l0 -0
+c5.3,-9.3,12,-14,20,-14
+H400000v40H845.2724
+s-225.272,467,-225.272,467s-235,486,-235,486c-2.7,4.7,-9,7,-19,7
+c-6,0,-10,-1,-12,-3s-194,-422,-194,-422s-65,47,-65,47z
+M834 80h400000v40h-400000z"></path></svg></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2397em"><span></span></span></span></span></span></span></span><span style="top:-3.23em"><span class="pstrut" style="height:3em"></span><span class="frac-line" style="border-bottom-width:0.04em"></span></span><span style="top:-3.677em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord">1.04</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.93em"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:2.2514em;vertical-align:-0.93em"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.3214em"><span style="top:-2.2028em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord sqrt"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.9072em"><span class="svg-align" style="top:-3em"><span class="pstrut" style="height:3em"></span><span class="mord" style="padding-left:0.833em"><span class="mord">16384</span></span></span><span style="top:-2.8672em"><span class="pstrut" style="height:3em"></span><span class="hide-tail" style="min-width:0.853em;height:1.08em"><svg xmlns="http://www.w3.org/2000/svg" width="400em" height="1.08em" viewBox="0 0 400000 1080" preserveAspectRatio="xMinYMin slice"><path d="M95,702
+c-2.7,0,-7.17,-2.7,-13.5,-8c-5.8,-5.3,-9.5,-10,-9.5,-14
+c0,-2,0.3,-3.3,1,-4c1.3,-2.7,23.83,-20.7,67.5,-54
+c44.2,-33.3,65.8,-50.3,66.5,-51c1.3,-1.3,3,-2,5,-2c4.7,0,8.7,3.3,12,10
+s173,378,173,378c0.7,0,35.3,-71,104,-213c68.7,-142,137.5,-285,206.5,-429
+c69,-144,104.5,-217.7,106.5,-221
+l0 -0
+c5.3,-9.3,12,-14,20,-14
+H400000v40H845.2724
+s-225.272,467,-225.272,467s-235,486,-235,486c-2.7,4.7,-9,7,-19,7
+c-6,0,-10,-1,-12,-3s-194,-422,-194,-422s-65,47,-65,47z
+M834 80h400000v40h-400000z"></path></svg></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.1328em"><span></span></span></span></span></span></span></span><span style="top:-3.23em"><span class="pstrut" style="height:3em"></span><span class="frac-line" style="border-bottom-width:0.04em"></span></span><span style="top:-3.677em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord">1.04</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.93em"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:2.0074em;vertical-align:-0.686em"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.3214em"><span style="top:-2.314em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord">128</span></span></span><span style="top:-3.23em"><span class="pstrut" style="height:3em"></span><span class="frac-line" style="border-bottom-width:0.04em"></span></span><span style="top:-3.677em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord">1.04</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.8056em;vertical-align:-0.0556em"></span><span class="mord">0.81%</span></span></span></span></span>
+<p>원소 수를 바꿔 가며 잰 결과입니다.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th style="text-align:right">원소 수</th><th style="text-align:right">PFCOUNT</th><th style="text-align:right">오차</th><th style="text-align:right">문자열</th><th style="text-align:right">MEMORY USAGE</th></tr></thead><tbody><tr><td style="text-align:right">100</td><td style="text-align:right">100</td><td style="text-align:right">0.00%</td><td style="text-align:right">283 B</td><td style="text-align:right">538 B</td></tr><tr><td style="text-align:right">1,000</td><td style="text-align:right">1,007</td><td style="text-align:right">+0.70%</td><td style="text-align:right">1,910 B</td><td style="text-align:right">2,587 B</td></tr><tr><td style="text-align:right">10,000</td><td style="text-align:right">10,089</td><td style="text-align:right">+0.89%</td><td style="text-align:right">12,304 B</td><td style="text-align:right">14,364 B</td></tr><tr><td style="text-align:right">100,000</td><td style="text-align:right">99,471</td><td style="text-align:right">−0.53%</td><td style="text-align:right">12,304 B</td><td style="text-align:right">14,365 B</td></tr><tr><td style="text-align:right">1,000,000</td><td style="text-align:right">999,674</td><td style="text-align:right">−0.03%</td><td style="text-align:right">12,304 B</td><td style="text-align:right">14,367 B</td></tr></tbody></table>
+<figure class="diagram" data-diagram="xychart" style="--w:750px"><svg data-xychart-colors="1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 750 492" width="750" height="492" role="img" aria-label="xychart">
+
+
+<circle cx="128" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="432" r="1.5" class="xychart-grid"></circle>
+<path d="M168,432 h40 v0 h-40 Z" class="xychart-bar xychart-color-0" data-value="0" data-label="100"></path>
+<path d="M288,202 Q288,194 296,194 L320,194 Q328,194 328,202 L328,424 Q328,432 320,432 L296,432 Q288,432 288,424 Z" class="xychart-bar xychart-color-0" data-value="0.7" data-label="1천"></path>
+<path d="M408,137.4 Q408,129.4 416,129.4 L440,129.4 Q448,129.4 448,137.4 L448,424 Q448,432 440,432 L416,432 Q408,432 408,424 Z" class="xychart-bar xychart-color-0" data-value="0.89" data-label="1만"></path>
+<path d="M528,259.8 Q528,251.8 536,251.8 L560,251.8 Q568,251.8 568,259.8 L568,424 Q568,432 560,432 L536,432 Q528,432 528,424 Z" class="xychart-bar xychart-color-0" data-value="0.53" data-label="10만"></path>
+<path d="M648,426.9 Q648,421.8 653.1,421.8 L682.9,421.8 Q688,421.8 688,426.9 L688,426.9 Q688,432 682.9,432 L653.1,432 Q648,432 648,426.9 Z" class="xychart-bar xychart-color-0" data-value="0.03" data-label="100만"></path>
+<path d="M188,156.6 C228,156.6 268,156.6 308,156.6 C348,156.6 388,156.6 428,156.6 C468,156.6 508,156.6 548,156.6 C588,156.6 628,156.6 668,156.6" class="xychart-line-shadow xychart-color-1" transform="translate(0,2)"></path>
+<path d="M188,156.6 C228,156.6 268,156.6 308,156.6 C348,156.6 388,156.6 428,156.6 C468,156.6 508,156.6 548,156.6 C588,156.6 628,156.6 668,156.6" class="xychart-line xychart-color-1"></path>
+<circle cx="188" cy="156.6" r="5" class="xychart-dot xychart-color-1" data-value="0.81" data-label="100"></circle>
+<circle cx="308" cy="156.6" r="5" class="xychart-dot xychart-color-1" data-value="0.81" data-label="1천"></circle>
+<circle cx="428" cy="156.6" r="5" class="xychart-dot xychart-color-1" data-value="0.81" data-label="1만"></circle>
+<circle cx="548" cy="156.6" r="5" class="xychart-dot xychart-color-1" data-value="0.81" data-label="10만"></circle>
+<circle cx="668" cy="156.6" r="5" class="xychart-dot xychart-color-1" data-value="0.81" data-label="100만"></circle>
+<text x="188" y="450" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">100</text>
+<text x="308" y="450" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">1천</text>
+<text x="428" y="450" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">1만</text>
+<text x="548" y="450" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">10만</text>
+<text x="668" y="450" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">100만</text>
+<text x="110" y="432" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">0</text>
+<text x="110" y="364" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">0.2</text>
+<text x="110" y="296" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">0.4</text>
+<text x="110" y="228" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">0.6</text>
+<text x="110" y="160" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">0.8</text>
+<text x="110" y="92" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">1</text>
+<text x="26" y="262" text-anchor="middle" transform="rotate(-90,26,262)" font-size="15" font-weight="500" dy="0.35em" class="xychart-axis-title">%</text>
+<text x="375" y="40" text-anchor="middle" font-size="18" font-weight="600" dy="0.35em" class="xychart-title">PFCOUNT 오차의 크기 (%)</text>
+<rect x="314.65999999999997" y="71" width="14" height="14" rx="3" class="xychart-bar xychart-color-0"></rect>
+<text x="334.65999999999997" y="78" text-anchor="start" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">Bar 1</text>
+<line x1="380.73199999999997" y1="78" x2="394.73199999999997" y2="78" stroke-width="2.5" stroke-linecap="round" class="xychart-legend-line xychart-color-1"></line>
+<text x="400.73199999999997" y="78" text-anchor="start" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">Line 1</text>
+</svg></figure>
+<p>1만 개에서는 0.89%로 표준 오차 0.81%(선)보다 컸습니다. 표준 오차는 상한이 아니라 오차가 흔히 그 정도라는 뜻이어서, 한 번 잰 값은 넘어설 수 있습니다. 100만 개에서는 0.03%였습니다.</p>
+<h2 id="ko-작을-때는-더-작게">작을 때는 더 작게</h2>
+<p>원소가 적을 때 Redis는 레지스터 16,384개를 다 펼치지 않는 희소(sparse) 표현을 씁니다. 100개일 때 283바이트, 1,000개일 때 1,910바이트였고, 1만 개에서는 12,304바이트의 밀집(dense) 표현으로 바뀌어 있었습니다. 바뀌는 기준은 <code>hll-sparse-max-bytes</code>입니다.<sup><a href="#ko-user-content-fn-2" id="ko-user-content-fnref-2" data-footnote-ref aria-describedby="ko-footnote-label">2</a></sup></p>
+<h2 id="ko-코드에서-쓰기">코드에서 쓰기</h2>
+<p>방문할 때마다 그날의 키에 넣고, 셀 때는 날짜 키를 여러 개 함께 넘깁니다. 예시는 Go와 go-redis v9입니다.</p>
+<div class="walk"><div class="walk__fig"><div class="expressive-code"><figure class="frame has-title"><figcaption class="header"><span class="title">visitors.go</span></figcaption><pre data-language="go"><code><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">func</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">Visit</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">ctx </span><span style="--0:#B8C6D1;--1:#35506A">context</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#B8C6D1;--1:#35506A">Context</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> rdb </span><span style="--0:#A3A19B;--1:#5E5B55">*</span><span style="--0:#B8C6D1;--1:#35506A">redis</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#B8C6D1;--1:#35506A">Client</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> day</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> user </span><span style="--0:#E2B071;--1:#87500C">string</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">error</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">return</span><span style="--0:#E6E3D9;--1:#2B2A26"> rdb</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">PFAdd</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">ctx</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A9C6A3;--1:#3A6844">visitors:</span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A3A19B;--1:#5E5B55">+</span><span style="--0:#E6E3D9;--1:#2B2A26">day</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> user</span><span style="--0:#A3A19B;--1:#5E5B55">).</span><span style="--0:#F3E2C4;--1:#5A4521">Err</span><span style="--0:#A3A19B;--1:#5E5B55">()</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">func</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">Unique</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">ctx </span><span style="--0:#B8C6D1;--1:#35506A">context</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#B8C6D1;--1:#35506A">Context</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> rdb </span><span style="--0:#A3A19B;--1:#5E5B55">*</span><span style="--0:#B8C6D1;--1:#35506A">redis</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#B8C6D1;--1:#35506A">Client</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> days </span><span style="--0:#A3A19B;--1:#5E5B55">...</span><span style="--0:#E2B071;--1:#87500C">string</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E2B071;--1:#87500C">int64</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">error</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">  </span></span><span style="--0:#E6E3D9;--1:#2B2A26">keys </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">make</span><span style="--0:#A3A19B;--1:#5E5B55">([]</span><span style="--0:#E2B071;--1:#87500C">string</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">len</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">days</span><span style="--0:#A3A19B;--1:#5E5B55">))</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> i</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> d </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">range</span><span style="--0:#E6E3D9;--1:#2B2A26"> days </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">    </span></span><span style="--0:#E6E3D9;--1:#2B2A26">keys</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">]</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A9C6A3;--1:#3A6844">visitors:</span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">+</span><span style="--0:#E6E3D9;--1:#2B2A26"> d</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">return</span><span style="--0:#E6E3D9;--1:#2B2A26"> rdb</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">PFCount</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">ctx</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> keys</span><span style="--0:#A3A19B;--1:#5E5B55">...).</span><span style="--0:#F3E2C4;--1:#5A4521">Result</span><span style="--0:#A3A19B;--1:#5E5B55">()</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="func Visit(ctx context.Context, rdb *redis.Client, day, user string) error {  return rdb.PFAdd(ctx, &quot;visitors:&quot;+day, user).Err()}func Unique(ctx context.Context, rdb *redis.Client, days ...string) (int64, error) {  keys := make([]string, len(days))  for i, d := range days {    keys[i] = &quot;visitors:&quot; + d  }  return rdb.PFCount(ctx, keys...).Result()}"><div></div></button></div></figure></div></div><div class="walk__steps"><div class="step" data-lines="1-3"><p>방문마다 그날 키에 PFADD합니다. 같은 사용자가 여러 번 와도 개수는 늘지 않습니다.</p></div><div class="step" data-lines="5-11"><p>PFCOUNT에 키를 여러 개 넘기면 합집합의 크기를 추정합니다. 일주일의 고유 방문자는 날짜 키 일곱 개로 셉니다. 합친 결과를 계속 쓸 거라면 PFMERGE로 새 키에 저장해 둘 수 있습니다.</p></div></div></div>
+<p>정확한 수가 꼭 필요한 곳, 예를 들어 과금이라면 SET이나 데이터베이스로 세야 합니다. 대시보드의 고유 방문자처럼 1% 안쪽의 오차가 괜찮은 곳에서는 HyperLogLog가 메모리를 크게 아낍니다.</p>
+<section data-footnotes class="footnotes"><h2 class="sr-only" id="ko-footnote-label">각주</h2>
+<ol>
+<li id="ko-user-content-fn-1">
+<p>Otmar Ertl, “New cardinality estimation algorithms for HyperLogLog sketches”, arXiv:1702.01284. Redis 소스의 <code>hllSigma</code> 함수 주석이 이 논문을 가리킵니다. <a href="#ko-user-content-fnref-1" data-footnote-backref aria-label="Back to reference 1" class="data-footnote-backref">↩</a></p>
+</li>
+<li id="ko-user-content-fn-2">
+<p>이 글을 잰 환경에서 <code>CONFIG GET hll-sparse-max-bytes</code>는 3000을 돌려줬습니다. <a href="#ko-user-content-fnref-2" data-footnote-backref aria-label="Back to reference 2" class="data-footnote-backref">↩</a></p>
+</li>
+</ol>
+</section></div><footer class="post__end"><p class="post__source">원문 마크다운: <a href="/blog/redis-hyperloglog/ko.md">redis-hyperloglog/ko.md</a></p><nav class="post__nav" aria-label="다른 글"><a class="newer" href="/blog/hangul-width/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 288.9460833333334 629.285">
+
+
+<polyline class="edge" data-from="C" data-to="W" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="115.76858333333334,76.9 115.76858333333334,124.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="W" data-to="T" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예" points="95.76141666666668,224.93583333333333 95.76141666666668,439.78499999999997 51.00000000000001,439.78499999999997 51.00000000000001,540.385 64.94783333333334,540.385 64.94783333333334,552.385" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="W" data-to="A" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="135.77575000000002,224.9358333333333 135.77575000000002,280.943 153.74408333333332,280.943 153.74408333333332,361.243" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="A" data-to="T" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="동아시아 설정" points="141.27041666666668,423.61133333333333 141.27041666666668,472.085 108.98866666666667,472.085 108.98866666666667,540.385 89.55216666666666,540.385 89.55216666666666,552.385" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="A" data-to="O" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="그 밖" points="166.21775,423.6113333333333 166.21775,472.085 189.35008333333334,472.085 189.35008333333334,552.385" fill="none" stroke="var(--_line)" stroke-width="1" />
+
+
+
+
+<g class="node" data-id="C" data-label="글자 하나" data-shape="rectangle">
+  <rect x="64.04208333333334" y="40" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node is-hub" data-id="W" data-label="W 또는 F" data-shape="diamond">
+  <polygon points="115.76858333333334,124.9 175.79008333333334,184.9215 115.76858333333334,244.943 55.74708333333334,184.9215" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="T" data-label="두 칸" data-shape="rectangle">
+  <rect x="40.34350000000001" y="552.385" width="73.81299999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="A" data-label="A" data-shape="diamond">
+  <polygon points="153.74408333333332,361.243 191.1650833333333,398.664 153.74408333333332,436.085 116.32308333333333,398.664" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="O" data-label="한 칸" data-shape="rectangle">
+  <rect x="152.44358333333335" y="552.385" width="73.81299999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>다음 글 →</small><span class="post__nav-title">터미널에서 한글은 왜 두 칸인가</span></a></nav></footer></article><article class="post" lang="en" data-minutes="3"><header class="post__head"><p class="post__cwd"><a href="/blog/">~/blog</a>/redis-hyperloglog/en.mdx</p><h1 class="post__title" style="view-transition-name: t-redis-hyperloglog">Redis HyperLogLog: counting a million users in 14 KB</h1><p class="post__dek">Counting unique visitors with a SET takes 37 MB for a million; HyperLogLog takes 14 KB. How it counts, and how far off it is, measured.</p><p class="post__meta"><time datetime="2026-09-21">2026-09-21</time><span>3 min read</span><span><a href="/blog/?tag=redis">redis</a> · <a href="/blog/?tag=performance">performance</a></span></p></header><nav class="toc" aria-label="Contents"><p class="toc__label">Contents</p><ol><li><a href="#en-counting-exactly"><span class="toc__n">§1</span><span>Counting exactly</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-how-hyperloglog-counts"><span class="toc__n">§2</span><span>How HyperLogLog counts</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-how-far-off-it-is"><span class="toc__n">§3</span><span>How far off it is</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-smaller-when-small"><span class="toc__n">§4</span><span>Smaller when small</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-using-it-from-code"><span class="toc__n">§5</span><span>Using it from code</span><span class="toc__len" aria-hidden="true"></span></a></li></ol></nav><div class="prose"><p>Some questions only need how many, not who: unique visitors in a day, for one. Every number in this post was measured on a local Redis 8.10.2 (Homebrew build, libc malloc) loaded with <code>user:0</code> through <code>user:999999</code>.</p>
+<h2 id="en-counting-exactly">Counting exactly</h2>
+<p>A SET gives the exact count. In exchange it has to hold every member.</p>
+<div class="expressive-code"><link rel="stylesheet" href="/blog/assets/ec.u2ymx.css"/><script type="module" src="/blog/assets/ec.0vx5m.js"></script><figure class="frame is-terminal"><figcaption class="header"><span class="title"></span><span class="sr-only">Terminal window</span></figcaption><pre data-language="bash"><code><div class="ec-line"><div class="code"><span style="--0:#F3E2C4;--1:#5A4521">$</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">redis-cli</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">SCARD</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">visitors:set</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#F3E2C4;--1:#5A4521">integer</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">1000000</span></div></div><div class="ec-line"><div class="code"><span style="--0:#F3E2C4;--1:#5A4521">$</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">redis-cli</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">MEMORY</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">USAGE</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">visitors:set</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">SAMPLES</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#F3E2C4;--1:#5A4521">integer</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">37277585</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="$ redis-cli SCARD visitors:set(integer) 1000000$ redis-cli MEMORY USAGE visitors:set SAMPLES 0(integer) 37277585"><div></div></button></div></figure></div>
+<p>A million members take 37,277,585 bytes, about 37 MB. That is one day; keep a set per day and it adds up.</p>
+<h2 id="en-how-hyperloglog-counts">How HyperLogLog counts</h2>
+<p>HyperLogLog stores no members, only the shape of their hashes. Following <code>hyperloglog.c</code> in the Redis source:</p>
+<div class="walk"><div class="walk__fig"><figure class="diagram" data-diagram="flowchart" style="--w:891px"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 890.7819999999999 181.8" width="890.7819999999999" height="181.8" role="img" aria-label="member, 64-bit hash, low 14 bits, remaining 50 bits, 16384 registers, PFCOUNT estimate">
+
+<defs>
+  <marker id="en-dg0-arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+  <marker id="en-dg0-arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+</defs>
+<polyline class="edge" data-from="M" data-to="H" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="127.892,90.9 175.892,90.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="H" data-to="I" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="281.568,90.9 305.568,90.9 305.568,58.45 372.546,58.45" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="H" data-to="Z" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="281.568,90.9 305.568,90.9 305.568,123.35000000000001 329.568,123.35000000000001" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="I" data-to="R" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="469.33,58.45 493.3299999999999,58.45 493.3299999999999,90.9 517.3299999999999,90.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="Z" data-to="R" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="469.33,123.35000000000001 493.3299999999999,123.35000000000001 493.3299999999999,90.9 517.3299999999999,90.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="R" data-to="C" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="648.941,90.9 696.941,90.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<g class="node" data-id="M" data-label="member" data-shape="rectangle">
+  <rect x="40" y="72.45" width="87.892" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="83.946" y="90.9" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">member</text>
+</g>
+<g class="node" data-id="H" data-label="64-bit hash" data-shape="rectangle">
+  <rect x="175.892" y="72.45" width="105.67599999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="228.73" y="90.9" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">64-bit hash</text>
+</g>
+<g class="node" data-id="I" data-label="low 14 bits" data-shape="rectangle">
+  <rect x="372.546" y="40" width="96.78399999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="420.938" y="58.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">low 14 bits</text>
+</g>
+<g class="node" data-id="Z" data-label="remaining 50 bits" data-shape="rectangle">
+  <rect x="329.568" y="104.9" width="139.762" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="399.44899999999996" y="123.35000000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">remaining 50 bits</text>
+</g>
+<g class="node" data-id="R" data-label="16384 registers" data-shape="cylinder">
+  <rect x="517.3299999999999" y="72.45" width="131.611" height="36.900000000000006" fill="var(--_node-fill)" stroke="none"></rect>
+  <line x1="517.3299999999999" y1="72.45" x2="517.3299999999999" y2="109.35000000000001" stroke="var(--_node-stroke)" stroke-width="0.75"></line>
+  <line x1="648.9409999999999" y1="72.45" x2="648.9409999999999" y2="109.35000000000001" stroke="var(--_node-stroke)" stroke-width="0.75"></line>
+  <ellipse cx="583.1354999999999" cy="109.35000000000001" rx="65.8055" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></ellipse>
+  <ellipse cx="583.1354999999999" cy="72.45" rx="65.8055" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></ellipse>
+  <text x="583.1354999999999" y="90.9" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">16384 registers</text>
+</g>
+<g class="node" data-id="C" data-label="PFCOUNT estimate" data-shape="rectangle">
+  <rect x="696.941" y="72.45" width="153.841" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="773.8615" y="90.9" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">PFCOUNT estimate</text>
+</g>
+</svg></figure></div><div class="walk__steps"><div class="step" data-show="M,H"><p>Each member is hashed to 64 bits with MurmurHash64A. The same member always gets the same hash.</p></div><div class="step" data-show="H,I,R"><p>The low 14 bits pick one register: 2 to the 14th, 16,384 of them.</p></div><div class="step" data-show="H,Z,R"><p>The remaining bits are read from the bottom up, counting the zeros before the first 1, plus one. A register keeps only the largest value it has seen. Long runs of zeros are rare, so seeing a large value means many members have gone past.</p></div><div class="step" data-show="R,C"><p>PFCOUNT estimates the count from how the register values are spread. Redis uses Otmar Ertl’s estimator.<sup><a href="#en-user-content-fn-1" id="en-user-content-fnref-1" data-footnote-ref aria-describedby="en-footnote-label">1</a></sup></p></div></div></div>
+<p>A register is 6 bits, so 16,384 × 6 bits is 12,288 bytes, and a 16-byte header makes 12,304. The measurement agrees.</p>
+<div class="expressive-code"><figure class="frame is-terminal"><figcaption class="header"><span class="title"></span><span class="sr-only">Terminal window</span></figcaption><pre data-language="bash"><code><div class="ec-line"><div class="code"><span style="--0:#F3E2C4;--1:#5A4521">$</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">redis-cli</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">STRLEN</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">visitors:hll</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#F3E2C4;--1:#5A4521">integer</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">12304</span></div></div><div class="ec-line"><div class="code"><span style="--0:#F3E2C4;--1:#5A4521">$</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">redis-cli</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">MEMORY</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">USAGE</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">visitors:hll</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">SAMPLES</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#F3E2C4;--1:#5A4521">integer</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">14367</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="$ redis-cli STRLEN visitors:hll(integer) 12304$ redis-cli MEMORY USAGE visitors:hll SAMPLES 0(integer) 14367"><div></div></button></div></figure></div>
+<p>The same million members, counted in about 1/2,600 of the space the SET takes.</p>
+<h2 id="en-how-far-off-it-is">How far off it is</h2>
+<p>The standard error is set by the number of registers <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>m</mi></mrow><annotation encoding="application/x-tex">m</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4306em"></span><span class="mord mathnormal">m</span></span></span></span>:</p>
+<span class="katex-display"><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mi>σ</mi><mo>≈</mo><mfrac><mn>1.04</mn><msqrt><mi>m</mi></msqrt></mfrac><mo>=</mo><mfrac><mn>1.04</mn><msqrt><mn>16384</mn></msqrt></mfrac><mo>=</mo><mfrac><mn>1.04</mn><mn>128</mn></mfrac><mo>≈</mo><mn>0.81</mn><mi mathvariant="normal">%</mi></mrow><annotation encoding="application/x-tex">\sigma \approx \frac{1.04}{\sqrt{m}} = \frac{1.04}{\sqrt{16384}} = \frac{1.04}{128} \approx 0.81\%</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4831em"></span><span class="mord mathnormal" style="margin-right:0.0359em">σ</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:2.2514em;vertical-align:-0.93em"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.3214em"><span style="top:-2.3097em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord sqrt"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8003em"><span class="svg-align" style="top:-3em"><span class="pstrut" style="height:3em"></span><span class="mord" style="padding-left:0.833em"><span class="mord mathnormal">m</span></span></span><span style="top:-2.7603em"><span class="pstrut" style="height:3em"></span><span class="hide-tail" style="min-width:0.853em;height:1.08em"><svg xmlns="http://www.w3.org/2000/svg" width="400em" height="1.08em" viewBox="0 0 400000 1080" preserveAspectRatio="xMinYMin slice"><path d="M95,702
+c-2.7,0,-7.17,-2.7,-13.5,-8c-5.8,-5.3,-9.5,-10,-9.5,-14
+c0,-2,0.3,-3.3,1,-4c1.3,-2.7,23.83,-20.7,67.5,-54
+c44.2,-33.3,65.8,-50.3,66.5,-51c1.3,-1.3,3,-2,5,-2c4.7,0,8.7,3.3,12,10
+s173,378,173,378c0.7,0,35.3,-71,104,-213c68.7,-142,137.5,-285,206.5,-429
+c69,-144,104.5,-217.7,106.5,-221
+l0 -0
+c5.3,-9.3,12,-14,20,-14
+H400000v40H845.2724
+s-225.272,467,-225.272,467s-235,486,-235,486c-2.7,4.7,-9,7,-19,7
+c-6,0,-10,-1,-12,-3s-194,-422,-194,-422s-65,47,-65,47z
+M834 80h400000v40h-400000z"></path></svg></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2397em"><span></span></span></span></span></span></span></span><span style="top:-3.23em"><span class="pstrut" style="height:3em"></span><span class="frac-line" style="border-bottom-width:0.04em"></span></span><span style="top:-3.677em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord">1.04</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.93em"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:2.2514em;vertical-align:-0.93em"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.3214em"><span style="top:-2.2028em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord sqrt"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.9072em"><span class="svg-align" style="top:-3em"><span class="pstrut" style="height:3em"></span><span class="mord" style="padding-left:0.833em"><span class="mord">16384</span></span></span><span style="top:-2.8672em"><span class="pstrut" style="height:3em"></span><span class="hide-tail" style="min-width:0.853em;height:1.08em"><svg xmlns="http://www.w3.org/2000/svg" width="400em" height="1.08em" viewBox="0 0 400000 1080" preserveAspectRatio="xMinYMin slice"><path d="M95,702
+c-2.7,0,-7.17,-2.7,-13.5,-8c-5.8,-5.3,-9.5,-10,-9.5,-14
+c0,-2,0.3,-3.3,1,-4c1.3,-2.7,23.83,-20.7,67.5,-54
+c44.2,-33.3,65.8,-50.3,66.5,-51c1.3,-1.3,3,-2,5,-2c4.7,0,8.7,3.3,12,10
+s173,378,173,378c0.7,0,35.3,-71,104,-213c68.7,-142,137.5,-285,206.5,-429
+c69,-144,104.5,-217.7,106.5,-221
+l0 -0
+c5.3,-9.3,12,-14,20,-14
+H400000v40H845.2724
+s-225.272,467,-225.272,467s-235,486,-235,486c-2.7,4.7,-9,7,-19,7
+c-6,0,-10,-1,-12,-3s-194,-422,-194,-422s-65,47,-65,47z
+M834 80h400000v40h-400000z"></path></svg></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.1328em"><span></span></span></span></span></span></span></span><span style="top:-3.23em"><span class="pstrut" style="height:3em"></span><span class="frac-line" style="border-bottom-width:0.04em"></span></span><span style="top:-3.677em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord">1.04</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.93em"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:2.0074em;vertical-align:-0.686em"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.3214em"><span style="top:-2.314em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord">128</span></span></span><span style="top:-3.23em"><span class="pstrut" style="height:3em"></span><span class="frac-line" style="border-bottom-width:0.04em"></span></span><span style="top:-3.677em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord">1.04</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.8056em;vertical-align:-0.0556em"></span><span class="mord">0.81%</span></span></span></span></span>
+<p>Measured at several sizes:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th style="text-align:right">Members</th><th style="text-align:right">PFCOUNT</th><th style="text-align:right">Error</th><th style="text-align:right">String</th><th style="text-align:right">MEMORY USAGE</th></tr></thead><tbody><tr><td style="text-align:right">100</td><td style="text-align:right">100</td><td style="text-align:right">0.00%</td><td style="text-align:right">283 B</td><td style="text-align:right">538 B</td></tr><tr><td style="text-align:right">1,000</td><td style="text-align:right">1,007</td><td style="text-align:right">+0.70%</td><td style="text-align:right">1,910 B</td><td style="text-align:right">2,587 B</td></tr><tr><td style="text-align:right">10,000</td><td style="text-align:right">10,089</td><td style="text-align:right">+0.89%</td><td style="text-align:right">12,304 B</td><td style="text-align:right">14,364 B</td></tr><tr><td style="text-align:right">100,000</td><td style="text-align:right">99,471</td><td style="text-align:right">−0.53%</td><td style="text-align:right">12,304 B</td><td style="text-align:right">14,365 B</td></tr><tr><td style="text-align:right">1,000,000</td><td style="text-align:right">999,674</td><td style="text-align:right">−0.03%</td><td style="text-align:right">12,304 B</td><td style="text-align:right">14,367 B</td></tr></tbody></table>
+<figure class="diagram" data-diagram="xychart" style="--w:750px"><svg data-xychart-colors="1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 750 492" width="750" height="492" role="img" aria-label="xychart">
+
+
+<circle cx="128" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="92" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="114.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="137.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="160" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="182.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="205.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="228" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="250.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="273.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="296" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="318.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="341.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="364" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="386.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="409.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="432" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="432" r="1.5" class="xychart-grid"></circle>
+<path d="M168,432 h40 v0 h-40 Z" class="xychart-bar xychart-color-0" data-value="0" data-label="100"></path>
+<path d="M288,202 Q288,194 296,194 L320,194 Q328,194 328,202 L328,424 Q328,432 320,432 L296,432 Q288,432 288,424 Z" class="xychart-bar xychart-color-0" data-value="0.7" data-label="1k"></path>
+<path d="M408,137.4 Q408,129.4 416,129.4 L440,129.4 Q448,129.4 448,137.4 L448,424 Q448,432 440,432 L416,432 Q408,432 408,424 Z" class="xychart-bar xychart-color-0" data-value="0.89" data-label="10k"></path>
+<path d="M528,259.8 Q528,251.8 536,251.8 L560,251.8 Q568,251.8 568,259.8 L568,424 Q568,432 560,432 L536,432 Q528,432 528,424 Z" class="xychart-bar xychart-color-0" data-value="0.53" data-label="100k"></path>
+<path d="M648,426.9 Q648,421.8 653.1,421.8 L682.9,421.8 Q688,421.8 688,426.9 L688,426.9 Q688,432 682.9,432 L653.1,432 Q648,432 648,426.9 Z" class="xychart-bar xychart-color-0" data-value="0.03" data-label="1M"></path>
+<path d="M188,156.6 C228,156.6 268,156.6 308,156.6 C348,156.6 388,156.6 428,156.6 C468,156.6 508,156.6 548,156.6 C588,156.6 628,156.6 668,156.6" class="xychart-line-shadow xychart-color-1" transform="translate(0,2)"></path>
+<path d="M188,156.6 C228,156.6 268,156.6 308,156.6 C348,156.6 388,156.6 428,156.6 C468,156.6 508,156.6 548,156.6 C588,156.6 628,156.6 668,156.6" class="xychart-line xychart-color-1"></path>
+<circle cx="188" cy="156.6" r="5" class="xychart-dot xychart-color-1" data-value="0.81" data-label="100"></circle>
+<circle cx="308" cy="156.6" r="5" class="xychart-dot xychart-color-1" data-value="0.81" data-label="1k"></circle>
+<circle cx="428" cy="156.6" r="5" class="xychart-dot xychart-color-1" data-value="0.81" data-label="10k"></circle>
+<circle cx="548" cy="156.6" r="5" class="xychart-dot xychart-color-1" data-value="0.81" data-label="100k"></circle>
+<circle cx="668" cy="156.6" r="5" class="xychart-dot xychart-color-1" data-value="0.81" data-label="1M"></circle>
+<text x="188" y="450" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">100</text>
+<text x="308" y="450" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">1k</text>
+<text x="428" y="450" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">10k</text>
+<text x="548" y="450" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">100k</text>
+<text x="668" y="450" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">1M</text>
+<text x="110" y="432" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">0</text>
+<text x="110" y="364" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">0.2</text>
+<text x="110" y="296" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">0.4</text>
+<text x="110" y="228" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">0.6</text>
+<text x="110" y="160" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">0.8</text>
+<text x="110" y="92" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">1</text>
+<text x="26" y="262" text-anchor="middle" transform="rotate(-90,26,262)" font-size="15" font-weight="500" dy="0.35em" class="xychart-axis-title">%</text>
+<text x="375" y="40" text-anchor="middle" font-size="18" font-weight="600" dy="0.35em" class="xychart-title">Size of the PFCOUNT error (%)</text>
+<rect x="314.65999999999997" y="71" width="14" height="14" rx="3" class="xychart-bar xychart-color-0"></rect>
+<text x="334.65999999999997" y="78" text-anchor="start" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">Bar 1</text>
+<line x1="380.73199999999997" y1="78" x2="394.73199999999997" y2="78" stroke-width="2.5" stroke-linecap="round" class="xychart-legend-line xychart-color-1"></line>
+<text x="400.73199999999997" y="78" text-anchor="start" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">Line 1</text>
+</svg></figure>
+<p>At 10,000 members the error was 0.89%, above the 0.81% standard error (the line). A standard error is the typical size of the error, not a ceiling, so a single measurement can go past it. At a million it was 0.03%.</p>
+<h2 id="en-smaller-when-small">Smaller when small</h2>
+<p>With few members, Redis uses a sparse representation that does not lay out all 16,384 registers. It was 283 bytes at 100 members and 1,910 bytes at 1,000; by 10,000 it had switched to the 12,304-byte dense representation. The switch is set by <code>hll-sparse-max-bytes</code>.<sup><a href="#en-user-content-fn-2" id="en-user-content-fnref-2" data-footnote-ref aria-describedby="en-footnote-label">2</a></sup></p>
+<h2 id="en-using-it-from-code">Using it from code</h2>
+<p>Add each visit to that day’s key; to count, pass several day keys at once. The example is Go with go-redis v9.</p>
+<div class="walk"><div class="walk__fig"><div class="expressive-code"><figure class="frame has-title"><figcaption class="header"><span class="title">visitors.go</span></figcaption><pre data-language="go"><code><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">func</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">Visit</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">ctx </span><span style="--0:#B8C6D1;--1:#35506A">context</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#B8C6D1;--1:#35506A">Context</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> rdb </span><span style="--0:#A3A19B;--1:#5E5B55">*</span><span style="--0:#B8C6D1;--1:#35506A">redis</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#B8C6D1;--1:#35506A">Client</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> day</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> user </span><span style="--0:#E2B071;--1:#87500C">string</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">error</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">return</span><span style="--0:#E6E3D9;--1:#2B2A26"> rdb</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">PFAdd</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">ctx</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A9C6A3;--1:#3A6844">visitors:</span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A3A19B;--1:#5E5B55">+</span><span style="--0:#E6E3D9;--1:#2B2A26">day</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> user</span><span style="--0:#A3A19B;--1:#5E5B55">).</span><span style="--0:#F3E2C4;--1:#5A4521">Err</span><span style="--0:#A3A19B;--1:#5E5B55">()</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">func</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">Unique</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">ctx </span><span style="--0:#B8C6D1;--1:#35506A">context</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#B8C6D1;--1:#35506A">Context</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> rdb </span><span style="--0:#A3A19B;--1:#5E5B55">*</span><span style="--0:#B8C6D1;--1:#35506A">redis</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#B8C6D1;--1:#35506A">Client</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> days </span><span style="--0:#A3A19B;--1:#5E5B55">...</span><span style="--0:#E2B071;--1:#87500C">string</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E2B071;--1:#87500C">int64</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">error</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">  </span></span><span style="--0:#E6E3D9;--1:#2B2A26">keys </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">make</span><span style="--0:#A3A19B;--1:#5E5B55">([]</span><span style="--0:#E2B071;--1:#87500C">string</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">len</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">days</span><span style="--0:#A3A19B;--1:#5E5B55">))</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> i</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> d </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">range</span><span style="--0:#E6E3D9;--1:#2B2A26"> days </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">    </span></span><span style="--0:#E6E3D9;--1:#2B2A26">keys</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">]</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A9C6A3;--1:#3A6844">visitors:</span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">+</span><span style="--0:#E6E3D9;--1:#2B2A26"> d</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">return</span><span style="--0:#E6E3D9;--1:#2B2A26"> rdb</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">PFCount</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">ctx</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> keys</span><span style="--0:#A3A19B;--1:#5E5B55">...).</span><span style="--0:#F3E2C4;--1:#5A4521">Result</span><span style="--0:#A3A19B;--1:#5E5B55">()</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="func Visit(ctx context.Context, rdb *redis.Client, day, user string) error {  return rdb.PFAdd(ctx, &quot;visitors:&quot;+day, user).Err()}func Unique(ctx context.Context, rdb *redis.Client, days ...string) (int64, error) {  keys := make([]string, len(days))  for i, d := range days {    keys[i] = &quot;visitors:&quot; + d  }  return rdb.PFCount(ctx, keys...).Result()}"><div></div></button></div></figure></div></div><div class="walk__steps"><div class="step" data-lines="1-3"><p>Every visit is a PFADD to that day’s key. The same user visiting twice does not raise the count.</p></div><div class="step" data-lines="5-11"><p>Given several keys, PFCOUNT estimates the size of their union. A week’s unique visitors are seven day keys. If the union will be read again and again, PFMERGE can store it under a new key.</p></div></div></div>
+<p>Where the exact number matters, billing for example, count with a SET or a database. Where an error under 1% is fine, unique visitors on a dashboard for instance, HyperLogLog saves a great deal of memory.</p>
+<section data-footnotes class="footnotes"><h2 class="sr-only" id="en-footnote-label">Notes</h2>
+<ol>
+<li id="en-user-content-fn-1">
+<p>Otmar Ertl, “New cardinality estimation algorithms for HyperLogLog sketches”, arXiv:1702.01284. The comment on <code>hllSigma</code> in the Redis source points to it. <a href="#en-user-content-fnref-1" data-footnote-backref aria-label="Back to reference 1" class="data-footnote-backref">↩</a></p>
+</li>
+<li id="en-user-content-fn-2">
+<p>On the machine these numbers come from, <code>CONFIG GET hll-sparse-max-bytes</code> returned 3000. <a href="#en-user-content-fnref-2" data-footnote-backref aria-label="Back to reference 2" class="data-footnote-backref">↩</a></p>
+</li>
+</ol>
+</section></div><footer class="post__end"><p class="post__source">Source markdown: <a href="/blog/redis-hyperloglog/en.md">redis-hyperloglog/en.md</a></p><nav class="post__nav" aria-label="More posts"><a class="newer" href="/blog/hangul-width/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 288.9460833333334 629.285">
+
+
+<polyline class="edge" data-from="C" data-to="W" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="115.76858333333334,76.9 115.76858333333334,124.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="W" data-to="T" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예" points="95.76141666666668,224.93583333333333 95.76141666666668,439.78499999999997 51.00000000000001,439.78499999999997 51.00000000000001,540.385 64.94783333333334,540.385 64.94783333333334,552.385" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="W" data-to="A" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="135.77575000000002,224.9358333333333 135.77575000000002,280.943 153.74408333333332,280.943 153.74408333333332,361.243" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="A" data-to="T" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="동아시아 설정" points="141.27041666666668,423.61133333333333 141.27041666666668,472.085 108.98866666666667,472.085 108.98866666666667,540.385 89.55216666666666,540.385 89.55216666666666,552.385" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="A" data-to="O" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="그 밖" points="166.21775,423.6113333333333 166.21775,472.085 189.35008333333334,472.085 189.35008333333334,552.385" fill="none" stroke="var(--_line)" stroke-width="1" />
+
+
+
+
+<g class="node" data-id="C" data-label="글자 하나" data-shape="rectangle">
+  <rect x="64.04208333333334" y="40" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node is-hub" data-id="W" data-label="W 또는 F" data-shape="diamond">
+  <polygon points="115.76858333333334,124.9 175.79008333333334,184.9215 115.76858333333334,244.943 55.74708333333334,184.9215" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="T" data-label="두 칸" data-shape="rectangle">
+  <rect x="40.34350000000001" y="552.385" width="73.81299999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="A" data-label="A" data-shape="diamond">
+  <polygon points="153.74408333333332,361.243 191.1650833333333,398.664 153.74408333333332,436.085 116.32308333333333,398.664" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="O" data-label="한 칸" data-shape="rectangle">
+  <rect x="152.44358333333335" y="552.385" width="73.81299999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>Newer →</small><span class="post__nav-title">Why Hangul takes two columns in a terminal</span></a></nav></footer></article></main><div class="status"><a class="status__file" data-href="/blog/redis-hyperloglog/{lang}.md" href="/blog/redis-hyperloglog/ko.md">ko.mdx</a><span class="status__sec"></span><span class="status__left"></span><button class="status__toc" type="button"><span lang="ko">목차</span><span lang="en">Contents</span></button></div><dialog class="sheet" id="toc-sheet" aria-label="Contents"><button class="sheet__close" type="button" data-close>esc</button><div class="sheet__body"></div></dialog><script type="module" src="/blog/assets/Reader.astro_astro_type_script_index_0_lang.BKHUI645.js"></script><dialog class="sheet" id="keys" aria-labelledby="keys-title"><button class="sheet__close" type="button" data-close>esc</button><p class="toc__label" id="keys-title"><span lang="ko">단축키</span><span lang="en">Keyboard</span></p><dl class="keys"><dt><kbd>/</kbd> <kbd>⌘K</kbd></dt><dd><span lang="ko">글 검색</span><span lang="en">Search posts</span></dd><dt><kbd>t</kbd></dt><dd><span lang="ko">밝은/어두운 테마</span><span lang="en">Light or dark theme</span></dd><dt><kbd>l</kbd></dt><dd><span lang="ko">한국어/영어, 읽던 자리 유지</span><span lang="en">Korean or English, keeping your place</span></dd><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd><span lang="ko">이전/다음 절</span><span lang="en">Previous or next section</span></dd><dt><kbd>?</kbd></dt><dd><span lang="ko">이 목록</span><span lang="en">This list</span></dd></dl></dialog><dialog class="search" id="search" aria-label="Search"><label class="search__line"><span class="search__caret" aria-hidden="true">&gt;</span><input type="search" role="combobox" aria-expanded="true" aria-controls="search-results" aria-autocomplete="list" autocomplete="off" spellcheck="false" enterkeyhint="go"></label><p class="search__status" aria-live="polite"><span class="tool__name" data-call-name></span><span class="tool__arg" data-call-arg></span><span class="search__count" data-call-count></span></p><ul class="search__results" id="search-results" role="listbox" aria-label="Results"></ul><p class="search__keys"><span><kbd>↑</kbd><kbd>↓</kbd> <span lang="ko">이동</span><span lang="en">move</span></span><span><kbd>↵</kbd> <span lang="ko">열기</span><span lang="en">open</span></span><span><kbd>esc</kbd> <span lang="ko">닫기</span><span lang="en">close</span></span></p></dialog><script type="module" src="/blog/assets/Base.astro_astro_type_script_index_0_lang.BxD9tEXi.js"></script></body></html>

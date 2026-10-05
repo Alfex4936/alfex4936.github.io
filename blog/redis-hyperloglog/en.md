@@ -1,0 +1,132 @@
+# Redis HyperLogLog: counting a million users in 14 KB
+
+> Counting unique visitors with a SET takes 37 MB for a million; HyperLogLog takes 14 KB. How it counts, and how far off it is, measured.
+> 2026-09-21 · https://alfex4936.github.io/blog/redis-hyperloglog/
+
+Some questions only need how many, not who: unique visitors in a day, for one. Every number in this post was measured on a local Redis 8.10.2 (Homebrew build, libc malloc) loaded with `user:0` through `user:999999`.
+
+## Counting exactly
+
+A SET gives the exact count. In exchange it has to hold every member.
+
+```bash
+$ redis-cli SCARD visitors:set
+(integer) 1000000
+$ redis-cli MEMORY USAGE visitors:set SAMPLES 0
+(integer) 37277585
+```
+
+A million members take 37,277,585 bytes, about 37 MB. That is one day; keep a set per day and it adds up.
+
+## How HyperLogLog counts
+
+HyperLogLog stores no members, only the shape of their hashes. Following `hyperloglog.c` in the Redis source:
+
+<Walk>
+
+```mermaid
+graph LR
+  M[member] --> H[64-bit hash]
+  H --> I[low 14 bits]
+  H --> Z[remaining 50 bits]
+  I --> R[(16384 registers)]
+  Z --> R
+  R --> C[PFCOUNT estimate]
+```
+
+<Step show="M,H">
+Each member is hashed to 64 bits with MurmurHash64A. The same member always gets the same hash.
+</Step>
+
+<Step show="H,I,R">
+The low 14 bits pick one register: 2 to the 14th, 16,384 of them.
+</Step>
+
+<Step show="H,Z,R">
+The remaining bits are read from the bottom up, counting the zeros before the first 1, plus one. A register keeps only the largest value it has seen. Long runs of zeros are rare, so seeing a large value means many members have gone past.
+</Step>
+
+<Step show="R,C">
+PFCOUNT estimates the count from how the register values are spread. Redis uses Otmar Ertl's estimator.[^1]
+</Step>
+
+</Walk>
+
+A register is 6 bits, so 16,384 × 6 bits is 12,288 bytes, and a 16-byte header makes 12,304. The measurement agrees.
+
+```bash
+$ redis-cli STRLEN visitors:hll
+(integer) 12304
+$ redis-cli MEMORY USAGE visitors:hll SAMPLES 0
+(integer) 14367
+```
+
+The same million members, counted in about 1/2,600 of the space the SET takes.
+
+## How far off it is
+
+The standard error is set by the number of registers $m$:
+
+$$
+\sigma \approx \frac{1.04}{\sqrt{m}} = \frac{1.04}{\sqrt{16384}} = \frac{1.04}{128} \approx 0.81\%
+$$
+
+Measured at several sizes:
+
+| Members | PFCOUNT | Error | String | MEMORY USAGE |
+| ---: | ---: | ---: | ---: | ---: |
+| 100 | 100 | 0.00% | 283 B | 538 B |
+| 1,000 | 1,007 | +0.70% | 1,910 B | 2,587 B |
+| 10,000 | 10,089 | +0.89% | 12,304 B | 14,364 B |
+| 100,000 | 99,471 | −0.53% | 12,304 B | 14,365 B |
+| 1,000,000 | 999,674 | −0.03% | 12,304 B | 14,367 B |
+
+```mermaid
+xychart-beta
+  title "Size of the PFCOUNT error (%)"
+  x-axis [100, 1k, 10k, 100k, 1M]
+  y-axis "%" 0 --> 1
+  bar [0, 0.70, 0.89, 0.53, 0.03]
+  line [0.81, 0.81, 0.81, 0.81, 0.81]
+```
+
+At 10,000 members the error was 0.89%, above the 0.81% standard error (the line). A standard error is the typical size of the error, not a ceiling, so a single measurement can go past it. At a million it was 0.03%.
+
+## Smaller when small
+
+With few members, Redis uses a sparse representation that does not lay out all 16,384 registers. It was 283 bytes at 100 members and 1,910 bytes at 1,000; by 10,000 it had switched to the 12,304-byte dense representation. The switch is set by `hll-sparse-max-bytes`.[^2]
+
+## Using it from code
+
+Add each visit to that day's key; to count, pass several day keys at once. The example is Go with go-redis v9.
+
+<Walk>
+
+```go title="visitors.go"
+func Visit(ctx context.Context, rdb *redis.Client, day, user string) error {
+	return rdb.PFAdd(ctx, "visitors:"+day, user).Err()
+}
+
+func Unique(ctx context.Context, rdb *redis.Client, days ...string) (int64, error) {
+	keys := make([]string, len(days))
+	for i, d := range days {
+		keys[i] = "visitors:" + d
+	}
+	return rdb.PFCount(ctx, keys...).Result()
+}
+```
+
+<Step lines="1-3">
+Every visit is a PFADD to that day's key. The same user visiting twice does not raise the count.
+</Step>
+
+<Step lines="5-11">
+Given several keys, PFCOUNT estimates the size of their union. A week's unique visitors are seven day keys. If the union will be read again and again, PFMERGE can store it under a new key.
+</Step>
+
+</Walk>
+
+Where the exact number matters, billing for example, count with a SET or a database. Where an error under 1% is fine, unique visitors on a dashboard for instance, HyperLogLog saves a great deal of memory.
+
+[^1]: Otmar Ertl, "New cardinality estimation algorithms for HyperLogLog sketches", arXiv:1702.01284. The comment on `hllSigma` in the Redis source points to it.
+[^2]: On the machine these numbers come from, `CONFIG GET hll-sparse-max-bytes` returned 3000.

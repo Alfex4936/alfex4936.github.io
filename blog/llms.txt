@@ -5,6 +5,8 @@
 ## Posts
 
 - [A tour of this blog: diagrams, math, code](https://alfex4936.github.io/blog/tour/en.md): The first post. Everything this blog can put inside a post, one thing at a time: a figure that follows your place, diagrams drawn at build time, math, code, and two languages. Korean: https://alfex4936.github.io/blog/tour/ko.md
+- [Why Hangul takes two columns in a terminal](https://alfex4936.github.io/blog/hangul-width/en.md): Why one Hangul syllable is as wide as two Latin letters, why arrows and box-drawing characters change width from one setup to the next, and why string length is not a column count. Korean: https://alfex4936.github.io/blog/hangul-width/ko.md
+- [Redis HyperLogLog: counting a million users in 14 KB](https://alfex4936.github.io/blog/redis-hyperloglog/en.md): Counting unique visitors with a SET takes 37 MB for a million; HyperLogLog takes 14 KB. How it counts, and how far off it is, measured. Korean: https://alfex4936.github.io/blog/redis-hyperloglog/ko.md
 
 ## Elsewhere
 

@@ -1,0 +1,486 @@
+<!DOCTYPE html><html lang="ko" data-lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title data-ko="터미널에서 한글은 왜 두 칸인가 · seok" data-en="Why Hangul takes two columns in a terminal · seok">터미널에서 한글은 왜 두 칸인가 · seok</title><meta name="description" content="한글 한 글자가 영문 두 칸을 차지하는 이유, 화살표와 상자 문자의 폭이 환경마다 다른 이유, 그리고 문자열 길이로 칸을 세면 안 되는 이유."><meta property="og:title" content="터미널에서 한글은 왜 두 칸인가 · seok"><meta property="og:description" content="한글 한 글자가 영문 두 칸을 차지하는 이유, 화살표와 상자 문자의 폭이 환경마다 다른 이유, 그리고 문자열 길이로 칸을 세면 안 되는 이유."><meta property="og:url" content="https://alfex4936.github.io/blog/hangul-width/"><meta property="og:type" content="article"><meta property="og:locale" content="ko_KR"><meta property="og:locale:alternate" content="en_US"><meta property="article:published_time" content="2026-10-02T00:00:00.000Z"><meta property="og:image" content="https://alfex4936.github.io/blog/og/hangul-width.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="theme-color" content="#141413" media="(prefers-color-scheme: dark)"><meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)"><link rel="canonical" href="https://alfex4936.github.io/blog/hangul-width/"><link rel="icon" href="/favicon.ico"><link rel="alternate" type="application/rss+xml" title="seok · blog (한국어)" href="/blog/ko/rss.xml"><link rel="alternate" type="application/rss+xml" title="seok · blog (English)" href="/blog/en/rss.xml"><script>
+      // Same keys as the landing page, so the toggles carry across alfex4936.github.io.
+      ;(() => {
+        const q = new URLSearchParams(location.search).get('lang')
+        const stored = localStorage.getItem('portfolio:lang')
+        const lang = q === 'ko' || q === 'en' ? q : stored === 'ko' || stored === 'en' ? stored : navigator.language.startsWith('ko') ? 'ko' : 'en'
+        const root = document.documentElement
+        root.dataset.lang = root.lang = lang
+        const theme = localStorage.getItem('portfolio:theme')
+        if (theme === 'dark' || theme === 'light') root.dataset.theme = theme
+        const t = document.querySelector('title')
+        t.textContent = t.dataset[lang]
+      })()
+    </script><link rel="stylesheet" href="/blog/assets/Step.FmcF6wk0.css"><link rel="stylesheet" href="/blog/assets/all.iO4MCkCM.css"></head><body><a class="skip" href="#main"><span lang="ko">본문으로</span><span lang="en">Skip to content</span></a><header class="bar"><nav class="bar__path" aria-label="Path"><a href="/">seok</a><span class="sep">·</span><a href="/blog/">~/blog</a><span class="sep">/</span><span class="here">hangul-width</span></nav><nav class="bar__ctl" aria-label="Search, language and theme"><button type="button" class="bar__search" data-search aria-keyshortcuts="/ Control+K Meta+K"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.5"></circle><path d="M10.4 10.4 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg><span class="bar__search-label"><span lang="ko">검색</span><span lang="en">Search</span></span><kbd>/</kbd></button><span class="bar__sep" aria-hidden="true">·</span><button type="button" data-lang-set="ko" aria-pressed="false">ko</button><button type="button" data-lang-set="en" aria-pressed="false">en</button><span class="bar__sep" aria-hidden="true">·</span><button type="button" data-theme-set="dark" aria-pressed="false">dark</button><button type="button" data-theme-set="light" aria-pressed="false">light</button></nav></header><main id="main"><article class="post" lang="ko" data-minutes="3"><header class="post__head"><p class="post__cwd"><a href="/blog/">~/blog</a>/hangul-width/ko.mdx</p><h1 class="post__title" style="view-transition-name: t-hangul-width">터미널에서 한글은 왜 두 칸인가</h1><p class="post__dek">한글 한 글자가 영문 두 칸을 차지하는 이유, 화살표와 상자 문자의 폭이 환경마다 다른 이유, 그리고 문자열 길이로 칸을 세면 안 되는 이유.</p><p class="post__meta"><time datetime="2026-10-02">2026-10-02</time><span>3분</span><span><a href="/blog/?tag=unicode">unicode</a> · <a href="/blog/?tag=typography">typography</a></span></p></header><nav class="toc" aria-label="목차"><p class="toc__label">목차</p><ol><li><a href="#ko-폭은-문자에-붙은-속성입니다"><span class="toc__n">§1</span><span>폭은 문자에 붙은 속성입니다</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-한글"><span class="toc__n">§2</span><span>한글</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-모호한-폭"><span class="toc__n">§3</span><span>모호한 폭</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-문자열-길이는-칸-수가-아닙니다"><span class="toc__n">§4</span><span>문자열 길이는 칸 수가 아닙니다</span><span class="toc__len" aria-hidden="true"></span></a></li></ol></nav><div class="prose"><p>이 블로그의 코드 글꼴은 한글을 정확히 두 칸으로 그립니다. 왜 그래야 하는지는 터미널이 글자의 폭을 정하는 방식에서 나옵니다. 아래 속성 값은 Unicode 18.0의 <code>EastAsianWidth.txt</code>에서 확인했고, 코드 출력은 Node.js(ICU 78.3)에서 실행한 결과입니다.</p>
+<h2 id="ko-폭은-문자에-붙은-속성입니다">폭은 문자에 붙은 속성입니다</h2>
+<p>Unicode는 모든 문자에 East_Asian_Width라는 속성을 붙여 둡니다(UAX #11). 터미널은 대개 이 값을 보고 글자 하나에 몇 칸을 줄지 정합니다.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th style="text-align:left">값</th><th style="text-align:left">뜻</th><th style="text-align:right">칸</th><th style="text-align:left">예</th></tr></thead><tbody><tr><td style="text-align:left">W</td><td style="text-align:left">Wide</td><td style="text-align:right">2</td><td style="text-align:left"><code>한</code> <code>ㄱ</code> <code>漢</code></td></tr><tr><td style="text-align:left">F</td><td style="text-align:left">Fullwidth</td><td style="text-align:right">2</td><td style="text-align:left"><code>！</code> (U+FF01)</td></tr><tr><td style="text-align:left">Na, H</td><td style="text-align:left">Narrow, Halfwidth</td><td style="text-align:right">1</td><td style="text-align:left"><code>a</code> <code>1</code></td></tr><tr><td style="text-align:left">A</td><td style="text-align:left">Ambiguous</td><td style="text-align:right">1 또는 2</td><td style="text-align:left"><code>§</code> <code>·</code> <code>→</code> <code>─</code></td></tr><tr><td style="text-align:left">N</td><td style="text-align:left">Neutral</td><td style="text-align:right">대개 1</td><td style="text-align:left"></td></tr></tbody></table>
+<div class="walk"><div class="walk__fig"><figure class="diagram" data-diagram="flowchart" style="--w:289px"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 288.9460833333334 629.285" width="288.9460833333334" height="629.285" role="img" aria-label="글자 하나, W 또는 F, 두 칸, A, 한 칸">
+
+<defs>
+  <marker id="ko-dg0-arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+  <marker id="ko-dg0-arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+</defs>
+<polyline class="edge" data-from="C" data-to="W" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="115.76858333333334,76.9 115.76858333333334,124.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="W" data-to="T" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예" points="95.76141666666668,224.93583333333333 95.76141666666668,439.78499999999997 51.00000000000001,439.78499999999997 51.00000000000001,540.385 64.94783333333334,540.385 64.94783333333334,552.385" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="W" data-to="A" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="135.77575000000002,224.9358333333333 135.77575000000002,280.943 153.74408333333332,280.943 153.74408333333332,361.243" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="A" data-to="T" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="동아시아 설정" points="141.27041666666668,423.61133333333333 141.27041666666668,472.085 108.98866666666667,472.085 108.98866666666667,540.385 89.55216666666666,540.385 89.55216666666666,552.385" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="A" data-to="O" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="그 밖" points="166.21775,423.6113333333333 166.21775,472.085 189.35008333333334,472.085 189.35008333333334,552.385" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<g class="edge-label" data-from="W" data-to="T" data-label="예">
+  <rect x="36.00000000000001" y="446.78499999999997" width="29.53" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1"></rect>
+  <text x="50.76500000000001" y="461.93499999999995" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">예</text>
+</g>
+<g class="edge-label" data-from="W" data-to="A" data-label="아니오">
+  <rect x="126.74408333333334" y="287.943" width="53.29" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1"></rect>
+  <text x="153.38908333333333" y="303.09299999999996" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">아니오</text>
+</g>
+<g class="edge-label" data-from="A" data-to="T" data-label="동아시아 설정">
+  <rect x="63.488666666666674" y="479.085" width="90.71200000000002" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1"></rect>
+  <text x="108.84466666666668" y="494.23499999999996" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">동아시아 설정</text>
+</g>
+<g class="edge-label" data-from="A" data-to="O" data-label="그 밖">
+  <rect x="167.35008333333334" y="479.085" width="43.192" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1"></rect>
+  <text x="188.94608333333335" y="494.23499999999996" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">그 밖</text>
+</g>
+<g class="node" data-id="C" data-label="글자 하나" data-shape="rectangle">
+  <rect x="64.04208333333334" y="40" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="115.76858333333334" y="58.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">글자 하나</text>
+</g>
+<g class="node" data-id="W" data-label="W 또는 F" data-shape="diamond">
+  <polygon points="115.76858333333334,124.9 175.79008333333334,184.9215 115.76858333333334,244.943 55.74708333333334,184.9215" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></polygon>
+  <text x="115.76858333333334" y="184.9215" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">W 또는 F</text>
+</g>
+<g class="node" data-id="T" data-label="두 칸" data-shape="rectangle">
+  <rect x="40.34350000000001" y="552.385" width="73.81299999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="77.25" y="570.835" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">두 칸</text>
+</g>
+<g class="node" data-id="A" data-label="A" data-shape="diamond">
+  <polygon points="153.74408333333332,361.243 191.1650833333333,398.664 153.74408333333332,436.085 116.32308333333333,398.664" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></polygon>
+  <text x="153.74408333333332" y="398.664" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">A</text>
+</g>
+<g class="node" data-id="O" data-label="한 칸" data-shape="rectangle">
+  <rect x="152.44358333333335" y="552.385" width="73.81299999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="189.35008333333334" y="570.835" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">한 칸</text>
+</g>
+</svg></figure></div><div class="walk__steps"><div class="step" data-show="C,W,T"><p>먼저 W나 F인지 봅니다. 한글 완성형 음절 11,172자(U+AC00–U+D7A3)는 모두 W라서 두 칸입니다.</p></div><div class="step" data-show="W,A"><p>W도 F도 아니면 A인지 봅니다. A는 원래의 문자 집합에 따라 폭이 달랐던 문자들입니다.</p></div><div class="step" data-show="A,T,O"><p>A는 동아시아 환경으로 설정된 터미널에서는 두 칸, 그 밖에서는 한 칸입니다. 같은 글이 터미널에 따라 어긋나는 이유가 대개 여기에 있습니다.</p></div></div></div>
+<h2 id="ko-한글">한글</h2>
+<p>한글은 표현하는 방법이 여러 가지이고, 방법마다 속성이 다릅니다.</p>
+<ul>
+<li>완성형 음절 U+AC00–U+D7A3은 W입니다.</li>
+<li>호환 자모 <code>ㄱ</code>(U+3131–U+318E)도 W입니다.</li>
+<li>조합형(NFD)으로 풀면 초성 U+1100–U+115F는 W, 중성과 종성 U+1160–U+11FF는 N입니다.</li>
+</ul>
+<p>조합형의 중성과 종성은 앞 글자에 붙어 한 글자를 이룹니다. 그래서 대부분의 wcwidth 구현은 이들을 0칸으로 셉니다. <code>한</code>을 NFD로 풀면 코드 포인트 세 개가 되지만, 초성의 두 칸만 남아 여전히 두 칸입니다.</p>
+<div class="expressive-code"><link rel="stylesheet" href="/blog/assets/ec.u2ymx.css"/><script type="module" src="/blog/assets/ec.0vx5m.js"></script><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">한글 (NFD) → 1112 1161 11AB 1100 1173 11AF</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="한글 (NFD) → 1112 1161 11AB 1100 1173 11AF"><div></div></button></div></figure></div>
+<h2 id="ko-모호한-폭">모호한 폭</h2>
+<p><code>§</code> <code>·</code> <code>→</code>, 그리고 상자를 그리는 <code>─</code> <code>│</code>(U+2500–U+254B)는 모두 A입니다. EUC-KR 같은 예전 동아시아 문자 집합에서는 이 문자들이 두 칸이었기 때문입니다. 터미널마다 모호한 폭을 두 칸으로 볼지 정하는 설정이 있고, 그 설정과 글꼴이 실제로 그리는 폭이 다르면 상자의 선이 어긋납니다.</p>
+<p>이 블로그의 코드 글꼴 Monoplex KR은 상자 문자를 반각으로 그립니다. 그래서 모호한 폭을 한 칸으로 보는 일반적인 환경에서 한글이 섞인 상자도 맞습니다.</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">┌────────┬──────┐</span></div></div><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">│ 이름   │ 칸   │</span></div></div><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">├────────┼──────┤</span></div></div><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">│ 한글   │ 4    │</span></div></div><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">│ abc    │ 3    │</span></div></div><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">└────────┴──────┘</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="┌────────┬──────┐│ 이름   │ 칸   │├────────┼──────┤│ 한글   │ 4    ││ abc    │ 3    │└────────┴──────┘"><div></div></button></div></figure></div>
+<h2 id="ko-문자열-길이는-칸-수가-아닙니다">문자열 길이는 칸 수가 아닙니다</h2>
+<p>JavaScript의 <code>length</code>는 UTF-16 코드 단위의 수입니다. 같은 <code>한글</code>도 완성형이면 2, 조합형이면 6입니다. 칸을 세려면 글자를 사용자가 보는 단위(grapheme)로 나눈 다음, 글자마다 폭을 정해야 합니다.</p>
+<div class="walk"><div class="walk__fig"><div class="expressive-code"><figure class="frame has-title"><figcaption class="header"><span class="title">columns.js</span></figcaption><pre data-language="js"><code><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">const</span><span style="--0:#E6E3D9;--1:#2B2A26"> graphemes </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">new</span><span style="--0:#E6E3D9;--1:#2B2A26"> Intl</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">Segmenter</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#A3A19B;--1:#5E5B55">&#39;</span><span style="--0:#A9C6A3;--1:#3A6844">ko</span><span style="--0:#A3A19B;--1:#5E5B55">&#39;</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#CFD6DB;--1:#35506A">granularity</span><span style="--0:#A3A19B;--1:#5E5B55">:</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&#39;</span><span style="--0:#A9C6A3;--1:#3A6844">grapheme</span><span style="--0:#A3A19B;--1:#5E5B55">&#39;</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">})</span></div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">const</span><span style="--0:#E6E3D9;--1:#2B2A26"> WIDE </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#EF9A7A;--1:#9F4129"> </span><span style="--0:#A3A19B;--1:#5E5B55">/</span><span style="--0:#E2B071;--1:#87500C">^</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#EF9A7A;--1:#9F4129">ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꥠ-꥿가-힣豈-﫿︰-﹏＀-｠￠-￦</span><span style="--0:#A3A19B;--1:#5E5B55">]/</span></div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">const</span><span style="--0:#E6E3D9;--1:#2B2A26"> AMBIGUOUS </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#EF9A7A;--1:#9F4129"> </span><span style="--0:#A3A19B;--1:#5E5B55">/</span><span style="--0:#E2B071;--1:#87500C">^</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#EF9A7A;--1:#9F4129">§·←-↙─-╋</span><span style="--0:#A3A19B;--1:#5E5B55">]/</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">function</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">columns</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">text</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> cjk </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">false</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">}</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{})</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">let</span><span style="--0:#E6E3D9;--1:#2B2A26"> n </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E2B071;--1:#87500C">const</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> segment </span><span style="--0:#A3A19B;--1:#5E5B55">}</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">of</span><span style="--0:#E6E3D9;--1:#2B2A26"> graphemes</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">segment</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">text</span><span style="--0:#A3A19B;--1:#5E5B55">))</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#E2B071;--1:#87500C">if</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">WIDE</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">test</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">segment</span><span style="--0:#A3A19B;--1:#5E5B55">))</span><span style="--0:#E6E3D9;--1:#2B2A26"> n </span><span style="--0:#A3A19B;--1:#5E5B55">+=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">2</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#E2B071;--1:#87500C">else</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">if</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">AMBIGUOUS</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">test</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">segment</span><span style="--0:#A3A19B;--1:#5E5B55">))</span><span style="--0:#E6E3D9;--1:#2B2A26"> n </span><span style="--0:#A3A19B;--1:#5E5B55">+=</span><span style="--0:#E6E3D9;--1:#2B2A26"> cjk </span><span style="--0:#A3A19B;--1:#5E5B55">?</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">2</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">:</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">1</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#E2B071;--1:#87500C">else</span><span style="--0:#E6E3D9;--1:#2B2A26"> n </span><span style="--0:#A3A19B;--1:#5E5B55">+=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">1</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">return</span><span style="--0:#E6E3D9;--1:#2B2A26"> n</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="const graphemes = new Intl.Segmenter('ko', { granularity: 'grapheme' })const WIDE = /^[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꥠ-꥿가-힣豈-﫿︰-﹏＀-｠￠-￦]/const AMBIGUOUS = /^[§·←-↙─-╋]/function columns(text, { cjk = false } = {}) {  let n = 0  for (const { segment } of graphemes.segment(text)) {    if (WIDE.test(segment)) n += 2    else if (AMBIGUOUS.test(segment)) n += cjk ? 2 : 1    else n += 1  }  return n}"><div></div></button></div></figure></div></div><div class="walk__steps"><div class="step" data-lines="1"><p><code>Intl.Segmenter</code>가 문자열을 사용자가 보는 글자 단위로 나눕니다. 조합형 <code>한</code>의 코드 포인트 세 개는 글자 하나로 묶입니다.</p></div><div class="step" data-lines="2-3"><p>W·F 범위와 A 범위입니다. 한글, 한자, 가나, 전각 문자를 넓게 보고, A는 이 글에 나온 것만 골랐습니다.</p></div><div class="step" data-lines="5-13"><p>글자의 첫 코드 포인트로 폭을 정합니다. <code>cjk</code>를 켜면 A를 두 칸으로 셉니다.</p></div></div></div>
+<p>실행한 결과입니다.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th style="text-align:left">입력</th><th style="text-align:right">columns</th><th style="text-align:right">length</th></tr></thead><tbody><tr><td style="text-align:left"><code>한글</code></td><td style="text-align:right">4</td><td style="text-align:right">2</td></tr><tr><td style="text-align:left"><code>한글</code> (NFD)</td><td style="text-align:right">4</td><td style="text-align:right">6</td></tr><tr><td style="text-align:left"><code>Redis 키</code></td><td style="text-align:right">8</td><td style="text-align:right">7</td></tr><tr><td style="text-align:left"><code>─→·</code></td><td style="text-align:right">3</td><td style="text-align:right">3</td></tr><tr><td style="text-align:left"><code>─→·</code>, <code>cjk: true</code></td><td style="text-align:right">6</td><td style="text-align:right">3</td></tr><tr><td style="text-align:left"><code>ㄱㄴ</code></td><td style="text-align:right">4</td><td style="text-align:right">2</td></tr><tr><td style="text-align:left"><code>！</code></td><td style="text-align:right">2</td><td style="text-align:right">1</td></tr></tbody></table>
+<p>이 함수는 이모지나 결합 문자를 모두 다루지는 않습니다. 실제로 쓸 때는 JavaScript의 <code>string-width</code>나 Go의 <code>go-runewidth</code>처럼 Unicode 표 전체를 따르는 구현을 쓰는 편이 안전합니다.</p></div><footer class="post__end"><p class="post__source">원문 마크다운: <a href="/blog/hangul-width/ko.md">hangul-width/ko.md</a></p><nav class="post__nav" aria-label="다른 글"><a class="older" href="/blog/redis-hyperloglog/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 867.0699999999999 181.8">
+
+
+<polyline class="edge" data-from="M" data-to="H" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="111.59,90.9 159.59,90.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="H" data-to="I" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="277.863,90.9 302.97450000000003,90.9 302.97450000000003,58.45 328.086,58.45" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="H" data-to="Z" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="277.863,90.9 302.97450000000003,90.9 302.97450000000003,123.35000000000001 328.086,123.35000000000001" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="I" data-to="R" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="441.913,58.45 469.2475,58.45 469.2475,90.9 492.13599999999997,90.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="Z" data-to="R" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="446.35900000000004,123.35000000000001 469.2475,123.35000000000001 469.2475,90.9 492.13599999999997,90.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="R" data-to="C" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="643.0129999999999,90.9 691.0129999999999,90.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<g class="node" data-id="M" data-label="원소" data-shape="rectangle">
+  <rect x="40" y="72.45" width="71.59" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node is-hub" data-id="H" data-label="64비트 해시" data-shape="rectangle">
+  <rect x="159.59" y="72.45" width="118.273" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="I" data-label="하위 14비트" data-shape="rectangle">
+  <rect x="328.086" y="40" width="113.827" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="Z" data-label="남은 50비트" data-shape="rectangle">
+  <rect x="328.086" y="104.9" width="118.273" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="R" data-label="레지스터 16384개" data-shape="cylinder">
+  <rect x="492.13599999999997" y="72.45" width="150.877" height="36.900000000000006" fill="var(--_node-fill)" stroke="none" />
+  <line x1="492.13599999999997" y1="72.45" x2="492.13599999999997" y2="109.35000000000001" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <line x1="643.0129999999999" y1="72.45" x2="643.0129999999999" y2="109.35000000000001" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <ellipse cx="567.5745" cy="109.35000000000001" rx="75.4385" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <ellipse cx="567.5745" cy="72.45" rx="75.4385" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="C" data-label="PFCOUNT 추정" data-shape="rectangle">
+  <rect x="691.0129999999999" y="72.45" width="136.05700000000002" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>← 이전 글</small><span class="post__nav-title">Redis HyperLogLog: 100만 명을 14KB로 세기</span></a><a class="newer" href="/blog/tour/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1013.336 182.5">
+
+
+<polyline class="edge" data-from="M" data-to="R" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="123.446,90.9 171.446,90.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="R" data-to="K" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="256.374,90.9 304.374,90.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="K" data-to="D" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="425.611,90.9 473.611,90.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="D" data-to="E" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="611.15,84.75 647.15,84.75 647.15,58.45 659.15,58.45" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="E" data-to="A" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="804.099,58.45 852.099,58.45" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="D" data-to="B" data-style="dotted" data-arrow-start="false" data-arrow-end="true" data-label="그 밖의 종류" points="611.15,97.05000000000001 647.15,97.05000000000001 647.15,123.35000000000001 779.764,123.35000000000001" fill="none" stroke="var(--_line)" stroke-width="1" stroke-dasharray="4 4" />
+
+<g class="node" data-id="M" data-label="ko.mdx" data-shape="rectangle">
+  <rect x="40" y="72.45" width="83.446" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="R" data-label="remark" data-shape="rectangle">
+  <rect x="171.446" y="72.45" width="84.928" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="K" data-label="rehype-katex" data-shape="rectangle">
+  <rect x="304.374" y="72.45" width="121.23700000000001" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node is-hub" data-id="D" data-label="rehype-mermaid" data-shape="rectangle">
+  <rect x="473.611" y="72.45" width="137.539" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="E" data-label="Expressive Code" data-shape="rectangle">
+  <rect x="659.15" y="40" width="144.949" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="A" data-label="Astro 페이지" data-shape="rectangle">
+  <rect x="852.099" y="40" width="121.237" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="B" data-label="브라우저의 mermaid" data-shape="rectangle">
+  <rect x="779.764" y="104.9" width="167.17899999999997" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>다음 글 →</small><span class="post__nav-title">블로그 둘러보기: 다이어그램, 수식, 코드</span></a></nav></footer></article><article class="post" lang="en" data-minutes="3"><header class="post__head"><p class="post__cwd"><a href="/blog/">~/blog</a>/hangul-width/en.mdx</p><h1 class="post__title" style="view-transition-name: t-hangul-width">Why Hangul takes two columns in a terminal</h1><p class="post__dek">Why one Hangul syllable is as wide as two Latin letters, why arrows and box-drawing characters change width from one setup to the next, and why string length is not a column count.</p><p class="post__meta"><time datetime="2026-10-02">2026-10-02</time><span>3 min read</span><span><a href="/blog/?tag=unicode">unicode</a> · <a href="/blog/?tag=typography">typography</a></span></p></header><nav class="toc" aria-label="Contents"><p class="toc__label">Contents</p><ol><li><a href="#en-width-is-a-property-of-the-character"><span class="toc__n">§1</span><span>Width is a property of the character</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-hangul"><span class="toc__n">§2</span><span>Hangul</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-ambiguous-width"><span class="toc__n">§3</span><span>Ambiguous width</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-string-length-is-not-a-column-count"><span class="toc__n">§4</span><span>String length is not a column count</span><span class="toc__len" aria-hidden="true"></span></a></li></ol></nav><div class="prose"><p>The code font on this blog draws each Hangul syllable exactly two columns wide. Why that matters comes from how a terminal decides how wide a character is. The property values below were checked against <code>EastAsianWidth.txt</code> from Unicode 18.0, and the code output was produced by Node.js (ICU 78.3).</p>
+<h2 id="en-width-is-a-property-of-the-character">Width is a property of the character</h2>
+<p>Unicode gives every character an East_Asian_Width property (UAX #11). Terminals mostly read that value to decide how many columns a character gets.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th style="text-align:left">Value</th><th style="text-align:left">Meaning</th><th style="text-align:right">Columns</th><th style="text-align:left">Examples</th></tr></thead><tbody><tr><td style="text-align:left">W</td><td style="text-align:left">Wide</td><td style="text-align:right">2</td><td style="text-align:left"><code>한</code> <code>ㄱ</code> <code>漢</code></td></tr><tr><td style="text-align:left">F</td><td style="text-align:left">Fullwidth</td><td style="text-align:right">2</td><td style="text-align:left"><code>！</code> (U+FF01)</td></tr><tr><td style="text-align:left">Na, H</td><td style="text-align:left">Narrow, Halfwidth</td><td style="text-align:right">1</td><td style="text-align:left"><code>a</code> <code>1</code></td></tr><tr><td style="text-align:left">A</td><td style="text-align:left">Ambiguous</td><td style="text-align:right">1 or 2</td><td style="text-align:left"><code>§</code> <code>·</code> <code>→</code> <code>─</code></td></tr><tr><td style="text-align:left">N</td><td style="text-align:left">Neutral</td><td style="text-align:right">usually 1</td><td style="text-align:left"></td></tr></tbody></table>
+<div class="walk"><div class="walk__fig"><figure class="diagram" data-diagram="flowchart" style="--w:336px"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 335.99508333333335 612.983" width="335.99508333333335" height="612.983" role="img" aria-label="one character, W or F, two columns, A, one column">
+
+<defs>
+  <marker id="en-dg0-arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+  <marker id="en-dg0-arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+</defs>
+<polyline class="edge" data-from="C" data-to="W" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="149.63458333333332,76.9 149.63458333333332,124.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="W" data-to="T" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="yes" points="132.34441666666666,211.35083333333336 132.34441666666666,423.483 67.42250000000001,423.483 67.42250000000001,524.083 77.44833333333334,524.083 77.44833333333334,536.083" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="W" data-to="A" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="no" points="166.92475,211.35083333333336 166.92475,264.641 189.08008333333333,264.641 189.08008333333333,344.94100000000003" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="A" data-to="T" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="East Asian setting" points="176.60641666666666,407.30933333333337 176.60641666666666,455.783 129.38116666666667,455.783 129.38116666666667,524.083 114.89666666666668,524.083 114.89666666666668,536.083" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="A" data-to="O" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="anything else" points="201.55374999999998,407.30933333333337 201.55374999999998,455.783 236.48508333333336,455.783 236.48508333333336,536.083" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<g class="edge-label" data-from="W" data-to="T" data-label="yes">
+  <rect x="49.422500000000014" y="430.483" width="35.47" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1"></rect>
+  <text x="67.15750000000001" y="445.633" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">yes</text>
+</g>
+<g class="edge-label" data-from="W" data-to="A" data-label="no">
+  <rect x="174.08008333333333" y="271.641" width="29.53" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1"></rect>
+  <text x="188.84508333333332" y="286.791" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">no</text>
+</g>
+<g class="edge-label" data-from="A" data-to="T" data-label="East Asian setting">
+  <rect x="78.88116666666669" y="462.783" width="100.81000000000003" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1"></rect>
+  <text x="129.2861666666667" y="477.933" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">East Asian setting</text>
+</g>
+<g class="edge-label" data-from="A" data-to="O" data-label="anything else">
+  <rect x="195.98508333333336" y="462.783" width="80.02000000000001" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1"></rect>
+  <text x="235.99508333333335" y="477.933" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">anything else</text>
+</g>
+<g class="node" data-id="C" data-label="one character" data-shape="rectangle">
+  <rect x="86.79308333333333" y="40" width="125.68299999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="149.63458333333332" y="58.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">one character</text>
+</g>
+<g class="node" data-id="W" data-label="W or F" data-shape="diamond">
+  <polygon points="149.63458333333332,124.9 201.50508333333332,176.7705 149.63458333333332,228.641 97.76408333333333,176.7705" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></polygon>
+  <text x="149.63458333333332" y="176.7705" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">W or F</text>
+</g>
+<g class="node" data-id="T" data-label="two columns" data-shape="rectangle">
+  <rect x="40" y="536.083" width="112.345" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="96.1725" y="554.533" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">two columns</text>
+</g>
+<g class="node" data-id="A" data-label="A" data-shape="diamond">
+  <polygon points="189.08008333333333,344.94100000000003 226.50108333333333,382.362 189.08008333333333,419.783 151.65908333333334,382.362" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></polygon>
+  <text x="189.08008333333333" y="382.362" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">A</text>
+</g>
+<g class="node" data-id="O" data-label="one column" data-shape="rectangle">
+  <rect x="182.53558333333336" y="536.083" width="107.899" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="236.48508333333336" y="554.533" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">one column</text>
+</g>
+</svg></figure></div><div class="walk__steps"><div class="step" data-show="C,W,T"><p>First, is it W or F? All 11,172 precomposed Hangul syllables (U+AC00–U+D7A3) are W, so two columns.</p></div><div class="step" data-show="W,A"><p>If it is neither, is it A? Ambiguous characters are the ones whose width depended on the character set they came from.</p></div><div class="step" data-show="A,T,O"><p>An A character is two columns in a terminal set up for East Asian text and one column everywhere else. When the same text lines up in one terminal and not in another, this is usually why.</p></div></div></div>
+<h2 id="en-hangul">Hangul</h2>
+<p>Hangul can be encoded more than one way, and each way has its own property values.</p>
+<ul>
+<li>Precomposed syllables, U+AC00–U+D7A3, are W.</li>
+<li>Compatibility jamo such as <code>ㄱ</code> (U+3131–U+318E) are W too.</li>
+<li>Decomposed (NFD), the leading consonants U+1100–U+115F are W, while the vowels and trailing consonants U+1160–U+11FF are N.</li>
+</ul>
+<p>Decomposed vowels and trailing consonants attach to the letter before them to form one syllable, so most wcwidth implementations count them as zero columns. Decomposing <code>한</code> gives three code points, yet only the leading consonant’s two columns remain: still two columns.</p>
+<div class="expressive-code"><link rel="stylesheet" href="/blog/assets/ec.u2ymx.css"/><script type="module" src="/blog/assets/ec.0vx5m.js"></script><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">한글 (NFD) → 1112 1161 11AB 1100 1173 11AF</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="한글 (NFD) → 1112 1161 11AB 1100 1173 11AF"><div></div></button></div></figure></div>
+<h2 id="en-ambiguous-width">Ambiguous width</h2>
+<p><code>§</code>, <code>·</code>, <code>→</code> and the box-drawing <code>─</code> <code>│</code> (U+2500–U+254B) are all A, because older East Asian character sets such as EUC-KR made them two columns. Terminals have a setting for whether ambiguous characters are double width, and when that setting and the width the font actually draws disagree, the lines of a box no longer meet.</p>
+<p>Monoplex KR, the code font here, draws box-drawing characters half width. So in the usual setup, where ambiguous means one column, a box with Hangul inside still lines up.</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">┌────────┬──────┐</span></div></div><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">│ Name   │ Cols │</span></div></div><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">├────────┼──────┤</span></div></div><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">│ 한글   │ 4    │</span></div></div><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">│ abc    │ 3    │</span></div></div><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">└────────┴──────┘</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="┌────────┬──────┐│ Name   │ Cols │├────────┼──────┤│ 한글   │ 4    ││ abc    │ 3    │└────────┴──────┘"><div></div></button></div></figure></div>
+<h2 id="en-string-length-is-not-a-column-count">String length is not a column count</h2>
+<p>In JavaScript, <code>length</code> counts UTF-16 code units. The same <code>한글</code> is 2 precomposed and 6 decomposed. To count columns, split the string into the characters a reader sees (graphemes), then give each one its width.</p>
+<div class="walk"><div class="walk__fig"><div class="expressive-code"><figure class="frame has-title"><figcaption class="header"><span class="title">columns.js</span></figcaption><pre data-language="js"><code><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">const</span><span style="--0:#E6E3D9;--1:#2B2A26"> graphemes </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">new</span><span style="--0:#E6E3D9;--1:#2B2A26"> Intl</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">Segmenter</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#A3A19B;--1:#5E5B55">&#39;</span><span style="--0:#A9C6A3;--1:#3A6844">ko</span><span style="--0:#A3A19B;--1:#5E5B55">&#39;</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#CFD6DB;--1:#35506A">granularity</span><span style="--0:#A3A19B;--1:#5E5B55">:</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&#39;</span><span style="--0:#A9C6A3;--1:#3A6844">grapheme</span><span style="--0:#A3A19B;--1:#5E5B55">&#39;</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">})</span></div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">const</span><span style="--0:#E6E3D9;--1:#2B2A26"> WIDE </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#EF9A7A;--1:#9F4129"> </span><span style="--0:#A3A19B;--1:#5E5B55">/</span><span style="--0:#E2B071;--1:#87500C">^</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#EF9A7A;--1:#9F4129">ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꥠ-꥿가-힣豈-﫿︰-﹏＀-｠￠-￦</span><span style="--0:#A3A19B;--1:#5E5B55">]/</span></div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">const</span><span style="--0:#E6E3D9;--1:#2B2A26"> AMBIGUOUS </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#EF9A7A;--1:#9F4129"> </span><span style="--0:#A3A19B;--1:#5E5B55">/</span><span style="--0:#E2B071;--1:#87500C">^</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#EF9A7A;--1:#9F4129">§·←-↙─-╋</span><span style="--0:#A3A19B;--1:#5E5B55">]/</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">function</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">columns</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">text</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> cjk </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">false</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">}</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{})</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">let</span><span style="--0:#E6E3D9;--1:#2B2A26"> n </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E2B071;--1:#87500C">const</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> segment </span><span style="--0:#A3A19B;--1:#5E5B55">}</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">of</span><span style="--0:#E6E3D9;--1:#2B2A26"> graphemes</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">segment</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">text</span><span style="--0:#A3A19B;--1:#5E5B55">))</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#E2B071;--1:#87500C">if</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">WIDE</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">test</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">segment</span><span style="--0:#A3A19B;--1:#5E5B55">))</span><span style="--0:#E6E3D9;--1:#2B2A26"> n </span><span style="--0:#A3A19B;--1:#5E5B55">+=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">2</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#E2B071;--1:#87500C">else</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">if</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">AMBIGUOUS</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">test</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">segment</span><span style="--0:#A3A19B;--1:#5E5B55">))</span><span style="--0:#E6E3D9;--1:#2B2A26"> n </span><span style="--0:#A3A19B;--1:#5E5B55">+=</span><span style="--0:#E6E3D9;--1:#2B2A26"> cjk </span><span style="--0:#A3A19B;--1:#5E5B55">?</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">2</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">:</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">1</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#E2B071;--1:#87500C">else</span><span style="--0:#E6E3D9;--1:#2B2A26"> n </span><span style="--0:#A3A19B;--1:#5E5B55">+=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">1</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">return</span><span style="--0:#E6E3D9;--1:#2B2A26"> n</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="const graphemes = new Intl.Segmenter('ko', { granularity: 'grapheme' })const WIDE = /^[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꥠ-꥿가-힣豈-﫿︰-﹏＀-｠￠-￦]/const AMBIGUOUS = /^[§·←-↙─-╋]/function columns(text, { cjk = false } = {}) {  let n = 0  for (const { segment } of graphemes.segment(text)) {    if (WIDE.test(segment)) n += 2    else if (AMBIGUOUS.test(segment)) n += cjk ? 2 : 1    else n += 1  }  return n}"><div></div></button></div></figure></div></div><div class="walk__steps"><div class="step" data-lines="1"><p><code>Intl.Segmenter</code> splits the string into the characters a reader sees. The three code points of a decomposed syllable come out as one.</p></div><div class="step" data-lines="2-3"><p>The W and F ranges, and the A range. Hangul, CJK ideographs, kana and fullwidth forms count as wide; for A, only the characters this post mentions.</p></div><div class="step" data-lines="5-13"><p>Each character’s width comes from its first code point. With <code>cjk</code> on, A counts as two columns.</p></div></div></div>
+<p>What it returns:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th style="text-align:left">Input</th><th style="text-align:right">columns</th><th style="text-align:right">length</th></tr></thead><tbody><tr><td style="text-align:left"><code>한글</code></td><td style="text-align:right">4</td><td style="text-align:right">2</td></tr><tr><td style="text-align:left"><code>한글</code> (NFD)</td><td style="text-align:right">4</td><td style="text-align:right">6</td></tr><tr><td style="text-align:left"><code>Redis 키</code></td><td style="text-align:right">8</td><td style="text-align:right">7</td></tr><tr><td style="text-align:left"><code>─→·</code></td><td style="text-align:right">3</td><td style="text-align:right">3</td></tr><tr><td style="text-align:left"><code>─→·</code>, <code>cjk: true</code></td><td style="text-align:right">6</td><td style="text-align:right">3</td></tr><tr><td style="text-align:left"><code>ㄱㄴ</code></td><td style="text-align:right">4</td><td style="text-align:right">2</td></tr><tr><td style="text-align:left"><code>！</code></td><td style="text-align:right">2</td><td style="text-align:right">1</td></tr></tbody></table>
+<p>This function does not cover emoji or every combining sequence. For real use, an implementation that follows the full Unicode tables is safer: <code>string-width</code> in JavaScript, <code>go-runewidth</code> in Go.</p></div><footer class="post__end"><p class="post__source">Source markdown: <a href="/blog/hangul-width/en.md">hangul-width/en.md</a></p><nav class="post__nav" aria-label="More posts"><a class="older" href="/blog/redis-hyperloglog/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 867.0699999999999 181.8">
+
+
+<polyline class="edge" data-from="M" data-to="H" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="111.59,90.9 159.59,90.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="H" data-to="I" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="277.863,90.9 302.97450000000003,90.9 302.97450000000003,58.45 328.086,58.45" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="H" data-to="Z" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="277.863,90.9 302.97450000000003,90.9 302.97450000000003,123.35000000000001 328.086,123.35000000000001" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="I" data-to="R" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="441.913,58.45 469.2475,58.45 469.2475,90.9 492.13599999999997,90.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="Z" data-to="R" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="446.35900000000004,123.35000000000001 469.2475,123.35000000000001 469.2475,90.9 492.13599999999997,90.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="R" data-to="C" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="643.0129999999999,90.9 691.0129999999999,90.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<g class="node" data-id="M" data-label="원소" data-shape="rectangle">
+  <rect x="40" y="72.45" width="71.59" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node is-hub" data-id="H" data-label="64비트 해시" data-shape="rectangle">
+  <rect x="159.59" y="72.45" width="118.273" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="I" data-label="하위 14비트" data-shape="rectangle">
+  <rect x="328.086" y="40" width="113.827" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="Z" data-label="남은 50비트" data-shape="rectangle">
+  <rect x="328.086" y="104.9" width="118.273" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="R" data-label="레지스터 16384개" data-shape="cylinder">
+  <rect x="492.13599999999997" y="72.45" width="150.877" height="36.900000000000006" fill="var(--_node-fill)" stroke="none" />
+  <line x1="492.13599999999997" y1="72.45" x2="492.13599999999997" y2="109.35000000000001" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <line x1="643.0129999999999" y1="72.45" x2="643.0129999999999" y2="109.35000000000001" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <ellipse cx="567.5745" cy="109.35000000000001" rx="75.4385" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <ellipse cx="567.5745" cy="72.45" rx="75.4385" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="C" data-label="PFCOUNT 추정" data-shape="rectangle">
+  <rect x="691.0129999999999" y="72.45" width="136.05700000000002" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>← Older</small><span class="post__nav-title">Redis HyperLogLog: counting a million users in 14 KB</span></a><a class="newer" href="/blog/tour/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1013.336 182.5">
+
+
+<polyline class="edge" data-from="M" data-to="R" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="123.446,90.9 171.446,90.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="R" data-to="K" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="256.374,90.9 304.374,90.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="K" data-to="D" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="425.611,90.9 473.611,90.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="D" data-to="E" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="611.15,84.75 647.15,84.75 647.15,58.45 659.15,58.45" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="E" data-to="A" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="804.099,58.45 852.099,58.45" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="D" data-to="B" data-style="dotted" data-arrow-start="false" data-arrow-end="true" data-label="그 밖의 종류" points="611.15,97.05000000000001 647.15,97.05000000000001 647.15,123.35000000000001 779.764,123.35000000000001" fill="none" stroke="var(--_line)" stroke-width="1" stroke-dasharray="4 4" />
+
+<g class="node" data-id="M" data-label="ko.mdx" data-shape="rectangle">
+  <rect x="40" y="72.45" width="83.446" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="R" data-label="remark" data-shape="rectangle">
+  <rect x="171.446" y="72.45" width="84.928" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="K" data-label="rehype-katex" data-shape="rectangle">
+  <rect x="304.374" y="72.45" width="121.23700000000001" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node is-hub" data-id="D" data-label="rehype-mermaid" data-shape="rectangle">
+  <rect x="473.611" y="72.45" width="137.539" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="E" data-label="Expressive Code" data-shape="rectangle">
+  <rect x="659.15" y="40" width="144.949" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="A" data-label="Astro 페이지" data-shape="rectangle">
+  <rect x="852.099" y="40" width="121.237" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="B" data-label="브라우저의 mermaid" data-shape="rectangle">
+  <rect x="779.764" y="104.9" width="167.17899999999997" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>Newer →</small><span class="post__nav-title">A tour of this blog: diagrams, math, code</span></a></nav></footer></article></main><div class="status"><a class="status__file" data-href="/blog/hangul-width/{lang}.md" href="/blog/hangul-width/ko.md">ko.mdx</a><span class="status__sec"></span><span class="status__left"></span><button class="status__toc" type="button"><span lang="ko">목차</span><span lang="en">Contents</span></button></div><dialog class="sheet" id="toc-sheet" aria-label="Contents"><button class="sheet__close" type="button" data-close>esc</button><div class="sheet__body"></div></dialog><script type="module" src="/blog/assets/Reader.astro_astro_type_script_index_0_lang.BKHUI645.js"></script><dialog class="sheet" id="keys" aria-labelledby="keys-title"><button class="sheet__close" type="button" data-close>esc</button><p class="toc__label" id="keys-title"><span lang="ko">단축키</span><span lang="en">Keyboard</span></p><dl class="keys"><dt><kbd>/</kbd> <kbd>⌘K</kbd></dt><dd><span lang="ko">글 검색</span><span lang="en">Search posts</span></dd><dt><kbd>t</kbd></dt><dd><span lang="ko">밝은/어두운 테마</span><span lang="en">Light or dark theme</span></dd><dt><kbd>l</kbd></dt><dd><span lang="ko">한국어/영어, 읽던 자리 유지</span><span lang="en">Korean or English, keeping your place</span></dd><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd><span lang="ko">이전/다음 절</span><span lang="en">Previous or next section</span></dd><dt><kbd>?</kbd></dt><dd><span lang="ko">이 목록</span><span lang="en">This list</span></dd></dl></dialog><dialog class="search" id="search" aria-label="Search"><label class="search__line"><span class="search__caret" aria-hidden="true">&gt;</span><input type="search" role="combobox" aria-expanded="true" aria-controls="search-results" aria-autocomplete="list" autocomplete="off" spellcheck="false" enterkeyhint="go"></label><p class="search__status" aria-live="polite"><span class="tool__name" data-call-name></span><span class="tool__arg" data-call-arg></span><span class="search__count" data-call-count></span></p><ul class="search__results" id="search-results" role="listbox" aria-label="Results"></ul><p class="search__keys"><span><kbd>↑</kbd><kbd>↓</kbd> <span lang="ko">이동</span><span lang="en">move</span></span><span><kbd>↵</kbd> <span lang="ko">열기</span><span lang="en">open</span></span><span><kbd>esc</kbd> <span lang="ko">닫기</span><span lang="en">close</span></span></p></dialog><script type="module" src="/blog/assets/Base.astro_astro_type_script_index_0_lang.BxD9tEXi.js"></script></body></html>
