@@ -79,8 +79,8 @@ In JavaScript, `length` counts UTF-16 code units. The same `한글` is 2 precomp
 
 ```js title="columns.js"
 const graphemes = new Intl.Segmenter('ko', { granularity: 'grapheme' })
-const WIDE = /^[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꥠ-꥿가-힣豈-﫿︰-﹏＀-｠￠-￦]/
-const AMBIGUOUS = /^[§·←-↙─-╋]/
+const WIDE = /^[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA960-\uA97F\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6]/
+const AMBIGUOUS = /^[\u00A7\u00B7\u2190-\u2199\u2500-\u254B]/
 
 function columns(text, { cjk = false } = {}) {
   let n = 0
