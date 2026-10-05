@@ -69,6 +69,6 @@ content-hashed, so the `?v=` rule above does not apply to it, and
 ## `blog/` is generated
 
 Same contract: the build output of the Astro project at
-`/Users/ad03208797/Documents/0_github/blog` (local repo, no remote yet;
+`/Users/ad03208797/Documents/0_github/blog` (private repo `Alfex4936/blog`;
 `npm run deploy:site` there). Do not edit it by hand. It shares this page's
 `portfolio:lang` and `portfolio:theme` keys, so the toggles carry across.
