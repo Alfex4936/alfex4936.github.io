@@ -1,0 +1,11 @@
+# seok · blog
+
+> Engineering notes by Seokwon Choi, platform engineer: Redis internals, Go and Kubernetes operators, performance measurement. Every post exists in Korean and English, each as plain markdown.
+
+## Posts
+
+- [A tour of this blog: diagrams, math, code](https://alfex4936.github.io/blog/tour/en.md): The first post. Everything this blog can put inside a post, one thing at a time: a figure that follows your place, diagrams drawn at build time, math, code, and two languages. Korean: https://alfex4936.github.io/blog/tour/ko.md
+
+## Elsewhere
+
+- [Portfolio](https://alfex4936.github.io/)

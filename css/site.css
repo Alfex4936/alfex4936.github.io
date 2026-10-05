@@ -300,7 +300,7 @@ button {
 
 .welcome__meta dt {
   color: var(--faint);
-  min-width: 3ch;
+  min-width: 4ch; /* the longest label, "blog" */
 }
 
 .welcome__tips-title {

@@ -65,3 +65,10 @@ That folder is the build output of a separate Vite project
 Do not edit it by hand: the next deploy replaces it wholesale. Its assets are
 content-hashed, so the `?v=` rule above does not apply to it, and
 `check-versions.mjs` passes it untouched.
+
+## `blog/` is generated
+
+Same contract: the build output of the Astro project at
+`/Users/ad03208797/Documents/0_github/blog` (local repo, no remote yet;
+`npm run deploy:site` there). Do not edit it by hand. It shares this page's
+`portfolio:lang` and `portfolio:theme` keys, so the toggles carry across.

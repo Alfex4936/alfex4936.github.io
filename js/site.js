@@ -102,8 +102,8 @@ const walk = () => {
 const COMMANDS = {
   '/help': () =>
     T(
-      '명령: /about /languages /measurements /projects /redis /timeline /resume /lang ko|en /theme dark|light /clear … 그리고 목록에 없는 몇 개.',
-      'Commands: /about /languages /measurements /projects /redis /timeline /resume /lang ko|en /theme dark|light /clear … and a few that are not listed.',
+      '명령: /about /languages /measurements /projects /redis /timeline /resume /blog /lang ko|en /theme dark|light /clear … 그리고 목록에 없는 몇 개.',
+      'Commands: /about /languages /measurements /projects /redis /timeline /resume /blog /lang ko|en /theme dark|light /clear … and a few that are not listed.',
     ),
   '/about': () => go('about'),
   '/languages': () => go('languages'),
@@ -119,6 +119,10 @@ const COMMANDS = {
     }
     window.open(`resume/seokwon-resume-${root.dataset.lang}.pdf`, '_blank', 'noopener') // reader.js never loaded
     return T('이력서 PDF를 새 탭에서 엽니다', 'Opening the résumé PDF in a new tab')
+  },
+  '/blog': () => {
+    location.href = 'blog/'
+    return T('블로그를 엽니다…', 'Opening the blog…')
   },
   '/lang': (arg) =>
     setLang(arg) ? T('한국어로 전환했습니다', 'Switched to English') : 'usage: /lang ko|en',
@@ -288,7 +292,7 @@ const REDIS_SYNTAX = {
 }
 const SLASH_SYNTAX = {
   '/help': '', '/about': '', '/languages': '', '/measurements': '', '/projects': '', '/redis': '', '/timeline': '',
-  '/resume': '', '/lang': 'ko|en', '/theme': 'dark|light', '/clear': '',
+  '/resume': '', '/blog': '', '/lang': 'ko|en', '/theme': 'dark|light', '/clear': '',
 }
 
 // Returns { name, rest } for the current input, or null when nothing applies.
