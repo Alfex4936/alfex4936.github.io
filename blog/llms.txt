@@ -1,6 +1,6 @@
 # seok · blog
 
-> Notes by Seokwon Choi, platform engineer. Mostly technical, plus whatever else comes up along the way. Every post exists in Korean and English, each as plain markdown.
+> Notes by Seokwon Choi, developer. Mostly technical, plus whatever else comes up along the way. Every post exists in Korean and English, each as plain markdown.
 
 ## Posts
 
