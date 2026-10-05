@@ -86,8 +86,8 @@ xychart-beta
   title "Size of the PFCOUNT error (%)"
   x-axis [100, 1k, 10k, 100k, 1M]
   y-axis "%" 0 --> 1
-  bar [0, 0.70, 0.89, 0.53, 0.03]
-  line [0.81, 0.81, 0.81, 0.81, 0.81]
+  bar "measured error" [0, 0.70, 0.89, 0.53, 0.03]
+  line "standard error, 0.81%" [0.81, 0.81, 0.81, 0.81, 0.81]
 ```
 
 At 10,000 members the error was 0.89%, above the 0.81% standard error (the line). A standard error is the typical size of the error, not a ceiling, so a single measurement can go past it. At a million it was 0.03%.
