@@ -206,7 +206,7 @@ Go's `sort.Stable` **uses no buffer.** More precisely, it can't. `sort.Interface
 
 The figure gives equal keys distinct input positions. The original order of key 1 is 2, 4, 6. Lomuto quicksort reverses it; the stable sort preserves it.
 
-<SortStabilityViz keys={[2, 1, 2, 1, 2, 1]} unstableAlgo="lomuto" stableAlgo="stable-rust" caption="The large number is the sort key; the small number is the item's input position." />
+<SortStabilityViz lang="en" keys={[2, 1, 2, 1, 2, 1]} unstableAlgo="lomuto" stableAlgo="stable-rust" caption="The large number is the sort key; the small number is the item's input position." />
 
 <SortViz algo="stable-cpp,stable-rust,stable-go" inputs="random,organ,sorted,few" n={80} caption="C++ stable_sort, Rust sort and Go sort.Stable. Bars moving one at a time are being written back from the buffer; the long swap sequences on the Go side are rotations." />
 
