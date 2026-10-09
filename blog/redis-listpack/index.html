@@ -1,0 +1,2074 @@
+<!DOCTYPE html><html lang="ko" data-lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title data-ko="Redis listpack: 512번째 필드와 513번째 필드 사이 · seok" data-en="Redis listpack: between field 512 and field 513 · seok">Redis listpack: 512번째 필드와 513번째 필드 사이 · seok</title><meta name="description" content="Redis 7에서 작은 hash, set, zset은 listpack 하나에 통째로 들어갑니다. 임계값 한 칸 차이로 메모리가 세 배 뛰고, 한번 바뀐 인코딩은 돌아오지 않으며, 임계값을 올리면 조회가 선형 탐색이 됩니다. Redis 7.2에서 직접 쟀습니다."><meta property="og:title" content="Redis listpack: 512번째 필드와 513번째 필드 사이 · seok"><meta property="og:description" content="Redis 7에서 작은 hash, set, zset은 listpack 하나에 통째로 들어갑니다. 임계값 한 칸 차이로 메모리가 세 배 뛰고, 한번 바뀐 인코딩은 돌아오지 않으며, 임계값을 올리면 조회가 선형 탐색이 됩니다. Redis 7.2에서 직접 쟀습니다."><meta property="og:url" content="https://alfex4936.github.io/blog/redis-listpack/"><meta property="og:type" content="article"><meta property="og:locale" content="ko_KR"><meta property="og:locale:alternate" content="en_US"><meta property="article:published_time" content="2023-10-17T00:00:00.000Z"><meta property="og:image" content="https://alfex4936.github.io/blog/og/redis-listpack.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="theme-color" content="#141413" media="(prefers-color-scheme: dark)"><meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)"><link rel="canonical" href="https://alfex4936.github.io/blog/redis-listpack/"><link rel="icon" href="/favicon.ico"><link rel="preload" href="/blog/fonts/title.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="/blog/fonts/body.woff2" as="font" type="font/woff2" crossorigin><link rel="alternate" type="application/rss+xml" title="seok · blog (한국어)" href="/blog/ko/rss.xml"><link rel="alternate" type="application/rss+xml" title="seok · blog (English)" href="/blog/en/rss.xml"><script>
+      // Same keys as the landing page, so the toggles carry across alfex4936.github.io.
+      ;(() => {
+        const q = new URLSearchParams(location.search).get('lang')
+        const stored = localStorage.getItem('portfolio:lang')
+        const lang = q === 'ko' || q === 'en' ? q : stored === 'ko' || stored === 'en' ? stored : navigator.language.startsWith('ko') ? 'ko' : 'en'
+        const root = document.documentElement
+        root.dataset.lang = root.lang = lang
+        const theme = localStorage.getItem('portfolio:theme')
+        if (theme === 'dark' || theme === 'light') root.dataset.theme = theme
+        const t = document.querySelector('title')
+        t.textContent = t.dataset[lang]
+      })()
+    </script><link rel="stylesheet" href="/blog/assets/Step.FmcF6wk0.css"><link rel="stylesheet" href="/blog/assets/all.DMtbdYXv.css"></head><body><a class="skip" href="#main"><span lang="ko">본문으로</span><span lang="en">Skip to content</span></a><header class="bar"><nav class="bar__path" aria-label="Path"><a href="/">seok</a><span class="sep">·</span><a href="/blog/">~/blog</a><span class="sep">/</span><span class="here">redis-listpack</span></nav><nav class="bar__ctl" aria-label="Search, language and theme"><button type="button" class="bar__search" data-search aria-keyshortcuts="/ Control+K Meta+K"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.5"></circle><path d="M10.4 10.4 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg><span class="bar__search-label"><span lang="ko">검색</span><span lang="en">Search</span></span><kbd>/</kbd></button><span class="bar__sep" aria-hidden="true">·</span><button type="button" data-lang-set="ko" aria-pressed="false">ko</button><button type="button" data-lang-set="en" aria-pressed="false">en</button><span class="bar__sep" aria-hidden="true">·</span><button type="button" data-theme-set="dark" aria-pressed="false">dark</button><button type="button" data-theme-set="light" aria-pressed="false">light</button></nav></header><main id="main"><article class="post" lang="ko" data-minutes="6"><header class="post__head"><p class="post__cwd"><a href="/blog/">~/blog</a>/redis-listpack/ko.mdx</p><h1 class="post__title" style="view-transition-name: t-redis-listpack">Redis listpack: 512번째 필드와 513번째 필드 사이</h1><p class="post__dek">Redis 7에서 작은 hash, set, zset은 listpack 하나에 통째로 들어갑니다. 임계값 한 칸 차이로 메모리가 세 배 뛰고, 한번 바뀐 인코딩은 돌아오지 않으며, 임계값을 올리면 조회가 선형 탐색이 됩니다. Redis 7.2에서 직접 쟀습니다.</p><p class="post__meta"><time datetime="2023-10-17">2023-10-17</time><span>6분</span><span><a href="/blog/?tag=redis">redis</a> · <a href="/blog/?tag=performance">performance</a></span></p></header><nav class="toc" aria-label="목차"><p class="toc__label">목차</p><ol><li><a href="#ko-ziplist가-바뀐-이유"><span class="toc__n">§1</span><span>ziplist가 바뀐 이유</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-기본-임계값"><span class="toc__n">§2</span><span>기본 임계값</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-513번째-필드"><span class="toc__n">§3</span><span>513번째 필드</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-돌아오지-않는-변환"><span class="toc__n">§4</span><span>돌아오지 않는 변환</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-임계값을-올리면"><span class="toc__n">§5</span><span>임계값을 올리면</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-정리"><span class="toc__n">§6</span><span>정리</span><span class="toc__len" aria-hidden="true"></span></a></li></ol></nav><div class="prose"><p>Redis의 hash는 작을 때 해시 테이블이 아닙니다. 필드와 값을 연속된 바이트 배열 하나에 차례로 적어 두고, 조회할 때 처음부터 훑습니다. Redis 7.0부터 이 배열의 형식이 ziplist에서 listpack으로 바뀌었습니다. 설정 이름도 <code>hash-max-ziplist-entries</code>에서 <code>hash-max-listpack-entries</code>로 바뀌었고, 옛 이름은 별칭으로 남았습니다.</p>
+<p>이 글에서는 왜 형식을 바꿨는지, 그리고 임계값 근처에서 메모리와 지연이 실제로 어떻게 움직이는지 봅니다. 측정은 Redis 7.2.16 공식 Docker 이미지에서 했고, 메모리는 <code>MEMORY USAGE</code>, 서버 쪽 실행 시간은 <code>INFO commandstats</code>의 <code>usec_per_call</code>입니다. 환경은 Apple Silicon 노트북입니다.</p>
+<h2 id="ko-ziplist가-바뀐-이유">ziplist가 바뀐 이유</h2>
+<p>ziplist의 각 항목은 앞 항목의 길이(prevlen)를 맨 앞에 적습니다. 뒤에서 앞으로 걸어갈 수 있게 하기 위해서입니다. prevlen은 앞 항목이 254바이트 미만이면 1바이트, 이상이면 5바이트입니다.</p>
+<figure class="diagram" data-diagram="flowchart" style="--w:776px"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 775.0339999999999 327.6" width="775.0339999999999" height="327.6" role="img" aria-label="새 항목 300B, prevlen 1→5B
+길이 250→254B, prevlen 1→5B
+길이 250→254B, prevlen 1→5B ..., 새 항목 300B
+backlen 2B, 변화 없음, 변화 없음">
+
+<defs>
+  <marker id="ko-dg0-arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+  <marker id="ko-dg0-arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+</defs>
+<g class="subgraph" data-id="ZL" data-label="ziplist: 항목마다 앞 항목의 길이">
+  <rect x="40" y="173.8" width="695.0339999999999" height="113.80000000000001" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1"></rect>
+  <rect x="40" y="173.8" width="695.0339999999999" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1"></rect>
+  <text x="52" y="187.8" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">ziplist: 항목마다 앞 항목의 길이</text>
+</g>
+<g class="subgraph" data-id="LP" data-label="listpack: 항목마다 자기 길이">
+  <rect x="40" y="40" width="456.884" height="113.80000000000001" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1"></rect>
+  <rect x="40" y="40" width="456.884" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1"></rect>
+  <text x="52" y="54" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">listpack: 항목마다 자기 길이</text>
+</g>
+<polyline class="edge" data-from="Z0" data-to="Z1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="177.97799999999998,240.47500000000002 225.97799999999998,240.47500000000002" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="Z1" data-to="Z2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="360.553,248.925 408.553,248.925" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="Z2" data-to="Z3" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="543.1279999999999,248.925 591.1279999999999,248.925" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="L0" data-to="L1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="177.97799999999998,110.9 225.97799999999998,110.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="L1" data-to="L2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="329.431,110.9 377.431,110.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<g class="node" data-id="Z0" data-label="새 항목 300B" data-shape="rectangle">
+  <rect x="56" y="222.025" width="121.97799999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="116.98899999999999" y="240.47500000000002" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">새 항목 300B</text>
+</g>
+<g class="node" data-id="Z1" data-label="prevlen 1→5B
+길이 250→254B" data-shape="rectangle">
+  <rect x="225.97799999999998" y="217.8" width="134.575" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="293.2655" y="244.70000000000002" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)"><tspan x="293.2655" dy="-3.9000000000000012">prevlen 1→5B</tspan><tspan x="293.2655" dy="16.900000000000002">길이 250→254B</tspan></text>
+</g>
+<g class="node" data-id="Z2" data-label="prevlen 1→5B
+길이 250→254B" data-shape="rectangle">
+  <rect x="408.553" y="222.025" width="134.575" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="475.8405" y="248.925" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)"><tspan x="475.8405" dy="-3.9000000000000012">prevlen 1→5B</tspan><tspan x="475.8405" dy="16.900000000000002">길이 250→254B</tspan></text>
+</g>
+<g class="node" data-id="Z3" data-label="prevlen 1→5B ..." data-shape="rectangle">
+  <rect x="591.1279999999999" y="226.25" width="127.906" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="655.0809999999999" y="244.7" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">prevlen 1→5B ...</text>
+</g>
+<g class="node" data-id="L0" data-label="새 항목 300B
+backlen 2B" data-shape="rectangle">
+  <rect x="56" y="84" width="121.97799999999998" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="116.98899999999999" y="110.9" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)"><tspan x="116.98899999999999" dy="-3.9000000000000012">새 항목 300B</tspan><tspan x="116.98899999999999" dy="16.900000000000002">backlen 2B</tspan></text>
+</g>
+<g class="node" data-id="L1" data-label="변화 없음" data-shape="rectangle">
+  <rect x="225.97799999999998" y="92.45" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="277.7045" y="110.9" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">변화 없음</text>
+</g>
+<g class="node" data-id="L2" data-label="변화 없음" data-shape="rectangle">
+  <rect x="377.431" y="92.45" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="429.15749999999997" y="110.9" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">변화 없음</text>
+</g>
+</svg></figure>
+<p>250바이트짜리 항목이 줄지어 있을 때 앞에 큰 항목 하나가 들어가면 문제가 생깁니다. 바로 뒤 항목의 prevlen이 1바이트에서 5바이트로 늘고, 그 항목이 254바이트가 되면서 다음 항목의 prevlen도 늘어나야 합니다. 이것이 끝까지 이어지는 연쇄 갱신(cascading update)입니다. 드물지만 최악의 경우 삽입 한 번이 리스트 전체를 다시 씁니다.</p>
+<p>listpack은 앞 항목이 아니라 자기 길이(backlen)를 항목 끝에 적습니다. 뒤에서 걸어갈 때는 바로 앞 항목의 끝에서 그 길이를 읽으면 됩니다. 한 항목의 크기가 바뀌어도 이웃 항목은 그대로이니 연쇄가 생길 구조가 없습니다. Redis 7.0은 hash, zset, 그리고 list(quicklist의 각 노드)에서 ziplist를 모두 listpack으로 바꿨습니다.</p>
+<h2 id="ko-기본-임계값">기본 임계값</h2>
+<p>listpack은 작을 때만 씁니다. Redis 7.2.16의 기본값은 다음과 같습니다.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>설정</th><th style="text-align:right">기본값</th></tr></thead><tbody><tr><td><code>hash-max-listpack-entries</code></td><td style="text-align:right">512</td></tr><tr><td><code>hash-max-listpack-value</code></td><td style="text-align:right">64</td></tr><tr><td><code>zset-max-listpack-entries</code></td><td style="text-align:right">128</td></tr><tr><td><code>zset-max-listpack-value</code></td><td style="text-align:right">64</td></tr><tr><td><code>set-max-listpack-entries</code></td><td style="text-align:right">128</td></tr><tr><td><code>set-max-intset-entries</code></td><td style="text-align:right">512</td></tr></tbody></table>
+<p>필드 수나 값 길이 중 하나만 넘어도 해시 테이블(zset은 skiplist)로 바뀝니다. set은 7.2에서 listpack 인코딩이 새로 생겼고, 원소가 모두 정수면 그보다 앞서 intset을 씁니다.</p>
+<h2 id="ko-513번째-필드">513번째 필드</h2>
+<p>값 <code>v12345</code>인 필드를 하나씩 늘리며 <code>MEMORY USAGE</code>를 쟀습니다.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th style="text-align:right">필드 수</th><th>인코딩</th><th style="text-align:right">바이트</th><th style="text-align:right">필드당</th></tr></thead><tbody><tr><td style="text-align:right">1</td><td>listpack</td><td style="text-align:right">72</td><td style="text-align:right"></td></tr><tr><td style="text-align:right">16</td><td>listpack</td><td style="text-align:right">368</td><td style="text-align:right">23</td></tr><tr><td style="text-align:right">64</td><td>listpack</td><td style="text-align:right">1,328</td><td style="text-align:right">21</td></tr><tr><td style="text-align:right">128</td><td>listpack</td><td style="text-align:right">2,608</td><td style="text-align:right">20</td></tr><tr><td style="text-align:right">256</td><td>listpack</td><td style="text-align:right">5,168</td><td style="text-align:right">20</td></tr><tr><td style="text-align:right">512</td><td>listpack</td><td style="text-align:right">10,288</td><td style="text-align:right">20</td></tr><tr><td style="text-align:right">513</td><td>hashtable</td><td style="text-align:right"><strong>32,920</strong></td><td style="text-align:right">64</td></tr><tr><td style="text-align:right">1,024</td><td>hashtable</td><td style="text-align:right">57,448</td><td style="text-align:right">56</td></tr></tbody></table>
+<figure class="diagram" data-diagram="xychart" style="--w:750px"><svg data-xychart-colors="0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 750 464" width="750" height="464" role="img" aria-label="xychart">
+
+
+<circle cx="106.6" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="404" r="1.5" class="xychart-grid"></circle>
+<path d="M150.9,403 Q150.9,401.9 151.9,401.9 L189.8,401.9 Q190.9,401.9 190.9,403 L190.9,403 Q190.9,404 189.8,404 L151.9,404 Q150.9,404 150.9,403 Z" class="xychart-bar xychart-color-0" data-value="368" data-label="&quot;16&quot;"></path>
+<path d="M236.6,400.2 Q236.6,396.5 240.3,396.5 L272.8,396.5 Q276.6,396.5 276.6,400.2 L276.6,400.2 Q276.6,404 272.8,404 L240.3,404 Q236.6,404 236.6,400.2 Z" class="xychart-bar xychart-color-0" data-value="1328" data-label="&quot;64&quot;"></path>
+<path d="M322.3,396.6 Q322.3,389.2 329.7,389.2 L354.9,389.2 Q362.3,389.2 362.3,396.6 L362.3,396.6 Q362.3,404 354.9,404 L329.7,404 Q322.3,404 322.3,396.6 Z" class="xychart-bar xychart-color-0" data-value="2608" data-label="&quot;128&quot;"></path>
+<path d="M408,382.7 Q408,374.7 416,374.7 L440,374.7 Q448,374.7 448,382.7 L448,396 Q448,404 440,404 L416,404 Q408,404 408,396 Z" class="xychart-bar xychart-color-0" data-value="5168" data-label="&quot;256&quot;"></path>
+<path d="M493.7,353.7 Q493.7,345.7 501.7,345.7 L525.7,345.7 Q533.7,345.7 533.7,353.7 L533.7,396 Q533.7,404 525.7,404 L501.7,404 Q493.7,404 493.7,396 Z" class="xychart-bar xychart-color-0" data-value="10288" data-label="&quot;512&quot;"></path>
+<path d="M579.4,225.5 Q579.4,217.5 587.4,217.5 L611.4,217.5 Q619.4,217.5 619.4,225.5 L619.4,396 Q619.4,404 611.4,404 L587.4,404 Q579.4,404 579.4,396 Z" class="xychart-bar xychart-color-0" data-value="32920" data-label="&quot;513&quot;"></path>
+<path d="M665.1,86.5 Q665.1,78.5 673.1,78.5 L697.1,78.5 Q705.1,78.5 705.1,86.5 L705.1,396 Q705.1,404 697.1,404 L673.1,404 Q665.1,404 665.1,396 Z" class="xychart-bar xychart-color-0" data-value="57448" data-label="&quot;1024&quot;"></path>
+<text x="170.85714285714286" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;16&quot;</text>
+<text x="256.57142857142856" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;64&quot;</text>
+<text x="342.2857142857143" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;128&quot;</text>
+<text x="428" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;256&quot;</text>
+<text x="513.7142857142857" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;512&quot;</text>
+<text x="599.4285714285713" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;513&quot;</text>
+<text x="685.1428571428571" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;1024&quot;</text>
+<text x="110" y="404" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">0</text>
+<text x="110" y="347.3333333333333" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">10000</text>
+<text x="110" y="290.6666666666667" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">20000</text>
+<text x="110" y="234" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">30000</text>
+<text x="110" y="177.33333333333334" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">40000</text>
+<text x="110" y="120.66666666666663" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">50000</text>
+<text x="110" y="64" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">60000</text>
+<text x="26" y="234" text-anchor="middle" transform="rotate(-90,26,234)" font-size="15" font-weight="500" dy="0.35em" class="xychart-axis-title">bytes</text>
+<text x="375" y="40" text-anchor="middle" font-size="18" font-weight="600" dy="0.35em" class="xychart-title">hash 메모리 (바이트), 값 v12345</text>
+</svg></figure>
+<p>필드 하나를 더 넣었더니 메모리가 3.2배가 됐습니다. listpack에서는 <code>field:123</code>과 <code>v12345</code>가 길이 헤더와 backlen 몇 바이트만 붙어 나란히 놓이므로 필드당 20바이트 남짓입니다. 해시 테이블에서는 필드와 값이 각각 별도로 할당된 문자열이 되고, 엔트리 구조체와 버킷 배열이 붙어 필드당 60바이트 안팎이 됩니다.</p>
+<p>값 길이 쪽 경계도 같은 모양입니다. 필드 100개 hash에서 값 길이만 바꿨습니다.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th style="text-align:right">값 길이</th><th>인코딩</th><th style="text-align:right">바이트</th></tr></thead><tbody><tr><td style="text-align:right">8</td><td>listpack</td><td style="text-align:right">1,840</td></tr><tr><td style="text-align:right">32</td><td>listpack</td><td style="text-align:right">4,144</td></tr><tr><td style="text-align:right">63</td><td>listpack</td><td style="text-align:right">7,216</td></tr><tr><td style="text-align:right">64</td><td>listpack</td><td style="text-align:right">8,240</td></tr><tr><td style="text-align:right">65</td><td>hashtable</td><td style="text-align:right">12,840</td></tr><tr><td style="text-align:right">128</td><td>hashtable</td><td style="text-align:right">20,840</td></tr></tbody></table>
+<p>64바이트까지는 listpack이고 65바이트부터 해시 테이블입니다. 경계는 “64 이하”입니다.</p>
+<p>set도 같습니다.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>원소</th><th style="text-align:right">개수</th><th>인코딩</th><th style="text-align:right">바이트</th></tr></thead><tbody><tr><td>문자열</td><td style="text-align:right">128</td><td>listpack</td><td style="text-align:right">816</td></tr><tr><td>문자열</td><td style="text-align:right">129</td><td>hashtable</td><td style="text-align:right">6,280</td></tr><tr><td>정수</td><td style="text-align:right">512</td><td>intset</td><td style="text-align:right">1,328</td></tr><tr><td>정수</td><td style="text-align:right">513</td><td>hashtable</td><td style="text-align:right"><strong>24,712</strong></td></tr></tbody></table>
+<p>정수 set은 intset에서 해시 테이블로 바뀔 때 18.6배가 됩니다. intset은 정렬된 정수 배열이라 원소당 2~8바이트밖에 쓰지 않기 때문입니다.</p>
+<h2 id="ko-돌아오지-않는-변환">돌아오지 않는 변환</h2>
+<p>변환은 한 방향입니다. 필드 100개, 1,072바이트인 hash에 65바이트 값을 하나 넣은 뒤 그 필드를 지웠습니다.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>단계</th><th>인코딩</th><th style="text-align:right">바이트</th></tr></thead><tbody><tr><td>처음</td><td>listpack</td><td style="text-align:right">1,072</td></tr><tr><td>65바이트 값 <code>HSET</code></td><td>hashtable</td><td style="text-align:right">5,240</td></tr><tr><td>그 필드 <code>HDEL</code></td><td>hashtable</td><td style="text-align:right">5,128</td></tr></tbody></table>
+<p>원인이 사라져도 해시 테이블로 남습니다. Redis는 축소 방향의 변환을 하지 않습니다. 키가 수백만 개인 인스턴스에서 잠깐 긴 값이 들어갔다 나가는 패턴이 있으면 메모리가 계단식으로만 오릅니다. 되돌리려면 키를 다시 써야 합니다. 같은 상태의 키를 <code>DUMP</code> 후 지우고 <code>RESTORE</code>하니 listpack으로 돌아왔습니다. RDB에서 키를 읽어 들일 때 현재 크기를 기준으로 인코딩을 다시 고르기 때문입니다.</p>
+<h2 id="ko-임계값을-올리면">임계값을 올리면</h2>
+<p>메모리가 아까우니 <code>hash-max-listpack-entries</code>를 크게 올리자는 생각이 들 수 있습니다. listpack 조회는 처음부터 훑는 선형 탐색이라 대가가 있습니다. <code>HGET</code>을 첫 필드와 마지막 필드에 대해 각각 5만 번 보내고 서버 쪽 <code>usec_per_call</code>을 봤습니다.</p>
+<div class="expressive-code"><link rel="stylesheet" href="/blog/assets/ec.vx73c.css"/><script type="module" src="/blog/assets/ec.g1fg5.js"></script><figure class="frame is-terminal has-title"><figcaption class="header"><span class="title">rlp3.sh (발췌)</span></figcaption><pre data-language="bash"><code><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> f </span><span style="--0:#E2B071;--1:#87500C">in</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">1</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">$</span><span style="--0:#E6E3D9;--1:#2B2A26">n</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">do</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#F3E2C4;--1:#5A4521">redis-cli</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">config</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">resetstat</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&gt;</span><span style="--0:#A9C6A3;--1:#3A6844">/dev/null</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#F3E2C4;--1:#5A4521">redis-benchmark</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">-n</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">50000</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">-c</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">4</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">-P</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">16</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">-q</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">hget</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">h</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">field:</span><span style="--0:#A3A19B;--1:#5E5B55">$</span><span style="--0:#E6E3D9;--1:#2B2A26">f </span><span style="--0:#A3A19B;--1:#5E5B55">&gt;</span><span style="--0:#A9C6A3;--1:#3A6844">/dev/null</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">2&gt;&amp;1</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#F3E2C4;--1:#5A4521">redis-cli</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">info</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">commandstats</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">|</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">grep</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">cmdstat_hget</span></div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">done</span></div></div></code></pre></figure></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th style="text-align:right">필드 수</th><th>인코딩</th><th style="text-align:right">첫 필드 (µs)</th><th style="text-align:right">마지막 필드 (µs)</th></tr></thead><tbody><tr><td style="text-align:right">128</td><td>listpack</td><td style="text-align:right">0.08</td><td style="text-align:right">0.53</td></tr><tr><td style="text-align:right">512</td><td>listpack</td><td style="text-align:right">0.08</td><td style="text-align:right">2.12</td></tr><tr><td style="text-align:right">4,096</td><td>hashtable</td><td style="text-align:right">0.07</td><td style="text-align:right">0.07</td></tr><tr><td style="text-align:right">16,384</td><td>hashtable</td><td style="text-align:right">0.07</td><td style="text-align:right">0.07</td></tr><tr><td style="text-align:right">4,096</td><td>listpack (임계값 100000)</td><td style="text-align:right">0.08</td><td style="text-align:right">15.97</td></tr><tr><td style="text-align:right">16,384</td><td>listpack (임계값 100000)</td><td style="text-align:right">0.08</td><td style="text-align:right"><strong>50.74</strong></td></tr></tbody></table>
+<p>기본값 512에서도 마지막 필드는 첫 필드보다 26배 느리지만 절대값은 2µs입니다. 임계값을 올려 16,384개를 listpack에 넣으면 마지막 필드 조회가 50µs가 됩니다. Redis는 명령을 한 스레드에서 처리하므로 이 50µs 동안 다른 클라이언트도 모두 기다립니다. 초당 2만 번 이런 조회가 들어오면 그것만으로 CPU 한 개가 찹니다.</p>
+<p>클라이언트에서 잰 초당 요청 수로는 이 차이가 거의 보이지 않았습니다. 로컬 루프백에서도 네트워크 왕복이 0.07µs와 2µs의 차이를 덮기 때문입니다. 서버 쪽 숫자를 봐야 합니다.</p>
+<blockquote>
+<p>임계값은 메모리와 최악 조회 시간을 맞바꾸는 손잡이입니다. 필드를 끝에서 자주 읽는 hash라면 올린 만큼 그대로 느려집니다.</p>
+</blockquote>
+<h2 id="ko-정리">정리</h2>
+<ul>
+<li>ziplist의 연쇄 갱신은 각 항목이 앞 항목의 길이를 적어서 생겼고, listpack은 자기 길이를 적어 구조적으로 없앴습니다.</li>
+<li>임계값 한 칸 차이로 hash는 3.2배, 정수 set은 18.6배 커집니다.</li>
+<li>해시 테이블로 바뀐 키는 작아져도 돌아오지 않습니다.</li>
+<li>임계값을 올리면 메모리를 아끼는 대신 끝쪽 필드 조회가 필드 수에 비례해 느려집니다. 16,384 필드에서 50µs였습니다.</li>
+</ul>
+<p>키 하나에 필드가 512개 근처에서 왔다 갔다 한다면 키를 쪼개 512개 아래로 유지하는 쪽이 임계값을 올리는 것보다 안전합니다.</p></div><footer class="post__end"><p class="post__source">원문 마크다운: <a href="/blog/redis-listpack/ko.md">redis-listpack/ko.md</a></p><nav class="post__nav" aria-label="다른 글"><a class="older" href="/blog/cuckoo-vs-bloom/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 745.4860000000001 187.95000000000002">
+
+
+<polyline class="edge" data-from="X" data-to="H" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="100,97.05 126.892,97.05 126.892,64.60000000000001 153.784,64.60000000000001" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="X" data-to="F" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="100,97.05 126.892,97.05 126.892,129.5 153.784,129.5" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="H" data-to="I2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="257.978,64.60000000000001 284.87,64.60000000000001 284.87,123.35000000000001 424.64500000000004,123.35000000000001" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="F" data-to="I2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="293.546,129.5 424.64500000000004,129.5" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="H" data-to="B1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="257.978,64.60000000000001 284.87,64.60000000000001 284.87,58.45 311.762,58.45" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="I2" data-to="B2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="573.299,123.35000000000001 609.299,123.35000000000001 609.299,97.05000000000001 621.299,97.05000000000001" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="B1" data-to="B2" data-style="dotted" data-arrow-start="false" data-arrow-end="true" data-label="가득 차면 하나를 쫓아냄" points="391.503,58.45 609.299,58.45 609.299,84.75 621.299,84.75" fill="none" stroke="var(--_line)" stroke-width="1" stroke-dasharray="4 4" />
+
+<g class="node" data-id="X" data-label="x" data-shape="rectangle">
+  <rect x="40" y="78.6" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node is-hub" data-id="H" data-label="hash(x) → i1" data-shape="rectangle">
+  <rect x="153.784" y="46.150000000000006" width="104.194" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="F" data-label="fingerprint(x) → fp" data-shape="rectangle">
+  <rect x="153.784" y="111.05000000000001" width="139.762" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="I2" data-label="i2 = i1 XOR hash(fp)" data-shape="rectangle">
+  <rect x="424.64500000000004" y="104.9" width="148.654" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="B1" data-label="버킷 i1" data-shape="rectangle">
+  <rect x="311.762" y="40" width="79.74100000000001" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="B2" data-label="버킷 i2" data-shape="rectangle">
+  <rect x="621.299" y="72.45" width="84.18700000000001" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>← 이전 글</small><span class="post__nav-title">Cuckoo filter는 정말 Bloom filter보다 나은가</span></a><a class="newer" href="/blog/go122-loopvar/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 637.223 403.6">
+
+
+<g class="subgraph" data-id="old" data-label="go 1.21: 루프당 변수 하나">
+  <rect x="40" y="40" width="327.22299999999996" height="181.8" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="40" y="40" width="327.22299999999996" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  
+</g>
+<g class="subgraph" data-id="new" data-label="go 1.22: 반복마다 새 변수">
+  <rect x="387.22299999999996" y="40" width="210" height="323.6" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="387.22299999999996" y="40" width="210" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  
+</g>
+<polyline class="edge" data-from="A1" data-to="V1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="310.6115,120.9 310.6115,132.9 232.62399999999997,132.9 232.62399999999997,168.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="A2" data-to="V1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="203.61149999999998,120.9 203.61149999999998,168.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="A3" data-to="V1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="96.61149999999999,120.9 96.61149999999999,132.9 174.599,132.9 174.599,168.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="B1" data-to="W1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="540.6115,120.9 540.6115,168.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="B2" data-to="W2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="442.72299999999996,120.9 442.72299999999996,168.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="B3" data-to="W3" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="442.72299999999996,262.70000000000005 442.72299999999996,310.70000000000005" fill="none" stroke="var(--_line)" stroke-width="1" />
+<g class="node is-hub" data-id="V1" data-label="i (주소 하나)" data-shape="rectangle">
+  <rect x="145.58649999999997" y="168.9" width="116.05" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="A1" data-label="반복 0" data-shape="rectangle">
+  <rect x="270" y="84" width="81.22299999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="A2" data-label="반복 1" data-shape="rectangle">
+  <rect x="165.22299999999998" y="84" width="76.777" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="A3" data-label="반복 2" data-shape="rectangle">
+  <rect x="56" y="84" width="81.22299999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="B1" data-label="반복 0" data-shape="rectangle">
+  <rect x="499.99999999999994" y="84" width="81.22299999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="W1" data-label="i₀" data-shape="rectangle">
+  <rect x="510.6115" y="168.9" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="B2" data-label="반복 1" data-shape="rectangle">
+  <rect x="403.22299999999996" y="84" width="76.777" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="W2" data-label="i₁" data-shape="rectangle">
+  <rect x="412.72299999999996" y="168.9" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="B3" data-label="반복 2" data-shape="rectangle">
+  <rect x="403.22299999999996" y="225.8" width="81.22299999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="W3" data-label="i₂" data-shape="rectangle">
+  <rect x="412.72299999999996" y="310.70000000000005" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>다음 글 →</small><span class="post__nav-title">Go 1.22 루프 변수: 고쳐진 버그와 go.mod 한 줄</span></a></nav></footer></article><article class="post" lang="en" data-minutes="5"><header class="post__head"><p class="post__cwd"><a href="/blog/">~/blog</a>/redis-listpack/en.mdx</p><h1 class="post__title" style="view-transition-name: t-redis-listpack">Redis listpack: between field 512 and field 513</h1><p class="post__dek">In Redis 7, small hashes, sets and zsets live in a single listpack. One step past the threshold triples memory, a converted encoding never comes back, and raising the threshold turns lookups into a linear scan. Measured on Redis 7.2.</p><p class="post__meta"><time datetime="2023-10-17">2023-10-17</time><span>5 min read</span><span><a href="/blog/?tag=redis">redis</a> · <a href="/blog/?tag=performance">performance</a></span></p></header><nav class="toc" aria-label="Contents"><p class="toc__label">Contents</p><ol><li><a href="#en-why-ziplist-was-replaced"><span class="toc__n">§1</span><span>Why ziplist was replaced</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-default-thresholds"><span class="toc__n">§2</span><span>Default thresholds</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-field-513"><span class="toc__n">§3</span><span>Field 513</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-a-conversion-that-does-not-come-back"><span class="toc__n">§4</span><span>A conversion that does not come back</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-raising-the-threshold"><span class="toc__n">§5</span><span>Raising the threshold</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-summary"><span class="toc__n">§6</span><span>Summary</span><span class="toc__len" aria-hidden="true"></span></a></li></ol></nav><div class="prose"><p>A small Redis hash is not a hash table. Fields and values are written one after another into a single contiguous byte array, and a lookup scans it from the start. In Redis 7.0 the format of that array changed from ziplist to listpack. The setting <code>hash-max-ziplist-entries</code> became <code>hash-max-listpack-entries</code>, with the old name kept as an alias.</p>
+<p>This post covers why the format changed and how memory and latency actually move around the thresholds. Measurements use the official Redis 7.2.16 Docker image: memory from <code>MEMORY USAGE</code>, server-side execution time from <code>usec_per_call</code> in <code>INFO commandstats</code>. The machine is an Apple Silicon laptop.</p>
+<h2 id="en-why-ziplist-was-replaced">Why ziplist was replaced</h2>
+<p>Every ziplist entry starts with the length of the previous entry (prevlen), so the list can be walked backwards. prevlen takes 1 byte if the previous entry is under 254 bytes and 5 bytes otherwise.</p>
+<figure class="diagram" data-diagram="flowchart" style="--w:777px"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 776.5160000000001 327.6" width="776.5160000000001" height="327.6" role="img" aria-label="new entry 300B, prevlen 1→5B
+size 250→254B, prevlen 1→5B
+size 250→254B, prevlen 1→5B ..., new entry 300B
+backlen 2B, unchanged, unchanged">
+
+<defs>
+  <marker id="en-dg0-arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+  <marker id="en-dg0-arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+</defs>
+<g class="subgraph" data-id="ZL" data-label="ziplist: each entry stores the previous length">
+  <rect x="40" y="173.8" width="696.5160000000001" height="113.80000000000001" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1"></rect>
+  <rect x="40" y="173.8" width="696.5160000000001" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1"></rect>
+  <text x="52" y="187.8" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">ziplist: each entry stores the previous length</text>
+</g>
+<g class="subgraph" data-id="LP" data-label="listpack: each entry stores its own length">
+  <rect x="40" y="40" width="477.63199999999995" height="113.80000000000001" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1"></rect>
+  <rect x="40" y="40" width="477.63199999999995" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1"></rect>
+  <text x="52" y="54" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">listpack: each entry stores its own length</text>
+</g>
+<polyline class="edge" data-from="Z0" data-to="Z1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="188.35199999999998,240.47500000000002 236.35199999999998,240.47500000000002" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="Z1" data-to="Z2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="366.481,248.925 414.481,248.925" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="Z2" data-to="Z3" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="544.61,248.925 592.61,248.925" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="L0" data-to="L1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="188.35199999999998,110.9 236.35199999999998,110.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="L1" data-to="L2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="344.99199999999996,110.9 392.99199999999996,110.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<g class="node" data-id="Z0" data-label="new entry 300B" data-shape="rectangle">
+  <rect x="56" y="222.025" width="132.35199999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="122.17599999999999" y="240.47500000000002" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">new entry 300B</text>
+</g>
+<g class="node" data-id="Z1" data-label="prevlen 1→5B
+size 250→254B" data-shape="rectangle">
+  <rect x="236.35199999999998" y="217.8" width="130.129" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="301.4165" y="244.70000000000002" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)"><tspan x="301.4165" dy="-3.9000000000000012">prevlen 1→5B</tspan><tspan x="301.4165" dy="16.900000000000002">size 250→254B</tspan></text>
+</g>
+<g class="node" data-id="Z2" data-label="prevlen 1→5B
+size 250→254B" data-shape="rectangle">
+  <rect x="414.481" y="222.025" width="130.129" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="479.5455" y="248.925" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)"><tspan x="479.5455" dy="-3.9000000000000012">prevlen 1→5B</tspan><tspan x="479.5455" dy="16.900000000000002">size 250→254B</tspan></text>
+</g>
+<g class="node" data-id="Z3" data-label="prevlen 1→5B ..." data-shape="rectangle">
+  <rect x="592.61" y="226.25" width="127.906" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="656.563" y="244.7" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">prevlen 1→5B ...</text>
+</g>
+<g class="node" data-id="L0" data-label="new entry 300B
+backlen 2B" data-shape="rectangle">
+  <rect x="56" y="84" width="132.35199999999998" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="122.17599999999999" y="110.9" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)"><tspan x="122.17599999999999" dy="-3.9000000000000012">new entry 300B</tspan><tspan x="122.17599999999999" dy="16.900000000000002">backlen 2B</tspan></text>
+</g>
+<g class="node" data-id="L1" data-label="unchanged" data-shape="rectangle">
+  <rect x="236.35199999999998" y="92.45" width="108.64" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="290.67199999999997" y="110.9" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">unchanged</text>
+</g>
+<g class="node" data-id="L2" data-label="unchanged" data-shape="rectangle">
+  <rect x="392.99199999999996" y="92.45" width="108.64" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="447.31199999999995" y="110.9" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">unchanged</text>
+</g>
+</svg></figure>
+<p>Take a row of 250-byte entries and insert a large one in front. The next entry’s prevlen grows from 1 to 5 bytes, making it 254 bytes, so the entry after it needs a bigger prevlen too. That chain running to the end is the cascading update. It is rare, but in the worst case one insert rewrites the whole list.</p>
+<p>listpack stores an entry’s own length (backlen) at its end, not the previous entry’s. Walking backwards reads that length from the end of the preceding entry. Changing one entry’s size leaves its neighbours untouched, so there is nothing to cascade. Redis 7.0 replaced ziplist with listpack for hashes, zsets, and lists (each quicklist node).</p>
+<h2 id="en-default-thresholds">Default thresholds</h2>
+<p>listpack is only used while small. The Redis 7.2.16 defaults:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Setting</th><th style="text-align:right">Default</th></tr></thead><tbody><tr><td><code>hash-max-listpack-entries</code></td><td style="text-align:right">512</td></tr><tr><td><code>hash-max-listpack-value</code></td><td style="text-align:right">64</td></tr><tr><td><code>zset-max-listpack-entries</code></td><td style="text-align:right">128</td></tr><tr><td><code>zset-max-listpack-value</code></td><td style="text-align:right">64</td></tr><tr><td><code>set-max-listpack-entries</code></td><td style="text-align:right">128</td></tr><tr><td><code>set-max-intset-entries</code></td><td style="text-align:right">512</td></tr></tbody></table>
+<p>Exceeding either the entry count or the value length converts to a hash table (a skiplist for zsets). Sets gained a listpack encoding in 7.2, and if every member is an integer, intset is used before that.</p>
+<h2 id="en-field-513">Field 513</h2>
+<p>I added fields with value <code>v12345</code> one at a time and measured <code>MEMORY USAGE</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th style="text-align:right">Fields</th><th>Encoding</th><th style="text-align:right">Bytes</th><th style="text-align:right">Per field</th></tr></thead><tbody><tr><td style="text-align:right">1</td><td>listpack</td><td style="text-align:right">72</td><td style="text-align:right"></td></tr><tr><td style="text-align:right">16</td><td>listpack</td><td style="text-align:right">368</td><td style="text-align:right">23</td></tr><tr><td style="text-align:right">64</td><td>listpack</td><td style="text-align:right">1,328</td><td style="text-align:right">21</td></tr><tr><td style="text-align:right">128</td><td>listpack</td><td style="text-align:right">2,608</td><td style="text-align:right">20</td></tr><tr><td style="text-align:right">256</td><td>listpack</td><td style="text-align:right">5,168</td><td style="text-align:right">20</td></tr><tr><td style="text-align:right">512</td><td>listpack</td><td style="text-align:right">10,288</td><td style="text-align:right">20</td></tr><tr><td style="text-align:right">513</td><td>hashtable</td><td style="text-align:right"><strong>32,920</strong></td><td style="text-align:right">64</td></tr><tr><td style="text-align:right">1,024</td><td>hashtable</td><td style="text-align:right">57,448</td><td style="text-align:right">56</td></tr></tbody></table>
+<figure class="diagram" data-diagram="xychart" style="--w:750px"><svg data-xychart-colors="0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 750 464" width="750" height="464" role="img" aria-label="xychart">
+
+
+<circle cx="106.6" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="106.6" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="149.4" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="170.9" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="192.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="213.7" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="235.1" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="256.6" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="299.4" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="320.9" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="342.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="363.7" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="385.1" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="406.6" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="449.4" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="470.9" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="492.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="513.7" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="535.1" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="556.6" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="599.4" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="620.9" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="642.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="663.7" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="685.1" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="706.6" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="404" r="1.5" class="xychart-grid"></circle>
+<path d="M150.9,403 Q150.9,401.9 151.9,401.9 L189.8,401.9 Q190.9,401.9 190.9,403 L190.9,403 Q190.9,404 189.8,404 L151.9,404 Q150.9,404 150.9,403 Z" class="xychart-bar xychart-color-0" data-value="368" data-label="&quot;16&quot;"></path>
+<path d="M236.6,400.2 Q236.6,396.5 240.3,396.5 L272.8,396.5 Q276.6,396.5 276.6,400.2 L276.6,400.2 Q276.6,404 272.8,404 L240.3,404 Q236.6,404 236.6,400.2 Z" class="xychart-bar xychart-color-0" data-value="1328" data-label="&quot;64&quot;"></path>
+<path d="M322.3,396.6 Q322.3,389.2 329.7,389.2 L354.9,389.2 Q362.3,389.2 362.3,396.6 L362.3,396.6 Q362.3,404 354.9,404 L329.7,404 Q322.3,404 322.3,396.6 Z" class="xychart-bar xychart-color-0" data-value="2608" data-label="&quot;128&quot;"></path>
+<path d="M408,382.7 Q408,374.7 416,374.7 L440,374.7 Q448,374.7 448,382.7 L448,396 Q448,404 440,404 L416,404 Q408,404 408,396 Z" class="xychart-bar xychart-color-0" data-value="5168" data-label="&quot;256&quot;"></path>
+<path d="M493.7,353.7 Q493.7,345.7 501.7,345.7 L525.7,345.7 Q533.7,345.7 533.7,353.7 L533.7,396 Q533.7,404 525.7,404 L501.7,404 Q493.7,404 493.7,396 Z" class="xychart-bar xychart-color-0" data-value="10288" data-label="&quot;512&quot;"></path>
+<path d="M579.4,225.5 Q579.4,217.5 587.4,217.5 L611.4,217.5 Q619.4,217.5 619.4,225.5 L619.4,396 Q619.4,404 611.4,404 L587.4,404 Q579.4,404 579.4,396 Z" class="xychart-bar xychart-color-0" data-value="32920" data-label="&quot;513&quot;"></path>
+<path d="M665.1,86.5 Q665.1,78.5 673.1,78.5 L697.1,78.5 Q705.1,78.5 705.1,86.5 L705.1,396 Q705.1,404 697.1,404 L673.1,404 Q665.1,404 665.1,396 Z" class="xychart-bar xychart-color-0" data-value="57448" data-label="&quot;1024&quot;"></path>
+<text x="170.85714285714286" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;16&quot;</text>
+<text x="256.57142857142856" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;64&quot;</text>
+<text x="342.2857142857143" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;128&quot;</text>
+<text x="428" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;256&quot;</text>
+<text x="513.7142857142857" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;512&quot;</text>
+<text x="599.4285714285713" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;513&quot;</text>
+<text x="685.1428571428571" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;1024&quot;</text>
+<text x="110" y="404" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">0</text>
+<text x="110" y="347.3333333333333" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">10000</text>
+<text x="110" y="290.6666666666667" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">20000</text>
+<text x="110" y="234" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">30000</text>
+<text x="110" y="177.33333333333334" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">40000</text>
+<text x="110" y="120.66666666666663" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">50000</text>
+<text x="110" y="64" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">60000</text>
+<text x="26" y="234" text-anchor="middle" transform="rotate(-90,26,234)" font-size="15" font-weight="500" dy="0.35em" class="xychart-axis-title">bytes</text>
+<text x="375" y="40" text-anchor="middle" font-size="18" font-weight="600" dy="0.35em" class="xychart-title">hash memory (bytes), value v12345</text>
+</svg></figure>
+<p>One more field made memory 3.2 times larger. In a listpack, <code>field:123</code> and <code>v12345</code> sit side by side with only a length header and a few backlen bytes, a little over 20 bytes per field. In a hash table, field and value each become separately allocated strings, plus an entry struct and the bucket array, around 60 bytes per field.</p>
+<p>The value-length boundary has the same shape. A 100-field hash with only the value length changed:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th style="text-align:right">Value length</th><th>Encoding</th><th style="text-align:right">Bytes</th></tr></thead><tbody><tr><td style="text-align:right">8</td><td>listpack</td><td style="text-align:right">1,840</td></tr><tr><td style="text-align:right">32</td><td>listpack</td><td style="text-align:right">4,144</td></tr><tr><td style="text-align:right">63</td><td>listpack</td><td style="text-align:right">7,216</td></tr><tr><td style="text-align:right">64</td><td>listpack</td><td style="text-align:right">8,240</td></tr><tr><td style="text-align:right">65</td><td>hashtable</td><td style="text-align:right">12,840</td></tr><tr><td style="text-align:right">128</td><td>hashtable</td><td style="text-align:right">20,840</td></tr></tbody></table>
+<p>Up to 64 bytes it stays listpack; from 65 it is a hash table. The boundary is “64 or less”.</p>
+<p>Sets behave the same way.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Members</th><th style="text-align:right">Count</th><th>Encoding</th><th style="text-align:right">Bytes</th></tr></thead><tbody><tr><td>strings</td><td style="text-align:right">128</td><td>listpack</td><td style="text-align:right">816</td></tr><tr><td>strings</td><td style="text-align:right">129</td><td>hashtable</td><td style="text-align:right">6,280</td></tr><tr><td>integers</td><td style="text-align:right">512</td><td>intset</td><td style="text-align:right">1,328</td></tr><tr><td>integers</td><td style="text-align:right">513</td><td>hashtable</td><td style="text-align:right"><strong>24,712</strong></td></tr></tbody></table>
+<p>An integer set grows 18.6 times going from intset to hash table. An intset is a sorted integer array using only 2–8 bytes per member.</p>
+<h2 id="en-a-conversion-that-does-not-come-back">A conversion that does not come back</h2>
+<p>Conversion only goes one way. I took a 100-field hash of 1,072 bytes, set one 65-byte value, then deleted that field.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Step</th><th>Encoding</th><th style="text-align:right">Bytes</th></tr></thead><tbody><tr><td>Start</td><td>listpack</td><td style="text-align:right">1,072</td></tr><tr><td><code>HSET</code> a 65-byte value</td><td>hashtable</td><td style="text-align:right">5,240</td></tr><tr><td><code>HDEL</code> that field</td><td>hashtable</td><td style="text-align:right">5,128</td></tr></tbody></table>
+<p>The cause is gone and the key stays a hash table. Redis never converts in the shrinking direction. On an instance with millions of keys, a pattern where long values come and go makes memory climb in steps only. Reverting means rewriting the key. When I ran <code>DUMP</code> on a key in this state, deleted it and <code>RESTORE</code>d it, it came back as listpack, because loading a key from RDB picks the encoding from its current size.</p>
+<h2 id="en-raising-the-threshold">Raising the threshold</h2>
+<p>Saving memory by raising <code>hash-max-listpack-entries</code> is tempting. A listpack lookup is a linear scan from the start, so there is a cost. I sent 50,000 <code>HGET</code>s each for the first and the last field and read the server-side <code>usec_per_call</code>.</p>
+<div class="expressive-code"><link rel="stylesheet" href="/blog/assets/ec.vx73c.css"/><script type="module" src="/blog/assets/ec.g1fg5.js"></script><figure class="frame is-terminal has-title"><figcaption class="header"><span class="title">rlp3.sh (excerpt)</span></figcaption><pre data-language="bash"><code><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> f </span><span style="--0:#E2B071;--1:#87500C">in</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">1</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">$</span><span style="--0:#E6E3D9;--1:#2B2A26">n</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">do</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#F3E2C4;--1:#5A4521">redis-cli</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">config</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">resetstat</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&gt;</span><span style="--0:#A9C6A3;--1:#3A6844">/dev/null</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#F3E2C4;--1:#5A4521">redis-benchmark</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">-n</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">50000</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">-c</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">4</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">-P</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">16</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">-q</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">hget</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">h</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">field:</span><span style="--0:#A3A19B;--1:#5E5B55">$</span><span style="--0:#E6E3D9;--1:#2B2A26">f </span><span style="--0:#A3A19B;--1:#5E5B55">&gt;</span><span style="--0:#A9C6A3;--1:#3A6844">/dev/null</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">2&gt;&amp;1</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#F3E2C4;--1:#5A4521">redis-cli</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">info</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">commandstats</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">|</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">grep</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A9C6A3;--1:#3A6844">cmdstat_hget</span></div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">done</span></div></div></code></pre></figure></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th style="text-align:right">Fields</th><th>Encoding</th><th style="text-align:right">First field (µs)</th><th style="text-align:right">Last field (µs)</th></tr></thead><tbody><tr><td style="text-align:right">128</td><td>listpack</td><td style="text-align:right">0.08</td><td style="text-align:right">0.53</td></tr><tr><td style="text-align:right">512</td><td>listpack</td><td style="text-align:right">0.08</td><td style="text-align:right">2.12</td></tr><tr><td style="text-align:right">4,096</td><td>hashtable</td><td style="text-align:right">0.07</td><td style="text-align:right">0.07</td></tr><tr><td style="text-align:right">16,384</td><td>hashtable</td><td style="text-align:right">0.07</td><td style="text-align:right">0.07</td></tr><tr><td style="text-align:right">4,096</td><td>listpack (threshold 100000)</td><td style="text-align:right">0.08</td><td style="text-align:right">15.97</td></tr><tr><td style="text-align:right">16,384</td><td>listpack (threshold 100000)</td><td style="text-align:right">0.08</td><td style="text-align:right"><strong>50.74</strong></td></tr></tbody></table>
+<p>Even at the default of 512, the last field is 26 times slower than the first, but only 2µs in absolute terms. With the threshold raised and 16,384 fields in a listpack, looking up the last field takes 50µs. Redis executes commands on one thread, so every other client waits through those 50µs. At 20,000 such lookups per second, that alone fills a CPU core.</p>
+<p>Requests per second measured on the client barely showed this. Even over local loopback, the network round trip hides the gap between 0.07µs and 2µs. You have to look at the server-side numbers.</p>
+<blockquote>
+<p>The threshold is a dial that trades memory against worst-case lookup time. For a hash whose tail fields are read often, raising it slows lookups by exactly as much.</p>
+</blockquote>
+<h2 id="en-summary">Summary</h2>
+<ul>
+<li>ziplist’s cascading update came from each entry storing the previous entry’s length; listpack stores its own length and removes the problem structurally.</li>
+<li>One step past the threshold, a hash grows 3.2× and an integer set 18.6×.</li>
+<li>A key converted to a hash table does not return even after shrinking.</li>
+<li>Raising the threshold saves memory, but tail-field lookups slow down in proportion to the field count: 50µs at 16,384 fields.</li>
+</ul>
+<p>If a key hovers around 512 fields, splitting it to stay below 512 is safer than raising the threshold.</p></div><footer class="post__end"><p class="post__source">Source markdown: <a href="/blog/redis-listpack/en.md">redis-listpack/en.md</a></p><nav class="post__nav" aria-label="More posts"><a class="older" href="/blog/cuckoo-vs-bloom/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 745.4860000000001 187.95000000000002">
+
+
+<polyline class="edge" data-from="X" data-to="H" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="100,97.05 126.892,97.05 126.892,64.60000000000001 153.784,64.60000000000001" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="X" data-to="F" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="100,97.05 126.892,97.05 126.892,129.5 153.784,129.5" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="H" data-to="I2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="257.978,64.60000000000001 284.87,64.60000000000001 284.87,123.35000000000001 424.64500000000004,123.35000000000001" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="F" data-to="I2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="293.546,129.5 424.64500000000004,129.5" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="H" data-to="B1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="257.978,64.60000000000001 284.87,64.60000000000001 284.87,58.45 311.762,58.45" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="I2" data-to="B2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="573.299,123.35000000000001 609.299,123.35000000000001 609.299,97.05000000000001 621.299,97.05000000000001" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="B1" data-to="B2" data-style="dotted" data-arrow-start="false" data-arrow-end="true" data-label="가득 차면 하나를 쫓아냄" points="391.503,58.45 609.299,58.45 609.299,84.75 621.299,84.75" fill="none" stroke="var(--_line)" stroke-width="1" stroke-dasharray="4 4" />
+
+<g class="node" data-id="X" data-label="x" data-shape="rectangle">
+  <rect x="40" y="78.6" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node is-hub" data-id="H" data-label="hash(x) → i1" data-shape="rectangle">
+  <rect x="153.784" y="46.150000000000006" width="104.194" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="F" data-label="fingerprint(x) → fp" data-shape="rectangle">
+  <rect x="153.784" y="111.05000000000001" width="139.762" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="I2" data-label="i2 = i1 XOR hash(fp)" data-shape="rectangle">
+  <rect x="424.64500000000004" y="104.9" width="148.654" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="B1" data-label="버킷 i1" data-shape="rectangle">
+  <rect x="311.762" y="40" width="79.74100000000001" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="B2" data-label="버킷 i2" data-shape="rectangle">
+  <rect x="621.299" y="72.45" width="84.18700000000001" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>← Older</small><span class="post__nav-title">Is a cuckoo filter really better than a Bloom filter?</span></a><a class="newer" href="/blog/go122-loopvar/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 637.223 403.6">
+
+
+<g class="subgraph" data-id="old" data-label="go 1.21: 루프당 변수 하나">
+  <rect x="40" y="40" width="327.22299999999996" height="181.8" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="40" y="40" width="327.22299999999996" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  
+</g>
+<g class="subgraph" data-id="new" data-label="go 1.22: 반복마다 새 변수">
+  <rect x="387.22299999999996" y="40" width="210" height="323.6" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="387.22299999999996" y="40" width="210" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  
+</g>
+<polyline class="edge" data-from="A1" data-to="V1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="310.6115,120.9 310.6115,132.9 232.62399999999997,132.9 232.62399999999997,168.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="A2" data-to="V1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="203.61149999999998,120.9 203.61149999999998,168.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="A3" data-to="V1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="96.61149999999999,120.9 96.61149999999999,132.9 174.599,132.9 174.599,168.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="B1" data-to="W1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="540.6115,120.9 540.6115,168.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="B2" data-to="W2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="442.72299999999996,120.9 442.72299999999996,168.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="B3" data-to="W3" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="442.72299999999996,262.70000000000005 442.72299999999996,310.70000000000005" fill="none" stroke="var(--_line)" stroke-width="1" />
+<g class="node is-hub" data-id="V1" data-label="i (주소 하나)" data-shape="rectangle">
+  <rect x="145.58649999999997" y="168.9" width="116.05" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="A1" data-label="반복 0" data-shape="rectangle">
+  <rect x="270" y="84" width="81.22299999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="A2" data-label="반복 1" data-shape="rectangle">
+  <rect x="165.22299999999998" y="84" width="76.777" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="A3" data-label="반복 2" data-shape="rectangle">
+  <rect x="56" y="84" width="81.22299999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="B1" data-label="반복 0" data-shape="rectangle">
+  <rect x="499.99999999999994" y="84" width="81.22299999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="W1" data-label="i₀" data-shape="rectangle">
+  <rect x="510.6115" y="168.9" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="B2" data-label="반복 1" data-shape="rectangle">
+  <rect x="403.22299999999996" y="84" width="76.777" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="W2" data-label="i₁" data-shape="rectangle">
+  <rect x="412.72299999999996" y="168.9" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="B3" data-label="반복 2" data-shape="rectangle">
+  <rect x="403.22299999999996" y="225.8" width="81.22299999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="W3" data-label="i₂" data-shape="rectangle">
+  <rect x="412.72299999999996" y="310.70000000000005" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>Newer →</small><span class="post__nav-title">Go 1.22 loop variables: the fixed bug and one line of go.mod</span></a></nav></footer></article></main><div class="status"><a class="status__file" data-href="/blog/redis-listpack/{lang}.md" href="/blog/redis-listpack/ko.md">ko.mdx</a><span class="status__sec"></span><span class="status__left"></span><button class="status__toc" type="button"><span lang="ko">목차</span><span lang="en">Contents</span></button></div><dialog class="sheet" id="toc-sheet" aria-label="Contents"><button class="sheet__close" type="button" data-close>esc</button><div class="sheet__body"></div></dialog><script type="module" src="/blog/assets/Reader.astro_astro_type_script_index_0_lang.CRI3uLjw.js"></script><dialog class="sheet" id="keys" aria-labelledby="keys-title"><button class="sheet__close" type="button" data-close>esc</button><p class="toc__label" id="keys-title"><span lang="ko">단축키</span><span lang="en">Keyboard</span></p><dl class="keys"><dt><kbd>/</kbd> <kbd>⌘K</kbd></dt><dd><span lang="ko">글 검색</span><span lang="en">Search posts</span></dd><dt><kbd>t</kbd></dt><dd><span lang="ko">밝은/어두운 테마</span><span lang="en">Light or dark theme</span></dd><dt><kbd>l</kbd></dt><dd><span lang="ko">한국어/영어, 읽던 자리 유지</span><span lang="en">Korean or English, keeping your place</span></dd><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd><span lang="ko">이전/다음 절</span><span lang="en">Previous or next section</span></dd><dt><kbd>?</kbd></dt><dd><span lang="ko">이 목록</span><span lang="en">This list</span></dd></dl></dialog><dialog class="search" id="search" aria-label="Search"><label class="search__line"><span class="search__caret" aria-hidden="true">&gt;</span><input type="search" role="combobox" aria-expanded="true" aria-controls="search-results" aria-autocomplete="list" autocomplete="off" spellcheck="false" enterkeyhint="go"></label><p class="search__status" aria-live="polite"><span class="tool__name" data-call-name></span><span class="tool__arg" data-call-arg></span><span class="search__count" data-call-count></span></p><ul class="search__results" id="search-results" role="listbox" aria-label="Results"></ul><p class="search__keys"><span><kbd>↑</kbd><kbd>↓</kbd> <span lang="ko">이동</span><span lang="en">move</span></span><span><kbd>↵</kbd> <span lang="ko">열기</span><span lang="en">open</span></span><span><kbd>esc</kbd> <span lang="ko">닫기</span><span lang="en">close</span></span></p></dialog><script type="module" src="/blog/assets/Base.astro_astro_type_script_index_0_lang.BxD9tEXi.js"></script></body></html>

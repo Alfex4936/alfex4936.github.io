@@ -684,7 +684,67 @@ M834 80h400000v40h-400000z"></path></svg></span></span></span><span class="vlist
 <p>이 글을 잰 환경에서 <code>CONFIG GET hll-sparse-max-bytes</code>는 3000을 돌려줬습니다. <a href="#ko-user-content-fnref-2" data-footnote-backref aria-label="Back to reference 2" class="data-footnote-backref">↩</a></p>
 </li>
 </ol>
-</section></div><footer class="post__end"><p class="post__source">원문 마크다운: <a href="/blog/redis-hyperloglog/ko.md">redis-hyperloglog/ko.md</a></p><nav class="post__nav" aria-label="다른 글"><a class="newer" href="/blog/hangul-width/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 288.9460833333334 629.285">
+</section></div><footer class="post__end"><p class="post__source">원문 마크다운: <a href="/blog/redis-hyperloglog/ko.md">redis-hyperloglog/ko.md</a></p><nav class="post__nav" aria-label="다른 글"><a class="older" href="/blog/cpython-powersort/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 822.1347083333333 641.4390000000001">
+
+
+<g class="subgraph" data-id="tim" data-label="timsort (3.10): 스택 크기 불변식">
+  <rect x="405.7275833333333" y="40" width="376.407125" height="531.201" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="405.7275833333333" y="40" width="376.407125" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  
+</g>
+<g class="subgraph" data-id="pow" data-label="powersort (3.11): 경계의 power">
+  <rect x="40" y="40" width="345.7275833333333" height="561.4390000000001" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="40" y="40" width="345.7275833333333" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  
+</g>
+<polyline class="edge" data-from="T1" data-to="T2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="682.1747083333333,205.8 682.1747083333332,217.8 602.3405,217.8 602.3405,290.85024999999996" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="T2" data-to="T3" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예" points="565.29025,402.001 565.29025,518.3009999999999" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="T2" data-to="T4" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="565.29025,253.8 565.29025,217.8 547.9247083333332,217.8 547.9247083333332,132.9 565.29025,132.9 565.29025,120.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="T4" data-to="T2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="493.50891666666666,120.9 493.50891666666666,132.9 510.8744583333333,132.9 510.8744583333333,217.8 528.24,217.8 528.24,290.85024999999996" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="P1" data-to="P2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="279.0985833333333,222.70000000000002 279.0985833333333,234.70000000000002 194.05325,234.70000000000002 194.05325,311.08475000000004" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="P2" data-to="P3" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예" points="153.6685,270.70000000000005 153.6685,234.70000000000002 149.93958333333333,234.70000000000002 148.075125,120.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="P3" data-to="P2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="102.96979166666667,120.9 102.96979166666667,132.9 110.92345833333333,132.9 110.92345833333333,234.70000000000002 113.28375,234.70000000000002 113.28375,311.08475000000004" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="P2" data-to="P4" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="155.53295833333334,430.3745416666667 155.53295833333334,548.539" fill="none" stroke="var(--_line)" stroke-width="1" />
+
+
+
+
+<g class="node" data-id="T1" data-label="스택 위 세 run A, B, C" data-shape="rectangle">
+  <rect x="598.2147083333333" y="168.9" width="167.92000000000002" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node is-hub" data-id="T2" data-label="A &gt; B + C 이고
+B &gt; C 인가?" data-shape="diamond">
+  <polygon points="565.29025,253.79999999999998 639.39075,327.90049999999997 565.29025,402.001 491.18975,327.90049999999997" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="T3" data-label="다음 run을 쌓음" data-shape="rectangle">
+  <rect x="494.66824999999994" y="518.3009999999999" width="141.244" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="T4" data-label="A와 C 중 작은 쪽을 B와 병합" data-shape="rectangle">
+  <rect x="421.7275833333333" y="84" width="215.344" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="P1" data-label="새 run과 이전 run 사이
+경계의 power p 계산" data-shape="rectangle">
+  <rect x="188.46958333333333" y="168.9" width="181.25799999999998" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="P2" data-label="스택 위 경계의
+power &gt; p 인가?" data-shape="diamond">
+  <polygon points="153.6685,270.70000000000005 234.438,351.46950000000004 153.6685,432.23900000000003 72.899,351.46950000000004" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="P3" data-label="그 경계를 병합" data-shape="rectangle">
+  <rect x="57.86445833333333" y="84" width="135.316" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="P4" data-label="p를 기록하고 run을 쌓음" data-shape="rectangle">
+  <rect x="57.86445833333333" y="548.539" width="195.337" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>← 이전 글</small><span class="post__nav-title">CPython 3.11의 powersort: list.sort가 바꾼 병합 순서</span></a><a class="newer" href="/blog/hangul-width/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 288.9460833333334 629.285">
 
 
 <polyline class="edge" data-from="C" data-to="W" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="115.76858333333334,76.9 115.76858333333334,124.9" fill="none" stroke="var(--_line)" stroke-width="1" />
@@ -1389,7 +1449,67 @@ M834 80h400000v40h-400000z"></path></svg></span></span></span><span class="vlist
 <p>On the machine these numbers come from, <code>CONFIG GET hll-sparse-max-bytes</code> returned 3000. <a href="#en-user-content-fnref-2" data-footnote-backref aria-label="Back to reference 2" class="data-footnote-backref">↩</a></p>
 </li>
 </ol>
-</section></div><footer class="post__end"><p class="post__source">Source markdown: <a href="/blog/redis-hyperloglog/en.md">redis-hyperloglog/en.md</a></p><nav class="post__nav" aria-label="More posts"><a class="newer" href="/blog/hangul-width/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 288.9460833333334 629.285">
+</section></div><footer class="post__end"><p class="post__source">Source markdown: <a href="/blog/redis-hyperloglog/en.md">redis-hyperloglog/en.md</a></p><nav class="post__nav" aria-label="More posts"><a class="older" href="/blog/cpython-powersort/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 822.1347083333333 641.4390000000001">
+
+
+<g class="subgraph" data-id="tim" data-label="timsort (3.10): 스택 크기 불변식">
+  <rect x="405.7275833333333" y="40" width="376.407125" height="531.201" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="405.7275833333333" y="40" width="376.407125" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  
+</g>
+<g class="subgraph" data-id="pow" data-label="powersort (3.11): 경계의 power">
+  <rect x="40" y="40" width="345.7275833333333" height="561.4390000000001" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="40" y="40" width="345.7275833333333" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  
+</g>
+<polyline class="edge" data-from="T1" data-to="T2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="682.1747083333333,205.8 682.1747083333332,217.8 602.3405,217.8 602.3405,290.85024999999996" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="T2" data-to="T3" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예" points="565.29025,402.001 565.29025,518.3009999999999" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="T2" data-to="T4" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="565.29025,253.8 565.29025,217.8 547.9247083333332,217.8 547.9247083333332,132.9 565.29025,132.9 565.29025,120.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="T4" data-to="T2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="493.50891666666666,120.9 493.50891666666666,132.9 510.8744583333333,132.9 510.8744583333333,217.8 528.24,217.8 528.24,290.85024999999996" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="P1" data-to="P2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="279.0985833333333,222.70000000000002 279.0985833333333,234.70000000000002 194.05325,234.70000000000002 194.05325,311.08475000000004" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="P2" data-to="P3" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예" points="153.6685,270.70000000000005 153.6685,234.70000000000002 149.93958333333333,234.70000000000002 148.075125,120.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="P3" data-to="P2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="102.96979166666667,120.9 102.96979166666667,132.9 110.92345833333333,132.9 110.92345833333333,234.70000000000002 113.28375,234.70000000000002 113.28375,311.08475000000004" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="P2" data-to="P4" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="155.53295833333334,430.3745416666667 155.53295833333334,548.539" fill="none" stroke="var(--_line)" stroke-width="1" />
+
+
+
+
+<g class="node" data-id="T1" data-label="스택 위 세 run A, B, C" data-shape="rectangle">
+  <rect x="598.2147083333333" y="168.9" width="167.92000000000002" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node is-hub" data-id="T2" data-label="A &gt; B + C 이고
+B &gt; C 인가?" data-shape="diamond">
+  <polygon points="565.29025,253.79999999999998 639.39075,327.90049999999997 565.29025,402.001 491.18975,327.90049999999997" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="T3" data-label="다음 run을 쌓음" data-shape="rectangle">
+  <rect x="494.66824999999994" y="518.3009999999999" width="141.244" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="T4" data-label="A와 C 중 작은 쪽을 B와 병합" data-shape="rectangle">
+  <rect x="421.7275833333333" y="84" width="215.344" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="P1" data-label="새 run과 이전 run 사이
+경계의 power p 계산" data-shape="rectangle">
+  <rect x="188.46958333333333" y="168.9" width="181.25799999999998" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="P2" data-label="스택 위 경계의
+power &gt; p 인가?" data-shape="diamond">
+  <polygon points="153.6685,270.70000000000005 234.438,351.46950000000004 153.6685,432.23900000000003 72.899,351.46950000000004" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="P3" data-label="그 경계를 병합" data-shape="rectangle">
+  <rect x="57.86445833333333" y="84" width="135.316" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="P4" data-label="p를 기록하고 run을 쌓음" data-shape="rectangle">
+  <rect x="57.86445833333333" y="548.539" width="195.337" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>← Older</small><span class="post__nav-title">Powersort in CPython 3.11: the merge order list.sort changed</span></a><a class="newer" href="/blog/hangul-width/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 288.9460833333334 629.285">
 
 
 <polyline class="edge" data-from="C" data-to="W" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="115.76858333333334,76.9 115.76858333333334,124.9" fill="none" stroke="var(--_line)" stroke-width="1" />

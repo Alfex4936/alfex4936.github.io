@@ -1,0 +1,666 @@
+<!DOCTYPE html><html lang="ko" data-lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title data-ko="Go 1.22 루프 변수: 고쳐진 버그와 go.mod 한 줄 · seok" data-en="Go 1.22 loop variables: the fixed bug and one line of go.mod · seok">Go 1.22 루프 변수: 고쳐진 버그와 go.mod 한 줄 · seok</title><meta name="description" content="Go 1.22부터 for 루프 변수는 반복마다 새로 만들어집니다. 그런데 어느 의미가 적용될지는 툴체인이 아니라 go.mod의 go 줄이 정하고, go run main.go는 그 줄을 보지 않습니다. 두 툴체인으로 직접 확인하고, 주소를 넘기는 루프의 할당이 2개에서 102개로 느는 것까지 재 봤습니다."><meta property="og:title" content="Go 1.22 루프 변수: 고쳐진 버그와 go.mod 한 줄 · seok"><meta property="og:description" content="Go 1.22부터 for 루프 변수는 반복마다 새로 만들어집니다. 그런데 어느 의미가 적용될지는 툴체인이 아니라 go.mod의 go 줄이 정하고, go run main.go는 그 줄을 보지 않습니다. 두 툴체인으로 직접 확인하고, 주소를 넘기는 루프의 할당이 2개에서 102개로 느는 것까지 재 봤습니다."><meta property="og:url" content="https://alfex4936.github.io/blog/go122-loopvar/"><meta property="og:type" content="article"><meta property="og:locale" content="ko_KR"><meta property="og:locale:alternate" content="en_US"><meta property="article:published_time" content="2024-03-05T00:00:00.000Z"><meta property="og:image" content="https://alfex4936.github.io/blog/og/go122-loopvar.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="theme-color" content="#141413" media="(prefers-color-scheme: dark)"><meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)"><link rel="canonical" href="https://alfex4936.github.io/blog/go122-loopvar/"><link rel="icon" href="/favicon.ico"><link rel="preload" href="/blog/fonts/title.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="/blog/fonts/body.woff2" as="font" type="font/woff2" crossorigin><link rel="alternate" type="application/rss+xml" title="seok · blog (한국어)" href="/blog/ko/rss.xml"><link rel="alternate" type="application/rss+xml" title="seok · blog (English)" href="/blog/en/rss.xml"><script>
+      // Same keys as the landing page, so the toggles carry across alfex4936.github.io.
+      ;(() => {
+        const q = new URLSearchParams(location.search).get('lang')
+        const stored = localStorage.getItem('portfolio:lang')
+        const lang = q === 'ko' || q === 'en' ? q : stored === 'ko' || stored === 'en' ? stored : navigator.language.startsWith('ko') ? 'ko' : 'en'
+        const root = document.documentElement
+        root.dataset.lang = root.lang = lang
+        const theme = localStorage.getItem('portfolio:theme')
+        if (theme === 'dark' || theme === 'light') root.dataset.theme = theme
+        const t = document.querySelector('title')
+        t.textContent = t.dataset[lang]
+      })()
+    </script><link rel="stylesheet" href="/blog/assets/Step.FmcF6wk0.css"><link rel="stylesheet" href="/blog/assets/all.DMtbdYXv.css"></head><body><a class="skip" href="#main"><span lang="ko">본문으로</span><span lang="en">Skip to content</span></a><header class="bar"><nav class="bar__path" aria-label="Path"><a href="/">seok</a><span class="sep">·</span><a href="/blog/">~/blog</a><span class="sep">/</span><span class="here">go122-loopvar</span></nav><nav class="bar__ctl" aria-label="Search, language and theme"><button type="button" class="bar__search" data-search aria-keyshortcuts="/ Control+K Meta+K"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.5"></circle><path d="M10.4 10.4 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg><span class="bar__search-label"><span lang="ko">검색</span><span lang="en">Search</span></span><kbd>/</kbd></button><span class="bar__sep" aria-hidden="true">·</span><button type="button" data-lang-set="ko" aria-pressed="false">ko</button><button type="button" data-lang-set="en" aria-pressed="false">en</button><span class="bar__sep" aria-hidden="true">·</span><button type="button" data-theme-set="dark" aria-pressed="false">dark</button><button type="button" data-theme-set="light" aria-pressed="false">light</button></nav></header><main id="main"><article class="post" lang="ko" data-minutes="6"><header class="post__head"><p class="post__cwd"><a href="/blog/">~/blog</a>/go122-loopvar/ko.mdx</p><h1 class="post__title" style="view-transition-name: t-go122-loopvar">Go 1.22 루프 변수: 고쳐진 버그와 go.mod 한 줄</h1><p class="post__dek">Go 1.22부터 for 루프 변수는 반복마다 새로 만들어집니다. 그런데 어느 의미가 적용될지는 툴체인이 아니라 go.mod의 go 줄이 정하고, go run main.go는 그 줄을 보지 않습니다. 두 툴체인으로 직접 확인하고, 주소를 넘기는 루프의 할당이 2개에서 102개로 느는 것까지 재 봤습니다.</p><p class="post__meta"><time datetime="2024-03-05">2024-03-05</time><span>6분</span><span><a href="/blog/?tag=go">go</a></span></p></header><nav class="toc" aria-label="목차"><p class="toc__label">목차</p><ol><li><a href="#ko-무엇이-바뀌었나"><span class="toc__n">§1</span><span>무엇이 바뀌었나</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-의미를-정하는-것은-gomod"><span class="toc__n">§2</span><span>의미를 정하는 것은 go.mod</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-go-run-maingo의-함정"><span class="toc__n">§3</span><span>go run main.go의 함정</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-바뀌지-않은-것"><span class="toc__n">§4</span><span>바뀌지 않은 것</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-비용"><span class="toc__n">§5</span><span>비용</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-정리"><span class="toc__n">§6</span><span>정리</span><span class="toc__len" aria-hidden="true"></span></a></li></ol></nav><div class="prose"><p>Go 1.22가 2024년 2월에 나오면서 <code>for</code> 루프 변수의 의미가 바뀌었습니다.<sup><a href="#ko-user-content-fn-1" id="ko-user-content-fnref-1" data-footnote-ref aria-describedby="ko-footnote-label">1</a></sup> 1.21까지는 루프 전체가 변수 하나를 같이 썼고, 1.22부터는 반복마다 새 변수가 생깁니다. 클로저나 고루틴이 루프 변수를 잡을 때 생기던, Go에서 가장 흔한 실수가 언어 차원에서 사라졌습니다.</p>
+<p>릴리스 노트는 한 문단이지만 실제로 어느 코드에 새 의미가 적용되는지는 생각보다 미묘합니다. 이 글의 결과는 모두 Docker의 <code>golang:1.21.13</code>, <code>golang:1.22.12</code> 이미지(linux/arm64, Apple Silicon 노트북)에서 직접 돌려 본 것입니다.</p>
+<h2 id="ko-무엇이-바뀌었나">무엇이 바뀌었나</h2>
+<figure class="diagram" data-diagram="flowchart" style="--w:638px"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 637.223 403.6" width="637.223" height="403.6" role="img" aria-label="i (주소 하나), 반복 0, 반복 1, 반복 2, 반복 0, i₀, 반복 1, i₁, 반복 2, i₂">
+
+<defs>
+  <marker id="ko-dg0-arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+  <marker id="ko-dg0-arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+</defs>
+<g class="subgraph" data-id="old" data-label="go 1.21: 루프당 변수 하나">
+  <rect x="40" y="40" width="327.22299999999996" height="181.8" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1"></rect>
+  <rect x="40" y="40" width="327.22299999999996" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1"></rect>
+  <text x="52" y="54" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">go 1.21: 루프당 변수 하나</text>
+</g>
+<g class="subgraph" data-id="new" data-label="go 1.22: 반복마다 새 변수">
+  <rect x="387.22299999999996" y="40" width="210" height="323.6" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1"></rect>
+  <rect x="387.22299999999996" y="40" width="210" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1"></rect>
+  <text x="399.22299999999996" y="54" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">go 1.22: 반복마다 새 변수</text>
+</g>
+<polyline class="edge" data-from="A1" data-to="V1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="310.6115,120.9 310.6115,132.9 232.62399999999997,132.9 232.62399999999997,168.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="A2" data-to="V1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="203.61149999999998,120.9 203.61149999999998,168.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="A3" data-to="V1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="96.61149999999999,120.9 96.61149999999999,132.9 174.599,132.9 174.599,168.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="B1" data-to="W1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="540.6115,120.9 540.6115,168.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="B2" data-to="W2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="442.72299999999996,120.9 442.72299999999996,168.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="B3" data-to="W3" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="442.72299999999996,262.70000000000005 442.72299999999996,310.70000000000005" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<g class="node" data-id="V1" data-label="i (주소 하나)" data-shape="rectangle">
+  <rect x="145.58649999999997" y="168.9" width="116.05" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="203.61149999999998" y="187.35000000000002" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">i (주소 하나)</text>
+</g>
+<g class="node" data-id="A1" data-label="반복 0" data-shape="rectangle">
+  <rect x="270" y="84" width="81.22299999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="310.6115" y="102.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">반복 0</text>
+</g>
+<g class="node" data-id="A2" data-label="반복 1" data-shape="rectangle">
+  <rect x="165.22299999999998" y="84" width="76.777" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="203.61149999999998" y="102.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">반복 1</text>
+</g>
+<g class="node" data-id="A3" data-label="반복 2" data-shape="rectangle">
+  <rect x="56" y="84" width="81.22299999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="96.61149999999999" y="102.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">반복 2</text>
+</g>
+<g class="node" data-id="B1" data-label="반복 0" data-shape="rectangle">
+  <rect x="499.99999999999994" y="84" width="81.22299999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="540.6115" y="102.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">반복 0</text>
+</g>
+<g class="node" data-id="W1" data-label="i₀" data-shape="rectangle">
+  <rect x="510.6115" y="168.9" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="540.6115" y="187.35000000000002" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">i₀</text>
+</g>
+<g class="node" data-id="B2" data-label="반복 1" data-shape="rectangle">
+  <rect x="403.22299999999996" y="84" width="76.777" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="441.6115" y="102.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">반복 1</text>
+</g>
+<g class="node" data-id="W2" data-label="i₁" data-shape="rectangle">
+  <rect x="412.72299999999996" y="168.9" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="442.72299999999996" y="187.35000000000002" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">i₁</text>
+</g>
+<g class="node" data-id="B3" data-label="반복 2" data-shape="rectangle">
+  <rect x="403.22299999999996" y="225.8" width="81.22299999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="443.83449999999993" y="244.25" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">반복 2</text>
+</g>
+<g class="node" data-id="W3" data-label="i₂" data-shape="rectangle">
+  <rect x="412.72299999999996" y="310.70000000000005" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="442.72299999999996" y="329.15000000000003" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">i₂</text>
+</g>
+</svg></figure>
+<p>실험에 쓴 코드는 세 가지 패턴을 한 번에 봅니다. 클로저가 <code>i</code>를 잡는 경우, <code>&amp;i</code>를 슬라이스에 모으는 경우, <code>range</code> 변수를 고루틴이 읽는 경우입니다.</p>
+<div class="expressive-code"><link rel="stylesheet" href="/blog/assets/ec.vx73c.css"/><script type="module" src="/blog/assets/ec.g1fg5.js"></script><figure class="frame has-title"><figcaption class="header"><span class="title">main.go</span></figcaption><pre data-language="go"><code><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">var</span><span style="--0:#E6E3D9;--1:#2B2A26"> fs </span><span style="--0:#A3A19B;--1:#5E5B55">[]</span><span style="--0:#E2B071;--1:#87500C">func</span><span style="--0:#A3A19B;--1:#5E5B55">()</span></div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">&lt;</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">3</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> i</span><span style="--0:#A3A19B;--1:#5E5B55">++</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">  </span></span><span style="--0:#E6E3D9;--1:#2B2A26">fs </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">append</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">fs</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">func</span><span style="--0:#A3A19B;--1:#5E5B55">()</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> fmt</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">Print</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A9C6A3;--1:#3A6844"> </span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">})</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> _</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> f </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">range</span><span style="--0:#E6E3D9;--1:#2B2A26"> fs </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">f</span><span style="--0:#A3A19B;--1:#5E5B55">()</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">var</span><span style="--0:#E6E3D9;--1:#2B2A26"> ps </span><span style="--0:#A3A19B;--1:#5E5B55">[]*</span><span style="--0:#E2B071;--1:#87500C">int</span></div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">&lt;</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">3</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> i</span><span style="--0:#A3A19B;--1:#5E5B55">++</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> ps </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">append</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">ps</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&amp;</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> _</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> p </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">range</span><span style="--0:#E6E3D9;--1:#2B2A26"> ps </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> fmt</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">Print</span><span style="--0:#A3A19B;--1:#5E5B55">(*</span><span style="--0:#E6E3D9;--1:#2B2A26">p</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A9C6A3;--1:#3A6844"> </span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> _</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> s </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">range</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">[]</span><span style="--0:#E2B071;--1:#87500C">string</span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A9C6A3;--1:#3A6844">a</span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A9C6A3;--1:#3A6844">b</span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A9C6A3;--1:#3A6844">c</span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A3A19B;--1:#5E5B55">}</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">  </span></span><span style="--0:#E6E3D9;--1:#2B2A26">wg</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">Add</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#EF9A7A;--1:#9F4129">1</span><span style="--0:#A3A19B;--1:#5E5B55">)</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">go</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">func</span><span style="--0:#A3A19B;--1:#5E5B55">()</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">defer</span><span style="--0:#E6E3D9;--1:#2B2A26"> wg</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">Done</span><span style="--0:#A3A19B;--1:#5E5B55">();</span><span style="--0:#E6E3D9;--1:#2B2A26"> mu</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">Lock</span><span style="--0:#A3A19B;--1:#5E5B55">();</span><span style="--0:#E6E3D9;--1:#2B2A26"> seen</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#E6E3D9;--1:#2B2A26">s</span><span style="--0:#A3A19B;--1:#5E5B55">]++;</span><span style="--0:#E6E3D9;--1:#2B2A26"> mu</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">Unlock</span><span style="--0:#A3A19B;--1:#5E5B55">()</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">}()</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div></code></pre></figure></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>패턴</th><th>go 1.21 의미</th><th>go 1.22 의미</th></tr></thead><tbody><tr><td>클로저가 <code>i</code>를 잡음</td><td><code>3 3 3</code></td><td><code>0 1 2</code></td></tr><tr><td><code>&amp;i</code>를 모음</td><td><code>3 3 3</code></td><td><code>0 1 2</code></td></tr><tr><td>고루틴이 <code>s</code>를 읽음</td><td><code>map[c:3]</code></td><td><code>map[a:1 b:1 c:1]</code></td></tr></tbody></table>
+<p>1.21 의미에서는 세 클로저가 모두 같은 <code>i</code>를 가리키고, 루프가 끝났을 때 그 값은 3입니다. 고루틴 쪽은 <code>wg.Wait()</code> 시점에 모두 마지막 원소 <code>c</code>를 봤습니다. 지금까지는 루프 안에 <code>s := s</code>를 한 줄 넣어서 피했는데, 1.22부터는 그 줄이 필요 없습니다.</p>
+<h2 id="ko-의미를-정하는-것은-gomod">의미를 정하는 것은 go.mod</h2>
+<p>툴체인을 1.22로 올린다고 새 의미가 켜지지는 않습니다. 기준은 각 모듈 <code>go.mod</code>의 <code>go</code> 줄입니다. 의존성 모듈은 각자의 <code>go</code> 줄을 따르므로, 오래된 라이브러리의 동작이 툴체인 업그레이드로 바뀌지 않습니다.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>툴체인</th><th>설정</th><th>결과</th></tr></thead><tbody><tr><td>go1.21.13</td><td><code>go 1.21</code></td><td>옛 의미</td></tr><tr><td>go1.21.13</td><td><code>go 1.22</code></td><td>빌드 거부: <code>go.mod requires go &gt;= 1.22</code></td></tr><tr><td>go1.21.13</td><td><code>go 1.21</code> + <code>GOEXPERIMENT=loopvar</code></td><td>새 의미</td></tr><tr><td>go1.22.12</td><td><code>go 1.21</code>, <code>go run .</code></td><td>옛 의미</td></tr><tr><td>go1.22.12</td><td><code>go 1.21</code>, <code>go run main.go</code></td><td><strong>새 의미</strong></td></tr><tr><td>go1.22.12</td><td><code>go 1.22</code> + 파일에 <code>//go:build go1.21</code></td><td>그 파일만 옛 의미</td></tr></tbody></table>
+<p>1.21 툴체인에서도 <code>GOEXPERIMENT=loopvar</code>로 새 의미를 미리 켤 수 있었습니다. 1.22가 나오기 전에 코드베이스가 새 의미에서 깨지는지 확인하는 용도입니다.</p>
+<p>마지막 줄은 반대 방향의 탈출구입니다. 모듈은 1.22로 올리되, 옛 의미에 기대는 파일 하나만 <code>//go:build go1.21</code> 제약으로 내려 둘 수 있습니다. 빌드 제약에 쓴 Go 버전이 그 파일의 언어 버전이 됩니다.</p>
+<h2 id="ko-go-run-maingo의-함정">go run main.go의 함정</h2>
+<p>표에서 가장 눈에 띄는 줄은 다섯 번째입니다. 같은 디렉터리, 같은 <code>go.mod</code>(<code>go 1.21</code>)인데 <code>go run .</code>은 <code>3 3 3</code>을, <code>go run main.go</code>는 <code>0 1 2</code>를 출력합니다.</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">$ go run .</span></div></div><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">3 3 3 &lt;- closures</span></div></div><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">$ go run main.go</span></div></div><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">0 1 2 &lt;- closures</span></div></div><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">$ go list -f &#39;{{.Module}}&#39; main.go</span></div></div><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">&lt;nil&gt;</span></div></div></code></pre></figure></div>
+<p>파일 이름을 직접 넘기면 go 명령은 그 파일들로 <code>command-line-arguments</code>라는 임시 패키지를 만듭니다. <code>go list</code>가 보여 주듯 이 패키지는 어느 모듈에도 속하지 않으므로 <code>go.mod</code>의 <code>go</code> 줄이 적용되지 않고, 툴체인 자신의 언어 버전인 1.22를 씁니다. <code>go build main.go</code>도 같습니다.</p>
+<p>결과적으로 CI에서 <code>go test ./...</code>로 돌린 코드와 로컬에서 <code>go run main.go</code>로 확인한 코드가 다른 의미로 컴파일될 수 있습니다. 루프 변수 문제를 재현하려다 재현이 안 된다면 이것부터 의심할 만합니다.</p>
+<h2 id="ko-바뀌지-않은-것">바뀌지 않은 것</h2>
+<p>반복마다 새 변수가 생긴다면, 루프 본문에서 <code>i</code>를 바꾸면 그 변경은 어디로 갈까요. 3절 <code>for</code> 문은 반복이 끝날 때 현재 변수의 값을 새 변수에 복사한 뒤 후처리 문(<code>i++</code>)을 실행합니다. 그래서 본문에서 바꾼 값이 다음 반복으로 이어집니다.</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="go"><code><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">&lt;</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">5</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> i</span><span style="--0:#A3A19B;--1:#5E5B55">++</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">  </span></span><span style="--0:#E6E3D9;--1:#2B2A26">f </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">func</span><span style="--0:#A3A19B;--1:#5E5B55">()</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">+=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">2</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#F3E2C4;--1:#5A4521">f</span><span style="--0:#A3A19B;--1:#5E5B55">()</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">  </span></span><span style="--0:#E6E3D9;--1:#2B2A26">fmt</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">Print</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A9C6A3;--1:#3A6844"> </span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A3A19B;--1:#5E5B55">)</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div></code></pre></figure></div>
+<p>두 의미 모두 <code>2 5</code>를 출력합니다. 0에서 2가 되고, <code>i++</code>로 3, 다시 5가 되고, 6이 되어 끝납니다. 클로저가 바꾼 값도 그대로 이어지므로, 루프 카운터를 본문에서 건드리는 코드는 동작이 바뀌지 않습니다.</p>
+<p><code>go vet</code>의 <code>loopclosure</code> 검사도 같은 기준을 따릅니다. <code>go 1.21</code>인 모듈에서는 <code>loop variable s captured by func literal</code> 경고를 내고, <code>go 1.22</code>로 올리면 같은 코드에 아무 말도 하지 않습니다.</p>
+<h2 id="ko-비용">비용</h2>
+<p>반복마다 변수가 새로 생긴다고 해서 매번 메모리를 할당하지는 않습니다. 변수가 루프 밖으로 새 나가지 않으면 컴파일러는 지금까지처럼 레지스터 하나로 처리합니다. 할당이 늘어나는 것은 주소가 루프 밖으로 나갈 때뿐입니다.</p>
+<div class="expressive-code"><figure class="frame has-title"><figcaption class="header"><span class="title">bench_test.go</span></figcaption><pre data-language="go"><code><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">func</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">BenchmarkAddrTaken</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">b </span><span style="--0:#A3A19B;--1:#5E5B55">*</span><span style="--0:#B8C6D1;--1:#35506A">testing</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#B8C6D1;--1:#35506A">B</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> n </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> n </span><span style="--0:#A3A19B;--1:#5E5B55">&lt;</span><span style="--0:#E6E3D9;--1:#2B2A26"> b</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">N</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> n</span><span style="--0:#A3A19B;--1:#5E5B55">++</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">    </span></span><span style="--0:#E6E3D9;--1:#2B2A26">ps </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">make</span><span style="--0:#A3A19B;--1:#5E5B55">([]*</span><span style="--0:#E2B071;--1:#87500C">int</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">100</span><span style="--0:#A3A19B;--1:#5E5B55">)</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">&lt;</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">100</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> i</span><span style="--0:#A3A19B;--1:#5E5B55">++</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> ps </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">append</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">ps</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&amp;</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">    </span></span><span style="--0:#E6E3D9;--1:#2B2A26">sink </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> ps</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">func</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">BenchmarkNoEscape</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">b </span><span style="--0:#A3A19B;--1:#5E5B55">*</span><span style="--0:#B8C6D1;--1:#35506A">testing</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#B8C6D1;--1:#35506A">B</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">  </span></span><span style="--0:#E6E3D9;--1:#2B2A26">s </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> n </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> n </span><span style="--0:#A3A19B;--1:#5E5B55">&lt;</span><span style="--0:#E6E3D9;--1:#2B2A26"> b</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">N</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> n</span><span style="--0:#A3A19B;--1:#5E5B55">++</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">&lt;</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">100</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> i</span><span style="--0:#A3A19B;--1:#5E5B55">++</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> s </span><span style="--0:#A3A19B;--1:#5E5B55">+=</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">}</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">  </span></span><span style="--0:#E6E3D9;--1:#2B2A26">_ </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div></code></pre></figure></div>
+<p>같은 1.22.12 툴체인에서 <code>go.mod</code>의 <code>go</code> 줄만 바꿔 가며 5번씩 돌린 결과입니다.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>벤치마크</th><th>의미</th><th style="text-align:right">ns/op</th><th style="text-align:right">B/op</th><th style="text-align:right">allocs/op</th></tr></thead><tbody><tr><td>AddrTaken</td><td>1.21</td><td style="text-align:right">157 ~ 176</td><td style="text-align:right">904</td><td style="text-align:right">2</td></tr><tr><td>AddrTaken</td><td>1.22</td><td style="text-align:right">739 ~ 768</td><td style="text-align:right">1,704</td><td style="text-align:right">102</td></tr><tr><td>NoEscape</td><td>1.21</td><td style="text-align:right">24.8 ~ 25.4</td><td style="text-align:right">0</td><td style="text-align:right">0</td></tr><tr><td>NoEscape</td><td>1.22</td><td style="text-align:right">29.0 ~ 30.3</td><td style="text-align:right">0</td><td style="text-align:right">0</td></tr></tbody></table>
+<p><code>AddrTaken</code>은 1.21 의미에서 슬라이스 하나와 <code>i</code> 하나, 할당 2번이면 됩니다. 결과는 틀렸지만 쌉니다. 1.22 의미에서는 <code>i</code> 100개가 각각 힙으로 가서 할당이 102번이 되고 시간은 약 4.6배가 됩니다. 이제 결과가 맞으니 공정한 비교는 아니지만, 뜨거운 루프에서 <code>&amp;i</code>를 모으고 있다면 1.22로 올린 뒤 프로파일에 새 할당이 보일 수 있습니다.</p>
+<p><code>NoEscape</code>가 약 17% 느린 것은 처음에 이상해 보였습니다. 두 빌드의 <code>BenchmarkNoEscape</code>를 <code>go tool objdump</code>로 풀어 보니 명령어가 한 줄도 다르지 않았습니다. 바이너리 안에서 함수가 놓인 위치가 달라져 생긴 정렬 차이로 보는 것이 맞고, 의미 변경의 비용이 아닙니다. 마이크로벤치마크에서 이 정도 차이는 코드 배치만으로 생깁니다.</p>
+<h2 id="ko-정리">정리</h2>
+<ul>
+<li>1.22 의미는 툴체인이 아니라 각 모듈 <code>go.mod</code>의 <code>go</code> 줄이 켭니다. 의존성의 동작은 바뀌지 않습니다.</li>
+<li><code>go run main.go</code>처럼 파일을 직접 넘기면 모듈 밖 패키지가 되어 툴체인의 언어 버전으로 컴파일됩니다.</li>
+<li>옛 의미가 필요한 파일은 <code>//go:build go1.21</code>로 파일 단위로 내릴 수 있습니다.</li>
+<li>본문에서 카운터를 바꾸는 코드는 그대로 동작합니다. 반복 끝에 값을 복사한 뒤 <code>i++</code>를 하기 때문입니다.</li>
+<li>비용은 주소가 루프 밖으로 나갈 때만 생깁니다. 이 경우 반복마다 힙 할당이 하나씩 늘어납니다.</li>
+</ul>
+<section data-footnotes class="footnotes"><h2 class="sr-only" id="ko-footnote-label">각주</h2>
+<ol>
+<li id="ko-user-content-fn-1">
+<p>Go 1.22 Release Notes, “Changes to the language” (2024년 2월). 설계 배경은 golang/go#60078 제안과 Go 블로그 “Fixing For Loops in Go 1.22”(2023년 9월)에 있습니다. <a href="#ko-user-content-fnref-1" data-footnote-backref aria-label="Back to reference 1" class="data-footnote-backref">↩</a></p>
+</li>
+</ol>
+</section></div><footer class="post__end"><p class="post__source">원문 마크다운: <a href="/blog/go122-loopvar/ko.md">go122-loopvar/ko.md</a></p><nav class="post__nav" aria-label="다른 글"><a class="older" href="/blog/redis-listpack/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 775.0339999999999 327.6">
+
+
+<g class="subgraph" data-id="ZL" data-label="ziplist: 항목마다 앞 항목의 길이">
+  <rect x="40" y="173.8" width="695.0339999999999" height="113.80000000000001" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="40" y="173.8" width="695.0339999999999" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  
+</g>
+<g class="subgraph" data-id="LP" data-label="listpack: 항목마다 자기 길이">
+  <rect x="40" y="40" width="456.884" height="113.80000000000001" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="40" y="40" width="456.884" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  
+</g>
+<polyline class="edge" data-from="Z0" data-to="Z1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="177.97799999999998,240.47500000000002 225.97799999999998,240.47500000000002" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="Z1" data-to="Z2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="360.553,248.925 408.553,248.925" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="Z2" data-to="Z3" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="543.1279999999999,248.925 591.1279999999999,248.925" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="L0" data-to="L1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="177.97799999999998,110.9 225.97799999999998,110.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="L1" data-to="L2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="329.431,110.9 377.431,110.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<g class="node" data-id="Z0" data-label="새 항목 300B" data-shape="rectangle">
+  <rect x="56" y="222.025" width="121.97799999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node is-hub" data-id="Z1" data-label="prevlen 1→5B
+길이 250→254B" data-shape="rectangle">
+  <rect x="225.97799999999998" y="217.8" width="134.575" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="Z2" data-label="prevlen 1→5B
+길이 250→254B" data-shape="rectangle">
+  <rect x="408.553" y="222.025" width="134.575" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="Z3" data-label="prevlen 1→5B ..." data-shape="rectangle">
+  <rect x="591.1279999999999" y="226.25" width="127.906" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="L0" data-label="새 항목 300B
+backlen 2B" data-shape="rectangle">
+  <rect x="56" y="84" width="121.97799999999998" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="L1" data-label="변화 없음" data-shape="rectangle">
+  <rect x="225.97799999999998" y="92.45" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="L2" data-label="변화 없음" data-shape="rectangle">
+  <rect x="377.431" y="92.45" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>← 이전 글</small><span class="post__nav-title">Redis listpack: 512번째 필드와 513번째 필드 사이</span></a><a class="newer" href="/blog/cpython-powersort/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 822.1347083333333 641.4390000000001">
+
+
+<g class="subgraph" data-id="tim" data-label="timsort (3.10): 스택 크기 불변식">
+  <rect x="405.7275833333333" y="40" width="376.407125" height="531.201" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="405.7275833333333" y="40" width="376.407125" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  
+</g>
+<g class="subgraph" data-id="pow" data-label="powersort (3.11): 경계의 power">
+  <rect x="40" y="40" width="345.7275833333333" height="561.4390000000001" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="40" y="40" width="345.7275833333333" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  
+</g>
+<polyline class="edge" data-from="T1" data-to="T2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="682.1747083333333,205.8 682.1747083333332,217.8 602.3405,217.8 602.3405,290.85024999999996" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="T2" data-to="T3" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예" points="565.29025,402.001 565.29025,518.3009999999999" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="T2" data-to="T4" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="565.29025,253.8 565.29025,217.8 547.9247083333332,217.8 547.9247083333332,132.9 565.29025,132.9 565.29025,120.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="T4" data-to="T2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="493.50891666666666,120.9 493.50891666666666,132.9 510.8744583333333,132.9 510.8744583333333,217.8 528.24,217.8 528.24,290.85024999999996" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="P1" data-to="P2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="279.0985833333333,222.70000000000002 279.0985833333333,234.70000000000002 194.05325,234.70000000000002 194.05325,311.08475000000004" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="P2" data-to="P3" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예" points="153.6685,270.70000000000005 153.6685,234.70000000000002 149.93958333333333,234.70000000000002 148.075125,120.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="P3" data-to="P2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="102.96979166666667,120.9 102.96979166666667,132.9 110.92345833333333,132.9 110.92345833333333,234.70000000000002 113.28375,234.70000000000002 113.28375,311.08475000000004" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="P2" data-to="P4" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="155.53295833333334,430.3745416666667 155.53295833333334,548.539" fill="none" stroke="var(--_line)" stroke-width="1" />
+
+
+
+
+<g class="node" data-id="T1" data-label="스택 위 세 run A, B, C" data-shape="rectangle">
+  <rect x="598.2147083333333" y="168.9" width="167.92000000000002" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node is-hub" data-id="T2" data-label="A &gt; B + C 이고
+B &gt; C 인가?" data-shape="diamond">
+  <polygon points="565.29025,253.79999999999998 639.39075,327.90049999999997 565.29025,402.001 491.18975,327.90049999999997" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="T3" data-label="다음 run을 쌓음" data-shape="rectangle">
+  <rect x="494.66824999999994" y="518.3009999999999" width="141.244" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="T4" data-label="A와 C 중 작은 쪽을 B와 병합" data-shape="rectangle">
+  <rect x="421.7275833333333" y="84" width="215.344" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="P1" data-label="새 run과 이전 run 사이
+경계의 power p 계산" data-shape="rectangle">
+  <rect x="188.46958333333333" y="168.9" width="181.25799999999998" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="P2" data-label="스택 위 경계의
+power &gt; p 인가?" data-shape="diamond">
+  <polygon points="153.6685,270.70000000000005 234.438,351.46950000000004 153.6685,432.23900000000003 72.899,351.46950000000004" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="P3" data-label="그 경계를 병합" data-shape="rectangle">
+  <rect x="57.86445833333333" y="84" width="135.316" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="P4" data-label="p를 기록하고 run을 쌓음" data-shape="rectangle">
+  <rect x="57.86445833333333" y="548.539" width="195.337" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>다음 글 →</small><span class="post__nav-title">CPython 3.11의 powersort: list.sort가 바꾼 병합 순서</span></a></nav></footer></article><article class="post" lang="en" data-minutes="6"><header class="post__head"><p class="post__cwd"><a href="/blog/">~/blog</a>/go122-loopvar/en.mdx</p><h1 class="post__title" style="view-transition-name: t-go122-loopvar">Go 1.22 loop variables: the fixed bug and one line of go.mod</h1><p class="post__dek">Since Go 1.22, for-loop variables are created fresh on every iteration. But the go line in go.mod, not the toolchain, decides which semantics apply, and go run main.go never reads that line. I checked both toolchains, and measured a loop that leaks addresses going from 2 to 102 allocations.</p><p class="post__meta"><time datetime="2024-03-05">2024-03-05</time><span>6 min read</span><span><a href="/blog/?tag=go">go</a></span></p></header><nav class="toc" aria-label="Contents"><p class="toc__label">Contents</p><ol><li><a href="#en-what-changed"><span class="toc__n">§1</span><span>What changed</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-gomod-decides-not-the-toolchain"><span class="toc__n">§2</span><span>go.mod decides, not the toolchain</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-the-go-run-maingo-trap"><span class="toc__n">§3</span><span>The go run main.go trap</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-what-did-not-change"><span class="toc__n">§4</span><span>What did not change</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-cost"><span class="toc__n">§5</span><span>Cost</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-summary"><span class="toc__n">§6</span><span>Summary</span><span class="toc__len" aria-hidden="true"></span></a></li></ol></nav><div class="prose"><p>Go 1.22 shipped in February 2024 and changed what a <code>for</code> loop variable means.<sup><a href="#en-user-content-fn-1" id="en-user-content-fnref-1" data-footnote-ref aria-describedby="en-footnote-label">1</a></sup> Up to 1.21 the whole loop shared one variable; from 1.22 each iteration gets a new one. The most common Go mistake, closures and goroutines capturing the loop variable, is gone at the language level.</p>
+<p>The release note is a single paragraph, but which code actually gets the new semantics is subtler than it looks. Every result here comes from the Docker images <code>golang:1.21.13</code> and <code>golang:1.22.12</code> (linux/arm64, on an Apple Silicon laptop).</p>
+<h2 id="en-what-changed">What changed</h2>
+<figure class="diagram" data-diagram="flowchart" style="--w:377px"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 376.101 463.6" width="376.101" height="463.6" role="img" aria-label="i (one address), iter 0, iter 1, iter 2, iter 0, i₀, iter 1, i₁, iter 2, i₂">
+
+<defs>
+  <marker id="en-dg0-arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+  <marker id="en-dg0-arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+</defs>
+<g class="subgraph" data-id="old" data-label="go 1.21: one variable per loop">
+  <rect x="40" y="241.8" width="296.101" height="181.8" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1"></rect>
+  <rect x="40" y="241.8" width="296.101" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1"></rect>
+  <text x="52" y="255.8" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">go 1.21: one variable per loop</text>
+</g>
+<g class="subgraph" data-id="new" data-label="go 1.22: new variable per iteration">
+  <rect x="40" y="40" width="280.101" height="181.8" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1"></rect>
+  <rect x="40" y="40" width="280.101" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1"></rect>
+  <text x="52" y="54" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">go 1.22: new variable per iteration</text>
+</g>
+<polyline class="edge" data-from="A1" data-to="V1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="279.38875,322.70000000000005 284.6765,334.70000000000005 229.92075,334.70000000000005 229.92075,370.70000000000005" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="A2" data-to="V1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="194.06300000000002,322.70000000000005 194.06300000000002,370.70000000000005" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="A3" data-to="V1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="91.4245,322.70000000000005 91.4245,334.70000000000005 155.70349999999996,334.70000000000005 165.22675,370.70000000000005" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="B1" data-to="W1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="171.815,120.9 171.815,168.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="B2" data-to="W2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="89.2015,120.9 89.2015,168.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="B3" data-to="W3" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="273.96425,120.9 273.96425,168.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<g class="node" data-id="V1" data-label="i (one address)" data-shape="rectangle">
+  <rect x="132.87975" y="370.70000000000005" width="129.388" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="197.57375000000002" y="389.15000000000003" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">i (one address)</text>
+</g>
+<g class="node" data-id="A1" data-label="iter 0" data-shape="rectangle">
+  <rect x="243.96425" y="285.8" width="70.84899999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="279.38874999999996" y="304.25" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">iter 0</text>
+</g>
+<g class="node" data-id="A2" data-label="iter 1" data-shape="rectangle">
+  <rect x="151.33825" y="285.8" width="66.40299999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="184.53974999999997" y="304.25" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">iter 1</text>
+</g>
+<g class="node" data-id="A3" data-label="iter 2" data-shape="rectangle">
+  <rect x="56" y="285.8" width="70.84899999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="91.4245" y="304.25" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">iter 2</text>
+</g>
+<g class="node" data-id="B1" data-label="iter 0" data-shape="rectangle">
+  <rect x="132.87975" y="84" width="70.84899999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="168.30425" y="102.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">iter 0</text>
+</g>
+<g class="node" data-id="W1" data-label="i₀" data-shape="rectangle">
+  <rect x="151.33825" y="168.9" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="181.33825" y="187.35000000000002" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">i₀</text>
+</g>
+<g class="node" data-id="B2" data-label="iter 1" data-shape="rectangle">
+  <rect x="56" y="84" width="66.40299999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="89.2015" y="102.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">iter 1</text>
+</g>
+<g class="node" data-id="W2" data-label="i₁" data-shape="rectangle">
+  <rect x="59.201499999999996" y="168.9" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="89.2015" y="187.35000000000002" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">i₁</text>
+</g>
+<g class="node" data-id="B3" data-label="iter 2" data-shape="rectangle">
+  <rect x="233.25199999999998" y="84" width="70.84899999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="268.6765" y="102.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">iter 2</text>
+</g>
+<g class="node" data-id="W3" data-label="i₂" data-shape="rectangle">
+  <rect x="243.96425" y="168.9" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="273.96425" y="187.35000000000002" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">i₂</text>
+</g>
+</svg></figure>
+<p>The test program looks at three patterns at once: a closure capturing <code>i</code>, collecting <code>&amp;i</code> into a slice, and goroutines reading a <code>range</code> variable.</p>
+<div class="expressive-code"><link rel="stylesheet" href="/blog/assets/ec.vx73c.css"/><script type="module" src="/blog/assets/ec.g1fg5.js"></script><figure class="frame has-title"><figcaption class="header"><span class="title">main.go</span></figcaption><pre data-language="go"><code><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">var</span><span style="--0:#E6E3D9;--1:#2B2A26"> fs </span><span style="--0:#A3A19B;--1:#5E5B55">[]</span><span style="--0:#E2B071;--1:#87500C">func</span><span style="--0:#A3A19B;--1:#5E5B55">()</span></div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">&lt;</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">3</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> i</span><span style="--0:#A3A19B;--1:#5E5B55">++</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">  </span></span><span style="--0:#E6E3D9;--1:#2B2A26">fs </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">append</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">fs</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">func</span><span style="--0:#A3A19B;--1:#5E5B55">()</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> fmt</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">Print</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A9C6A3;--1:#3A6844"> </span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">})</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> _</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> f </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">range</span><span style="--0:#E6E3D9;--1:#2B2A26"> fs </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">f</span><span style="--0:#A3A19B;--1:#5E5B55">()</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">var</span><span style="--0:#E6E3D9;--1:#2B2A26"> ps </span><span style="--0:#A3A19B;--1:#5E5B55">[]*</span><span style="--0:#E2B071;--1:#87500C">int</span></div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">&lt;</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">3</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> i</span><span style="--0:#A3A19B;--1:#5E5B55">++</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> ps </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">append</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">ps</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&amp;</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> _</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> p </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">range</span><span style="--0:#E6E3D9;--1:#2B2A26"> ps </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> fmt</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">Print</span><span style="--0:#A3A19B;--1:#5E5B55">(*</span><span style="--0:#E6E3D9;--1:#2B2A26">p</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A9C6A3;--1:#3A6844"> </span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> _</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> s </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">range</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">[]</span><span style="--0:#E2B071;--1:#87500C">string</span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A9C6A3;--1:#3A6844">a</span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A9C6A3;--1:#3A6844">b</span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A9C6A3;--1:#3A6844">c</span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A3A19B;--1:#5E5B55">}</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">  </span></span><span style="--0:#E6E3D9;--1:#2B2A26">wg</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">Add</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#EF9A7A;--1:#9F4129">1</span><span style="--0:#A3A19B;--1:#5E5B55">)</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">go</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">func</span><span style="--0:#A3A19B;--1:#5E5B55">()</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">defer</span><span style="--0:#E6E3D9;--1:#2B2A26"> wg</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">Done</span><span style="--0:#A3A19B;--1:#5E5B55">();</span><span style="--0:#E6E3D9;--1:#2B2A26"> mu</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">Lock</span><span style="--0:#A3A19B;--1:#5E5B55">();</span><span style="--0:#E6E3D9;--1:#2B2A26"> seen</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#E6E3D9;--1:#2B2A26">s</span><span style="--0:#A3A19B;--1:#5E5B55">]++;</span><span style="--0:#E6E3D9;--1:#2B2A26"> mu</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">Unlock</span><span style="--0:#A3A19B;--1:#5E5B55">()</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">}()</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div></code></pre></figure></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Pattern</th><th>go 1.21 semantics</th><th>go 1.22 semantics</th></tr></thead><tbody><tr><td>closure captures <code>i</code></td><td><code>3 3 3</code></td><td><code>0 1 2</code></td></tr><tr><td>collect <code>&amp;i</code></td><td><code>3 3 3</code></td><td><code>0 1 2</code></td></tr><tr><td>goroutine reads <code>s</code></td><td><code>map[c:3]</code></td><td><code>map[a:1 b:1 c:1]</code></td></tr></tbody></table>
+<p>Under 1.21 semantics all three closures point at the same <code>i</code>, which is 3 once the loop ends. The goroutines all saw the last element <code>c</code> by the time of <code>wg.Wait()</code>. The usual workaround was an <code>s := s</code> line inside the loop; from 1.22 that line is unnecessary.</p>
+<h2 id="en-gomod-decides-not-the-toolchain">go.mod decides, not the toolchain</h2>
+<p>Upgrading the toolchain to 1.22 does not switch the new semantics on. The deciding input is the <code>go</code> line in each module’s <code>go.mod</code>. Dependencies follow their own <code>go</code> line, so a toolchain upgrade does not change how an old library behaves.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Toolchain</th><th>Setup</th><th>Result</th></tr></thead><tbody><tr><td>go1.21.13</td><td><code>go 1.21</code></td><td>old semantics</td></tr><tr><td>go1.21.13</td><td><code>go 1.22</code></td><td>refuses to build: <code>go.mod requires go &gt;= 1.22</code></td></tr><tr><td>go1.21.13</td><td><code>go 1.21</code> + <code>GOEXPERIMENT=loopvar</code></td><td>new semantics</td></tr><tr><td>go1.22.12</td><td><code>go 1.21</code>, <code>go run .</code></td><td>old semantics</td></tr><tr><td>go1.22.12</td><td><code>go 1.21</code>, <code>go run main.go</code></td><td><strong>new semantics</strong></td></tr><tr><td>go1.22.12</td><td><code>go 1.22</code> + <code>//go:build go1.21</code> in the file</td><td>old semantics for that file only</td></tr></tbody></table>
+<p>The 1.21 toolchain could already opt in with <code>GOEXPERIMENT=loopvar</code>. Its purpose was to check, before 1.22 shipped, whether a codebase breaks under the new semantics.</p>
+<p>The last row is the escape hatch in the other direction. You can move the module to 1.22 and pin a single file that relies on the old behaviour with a <code>//go:build go1.21</code> constraint. The Go version in the build constraint becomes that file’s language version.</p>
+<h2 id="en-the-go-run-maingo-trap">The go run main.go trap</h2>
+<p>The row that stands out is the fifth one. Same directory, same <code>go.mod</code> (<code>go 1.21</code>), yet <code>go run .</code> prints <code>3 3 3</code> and <code>go run main.go</code> prints <code>0 1 2</code>.</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">$ go run .</span></div></div><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">3 3 3 &lt;- closures</span></div></div><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">$ go run main.go</span></div></div><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">0 1 2 &lt;- closures</span></div></div><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">$ go list -f &#39;{{.Module}}&#39; main.go</span></div></div><div class="ec-line"><div class="code"><span style="--0:#e6e3d9;--1:#2b2a26">&lt;nil&gt;</span></div></div></code></pre></figure></div>
+<p>When you pass file names, the go command builds a synthetic package called <code>command-line-arguments</code> from them. As <code>go list</code> shows, that package belongs to no module, so the <code>go</code> line in <code>go.mod</code> does not apply and the toolchain’s own language version, 1.22, is used instead. <code>go build main.go</code> behaves the same way.</p>
+<p>The upshot is that code CI runs with <code>go test ./...</code> and code you check locally with <code>go run main.go</code> can compile under different semantics. If you are trying to reproduce a loop variable bug and it refuses to show up, suspect this first.</p>
+<h2 id="en-what-did-not-change">What did not change</h2>
+<p>If each iteration gets a new variable, where does a change made to <code>i</code> inside the body go? A three-clause <code>for</code> copies the current variable’s value into the new one at the end of each iteration and then runs the post statement (<code>i++</code>). Changes made in the body carry over.</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="go"><code><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">&lt;</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">5</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> i</span><span style="--0:#A3A19B;--1:#5E5B55">++</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">  </span></span><span style="--0:#E6E3D9;--1:#2B2A26">f </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">func</span><span style="--0:#A3A19B;--1:#5E5B55">()</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">+=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">2</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#F3E2C4;--1:#5A4521">f</span><span style="--0:#A3A19B;--1:#5E5B55">()</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">  </span></span><span style="--0:#E6E3D9;--1:#2B2A26">fmt</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#F3E2C4;--1:#5A4521">Print</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A9C6A3;--1:#3A6844"> </span><span style="--0:#A3A19B;--1:#5E5B55">&quot;</span><span style="--0:#A3A19B;--1:#5E5B55">)</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div></code></pre></figure></div>
+<p>Both semantics print <code>2 5</code>. It goes from 0 to 2, <code>i++</code> makes 3, then 5, then 6 and the loop ends. A change made through a closure carries over as well, so code that adjusts the loop counter in the body behaves exactly as before.</p>
+<p>The <code>go vet</code> <code>loopclosure</code> check follows the same rule. In a <code>go 1.21</code> module it reports <code>loop variable s captured by func literal</code>; bump the module to <code>go 1.22</code> and it says nothing about the same code.</p>
+<h2 id="en-cost">Cost</h2>
+<p>A fresh variable per iteration does not mean a fresh allocation per iteration. If the variable does not escape the loop, the compiler keeps it in a register as before. Allocations only grow when an address leaves the loop.</p>
+<div class="expressive-code"><figure class="frame has-title"><figcaption class="header"><span class="title">bench_test.go</span></figcaption><pre data-language="go"><code><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">func</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">BenchmarkAddrTaken</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">b </span><span style="--0:#A3A19B;--1:#5E5B55">*</span><span style="--0:#B8C6D1;--1:#35506A">testing</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#B8C6D1;--1:#35506A">B</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> n </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> n </span><span style="--0:#A3A19B;--1:#5E5B55">&lt;</span><span style="--0:#E6E3D9;--1:#2B2A26"> b</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">N</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> n</span><span style="--0:#A3A19B;--1:#5E5B55">++</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">    </span></span><span style="--0:#E6E3D9;--1:#2B2A26">ps </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">make</span><span style="--0:#A3A19B;--1:#5E5B55">([]*</span><span style="--0:#E2B071;--1:#87500C">int</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">100</span><span style="--0:#A3A19B;--1:#5E5B55">)</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">&lt;</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">100</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> i</span><span style="--0:#A3A19B;--1:#5E5B55">++</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> ps </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">append</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">ps</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&amp;</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">    </span></span><span style="--0:#E6E3D9;--1:#2B2A26">sink </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> ps</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">func</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">BenchmarkNoEscape</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">b </span><span style="--0:#A3A19B;--1:#5E5B55">*</span><span style="--0:#B8C6D1;--1:#35506A">testing</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#B8C6D1;--1:#35506A">B</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">  </span></span><span style="--0:#E6E3D9;--1:#2B2A26">s </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> n </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> n </span><span style="--0:#A3A19B;--1:#5E5B55">&lt;</span><span style="--0:#E6E3D9;--1:#2B2A26"> b</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">N</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> n</span><span style="--0:#A3A19B;--1:#5E5B55">++</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">:=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">&lt;</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">100</span><span style="--0:#A3A19B;--1:#5E5B55">;</span><span style="--0:#E6E3D9;--1:#2B2A26"> i</span><span style="--0:#A3A19B;--1:#5E5B55">++</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span><span style="--0:#E6E3D9;--1:#2B2A26"> s </span><span style="--0:#A3A19B;--1:#5E5B55">+=</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#A3A19B;--1:#5E5B55">}</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">  </span></span><span style="--0:#E6E3D9;--1:#2B2A26">_ </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div></code></pre></figure></div>
+<p>These are five runs each on the same 1.22.12 toolchain, changing only the <code>go</code> line in <code>go.mod</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Benchmark</th><th>Semantics</th><th style="text-align:right">ns/op</th><th style="text-align:right">B/op</th><th style="text-align:right">allocs/op</th></tr></thead><tbody><tr><td>AddrTaken</td><td>1.21</td><td style="text-align:right">157 – 176</td><td style="text-align:right">904</td><td style="text-align:right">2</td></tr><tr><td>AddrTaken</td><td>1.22</td><td style="text-align:right">739 – 768</td><td style="text-align:right">1,704</td><td style="text-align:right">102</td></tr><tr><td>NoEscape</td><td>1.21</td><td style="text-align:right">24.8 – 25.4</td><td style="text-align:right">0</td><td style="text-align:right">0</td></tr><tr><td>NoEscape</td><td>1.22</td><td style="text-align:right">29.0 – 30.3</td><td style="text-align:right">0</td><td style="text-align:right">0</td></tr></tbody></table>
+<p>Under 1.21 semantics <code>AddrTaken</code> needs one slice and one <code>i</code>: two allocations. The answer is wrong, but cheap. Under 1.22 semantics each of the 100 <code>i</code>s goes to the heap, giving 102 allocations and about 4.6 times the time. It is not a fair comparison now that the answer is right, but if a hot loop collects <code>&amp;i</code>, new allocations may show up in the profile after moving to 1.22.</p>
+<p><code>NoEscape</code> being about 17% slower looked odd at first. Disassembling <code>BenchmarkNoEscape</code> from both builds with <code>go tool objdump</code> showed not a single differing instruction. The right reading is an alignment difference from where the function landed in the binary, not a cost of the semantic change. Code layout alone produces gaps of this size in microbenchmarks.</p>
+<h2 id="en-summary">Summary</h2>
+<ul>
+<li>The 1.22 semantics are switched on by each module’s <code>go</code> line in <code>go.mod</code>, not by the toolchain. Dependencies keep their behaviour.</li>
+<li>Passing files directly, as in <code>go run main.go</code>, creates a package outside any module, compiled at the toolchain’s language version.</li>
+<li>A file that needs the old semantics can be pinned per file with <code>//go:build go1.21</code>.</li>
+<li>Code that changes the counter in the body still works, because the value is copied before <code>i++</code> at the end of each iteration.</li>
+<li>The cost appears only when an address escapes the loop: one extra heap allocation per iteration.</li>
+</ul>
+<section data-footnotes class="footnotes"><h2 class="sr-only" id="en-footnote-label">Notes</h2>
+<ol>
+<li id="en-user-content-fn-1">
+<p>Go 1.22 Release Notes, “Changes to the language” (February 2024). The design background is in proposal golang/go#60078 and the Go blog post “Fixing For Loops in Go 1.22” (September 2023). <a href="#en-user-content-fnref-1" data-footnote-backref aria-label="Back to reference 1" class="data-footnote-backref">↩</a></p>
+</li>
+</ol>
+</section></div><footer class="post__end"><p class="post__source">Source markdown: <a href="/blog/go122-loopvar/en.md">go122-loopvar/en.md</a></p><nav class="post__nav" aria-label="More posts"><a class="older" href="/blog/redis-listpack/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 775.0339999999999 327.6">
+
+
+<g class="subgraph" data-id="ZL" data-label="ziplist: 항목마다 앞 항목의 길이">
+  <rect x="40" y="173.8" width="695.0339999999999" height="113.80000000000001" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="40" y="173.8" width="695.0339999999999" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  
+</g>
+<g class="subgraph" data-id="LP" data-label="listpack: 항목마다 자기 길이">
+  <rect x="40" y="40" width="456.884" height="113.80000000000001" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="40" y="40" width="456.884" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  
+</g>
+<polyline class="edge" data-from="Z0" data-to="Z1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="177.97799999999998,240.47500000000002 225.97799999999998,240.47500000000002" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="Z1" data-to="Z2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="360.553,248.925 408.553,248.925" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="Z2" data-to="Z3" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="543.1279999999999,248.925 591.1279999999999,248.925" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="L0" data-to="L1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="177.97799999999998,110.9 225.97799999999998,110.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="L1" data-to="L2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="329.431,110.9 377.431,110.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<g class="node" data-id="Z0" data-label="새 항목 300B" data-shape="rectangle">
+  <rect x="56" y="222.025" width="121.97799999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node is-hub" data-id="Z1" data-label="prevlen 1→5B
+길이 250→254B" data-shape="rectangle">
+  <rect x="225.97799999999998" y="217.8" width="134.575" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="Z2" data-label="prevlen 1→5B
+길이 250→254B" data-shape="rectangle">
+  <rect x="408.553" y="222.025" width="134.575" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="Z3" data-label="prevlen 1→5B ..." data-shape="rectangle">
+  <rect x="591.1279999999999" y="226.25" width="127.906" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="L0" data-label="새 항목 300B
+backlen 2B" data-shape="rectangle">
+  <rect x="56" y="84" width="121.97799999999998" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="L1" data-label="변화 없음" data-shape="rectangle">
+  <rect x="225.97799999999998" y="92.45" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="L2" data-label="변화 없음" data-shape="rectangle">
+  <rect x="377.431" y="92.45" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>← Older</small><span class="post__nav-title">Redis listpack: between field 512 and field 513</span></a><a class="newer" href="/blog/cpython-powersort/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 822.1347083333333 641.4390000000001">
+
+
+<g class="subgraph" data-id="tim" data-label="timsort (3.10): 스택 크기 불변식">
+  <rect x="405.7275833333333" y="40" width="376.407125" height="531.201" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="405.7275833333333" y="40" width="376.407125" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  
+</g>
+<g class="subgraph" data-id="pow" data-label="powersort (3.11): 경계의 power">
+  <rect x="40" y="40" width="345.7275833333333" height="561.4390000000001" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="40" y="40" width="345.7275833333333" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  
+</g>
+<polyline class="edge" data-from="T1" data-to="T2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="682.1747083333333,205.8 682.1747083333332,217.8 602.3405,217.8 602.3405,290.85024999999996" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="T2" data-to="T3" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예" points="565.29025,402.001 565.29025,518.3009999999999" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="T2" data-to="T4" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="565.29025,253.8 565.29025,217.8 547.9247083333332,217.8 547.9247083333332,132.9 565.29025,132.9 565.29025,120.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="T4" data-to="T2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="493.50891666666666,120.9 493.50891666666666,132.9 510.8744583333333,132.9 510.8744583333333,217.8 528.24,217.8 528.24,290.85024999999996" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="P1" data-to="P2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="279.0985833333333,222.70000000000002 279.0985833333333,234.70000000000002 194.05325,234.70000000000002 194.05325,311.08475000000004" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="P2" data-to="P3" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예" points="153.6685,270.70000000000005 153.6685,234.70000000000002 149.93958333333333,234.70000000000002 148.075125,120.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="P3" data-to="P2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="102.96979166666667,120.9 102.96979166666667,132.9 110.92345833333333,132.9 110.92345833333333,234.70000000000002 113.28375,234.70000000000002 113.28375,311.08475000000004" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="P2" data-to="P4" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="155.53295833333334,430.3745416666667 155.53295833333334,548.539" fill="none" stroke="var(--_line)" stroke-width="1" />
+
+
+
+
+<g class="node" data-id="T1" data-label="스택 위 세 run A, B, C" data-shape="rectangle">
+  <rect x="598.2147083333333" y="168.9" width="167.92000000000002" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node is-hub" data-id="T2" data-label="A &gt; B + C 이고
+B &gt; C 인가?" data-shape="diamond">
+  <polygon points="565.29025,253.79999999999998 639.39075,327.90049999999997 565.29025,402.001 491.18975,327.90049999999997" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="T3" data-label="다음 run을 쌓음" data-shape="rectangle">
+  <rect x="494.66824999999994" y="518.3009999999999" width="141.244" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="T4" data-label="A와 C 중 작은 쪽을 B와 병합" data-shape="rectangle">
+  <rect x="421.7275833333333" y="84" width="215.344" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="P1" data-label="새 run과 이전 run 사이
+경계의 power p 계산" data-shape="rectangle">
+  <rect x="188.46958333333333" y="168.9" width="181.25799999999998" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="P2" data-label="스택 위 경계의
+power &gt; p 인가?" data-shape="diamond">
+  <polygon points="153.6685,270.70000000000005 234.438,351.46950000000004 153.6685,432.23900000000003 72.899,351.46950000000004" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="P3" data-label="그 경계를 병합" data-shape="rectangle">
+  <rect x="57.86445833333333" y="84" width="135.316" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="P4" data-label="p를 기록하고 run을 쌓음" data-shape="rectangle">
+  <rect x="57.86445833333333" y="548.539" width="195.337" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>Newer →</small><span class="post__nav-title">Powersort in CPython 3.11: the merge order list.sort changed</span></a></nav></footer></article></main><div class="status"><a class="status__file" data-href="/blog/go122-loopvar/{lang}.md" href="/blog/go122-loopvar/ko.md">ko.mdx</a><span class="status__sec"></span><span class="status__left"></span><button class="status__toc" type="button"><span lang="ko">목차</span><span lang="en">Contents</span></button></div><dialog class="sheet" id="toc-sheet" aria-label="Contents"><button class="sheet__close" type="button" data-close>esc</button><div class="sheet__body"></div></dialog><script type="module" src="/blog/assets/Reader.astro_astro_type_script_index_0_lang.CRI3uLjw.js"></script><dialog class="sheet" id="keys" aria-labelledby="keys-title"><button class="sheet__close" type="button" data-close>esc</button><p class="toc__label" id="keys-title"><span lang="ko">단축키</span><span lang="en">Keyboard</span></p><dl class="keys"><dt><kbd>/</kbd> <kbd>⌘K</kbd></dt><dd><span lang="ko">글 검색</span><span lang="en">Search posts</span></dd><dt><kbd>t</kbd></dt><dd><span lang="ko">밝은/어두운 테마</span><span lang="en">Light or dark theme</span></dd><dt><kbd>l</kbd></dt><dd><span lang="ko">한국어/영어, 읽던 자리 유지</span><span lang="en">Korean or English, keeping your place</span></dd><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd><span lang="ko">이전/다음 절</span><span lang="en">Previous or next section</span></dd><dt><kbd>?</kbd></dt><dd><span lang="ko">이 목록</span><span lang="en">This list</span></dd></dl></dialog><dialog class="search" id="search" aria-label="Search"><label class="search__line"><span class="search__caret" aria-hidden="true">&gt;</span><input type="search" role="combobox" aria-expanded="true" aria-controls="search-results" aria-autocomplete="list" autocomplete="off" spellcheck="false" enterkeyhint="go"></label><p class="search__status" aria-live="polite"><span class="tool__name" data-call-name></span><span class="tool__arg" data-call-arg></span><span class="search__count" data-call-count></span></p><ul class="search__results" id="search-results" role="listbox" aria-label="Results"></ul><p class="search__keys"><span><kbd>↑</kbd><kbd>↓</kbd> <span lang="ko">이동</span><span lang="en">move</span></span><span><kbd>↵</kbd> <span lang="ko">열기</span><span lang="en">open</span></span><span><kbd>esc</kbd> <span lang="ko">닫기</span><span lang="en">close</span></span></p></dialog><script type="module" src="/blog/assets/Base.astro_astro_type_script_index_0_lang.BxD9tEXi.js"></script></body></html>

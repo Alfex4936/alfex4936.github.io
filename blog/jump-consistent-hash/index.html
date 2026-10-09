@@ -1,0 +1,1726 @@
+<!DOCTYPE html><html lang="ko" data-lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title data-ko="Jump Consistent Hash: 메모리 없이 다섯 줄로 하는 일관된 해싱 · seok" data-en="Jump Consistent Hash: consistent hashing in five lines and no memory · seok">Jump Consistent Hash: 메모리 없이 다섯 줄로 하는 일관된 해싱 · seok</title><meta name="description" content="버킷을 10개에서 11개로 늘릴 때 mod-N은 키의 91%를 옮기고, Jump Consistent Hash는 9.1%만 옮깁니다. 링도 테이블도 없이 어떻게 그게 되는지 따라가 보고, 해시 링과 나란히 재 봤습니다."><meta property="og:title" content="Jump Consistent Hash: 메모리 없이 다섯 줄로 하는 일관된 해싱 · seok"><meta property="og:description" content="버킷을 10개에서 11개로 늘릴 때 mod-N은 키의 91%를 옮기고, Jump Consistent Hash는 9.1%만 옮깁니다. 링도 테이블도 없이 어떻게 그게 되는지 따라가 보고, 해시 링과 나란히 재 봤습니다."><meta property="og:url" content="https://alfex4936.github.io/blog/jump-consistent-hash/"><meta property="og:type" content="article"><meta property="og:locale" content="ko_KR"><meta property="og:locale:alternate" content="en_US"><meta property="article:published_time" content="2023-03-14T00:00:00.000Z"><meta property="og:image" content="https://alfex4936.github.io/blog/og/jump-consistent-hash.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="theme-color" content="#141413" media="(prefers-color-scheme: dark)"><meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)"><link rel="canonical" href="https://alfex4936.github.io/blog/jump-consistent-hash/"><link rel="icon" href="/favicon.ico"><link rel="preload" href="/blog/fonts/title.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="/blog/fonts/body.woff2" as="font" type="font/woff2" crossorigin><link rel="alternate" type="application/rss+xml" title="seok · blog (한국어)" href="/blog/ko/rss.xml"><link rel="alternate" type="application/rss+xml" title="seok · blog (English)" href="/blog/en/rss.xml"><script>
+      // Same keys as the landing page, so the toggles carry across alfex4936.github.io.
+      ;(() => {
+        const q = new URLSearchParams(location.search).get('lang')
+        const stored = localStorage.getItem('portfolio:lang')
+        const lang = q === 'ko' || q === 'en' ? q : stored === 'ko' || stored === 'en' ? stored : navigator.language.startsWith('ko') ? 'ko' : 'en'
+        const root = document.documentElement
+        root.dataset.lang = root.lang = lang
+        const theme = localStorage.getItem('portfolio:theme')
+        if (theme === 'dark' || theme === 'light') root.dataset.theme = theme
+        const t = document.querySelector('title')
+        t.textContent = t.dataset[lang]
+      })()
+    </script><link rel="stylesheet" href="/blog/assets/Step.FmcF6wk0.css"><link rel="stylesheet" href="/blog/assets/all.DMtbdYXv.css"></head><body><a class="skip" href="#main"><span lang="ko">본문으로</span><span lang="en">Skip to content</span></a><header class="bar"><nav class="bar__path" aria-label="Path"><a href="/">seok</a><span class="sep">·</span><a href="/blog/">~/blog</a><span class="sep">/</span><span class="here">jump-consistent-hash</span></nav><nav class="bar__ctl" aria-label="Search, language and theme"><button type="button" class="bar__search" data-search aria-keyshortcuts="/ Control+K Meta+K"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.5"></circle><path d="M10.4 10.4 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg><span class="bar__search-label"><span lang="ko">검색</span><span lang="en">Search</span></span><kbd>/</kbd></button><span class="bar__sep" aria-hidden="true">·</span><button type="button" data-lang-set="ko" aria-pressed="false">ko</button><button type="button" data-lang-set="en" aria-pressed="false">en</button><span class="bar__sep" aria-hidden="true">·</span><button type="button" data-theme-set="dark" aria-pressed="false">dark</button><button type="button" data-theme-set="light" aria-pressed="false">light</button></nav></header><main id="main"><article class="post" lang="ko" data-minutes="5"><header class="post__head"><p class="post__cwd"><a href="/blog/">~/blog</a>/jump-consistent-hash/ko.mdx</p><h1 class="post__title" style="view-transition-name: t-jump-consistent-hash">Jump Consistent Hash: 메모리 없이 다섯 줄로 하는 일관된 해싱</h1><p class="post__dek">버킷을 10개에서 11개로 늘릴 때 mod-N은 키의 91%를 옮기고, Jump Consistent Hash는 9.1%만 옮깁니다. 링도 테이블도 없이 어떻게 그게 되는지 따라가 보고, 해시 링과 나란히 재 봤습니다.</p><p class="post__meta"><time datetime="2023-03-14">2023-03-14</time><span>5분</span><span><a href="/blog/?tag=algorithm">algorithm</a> · <a href="/blog/?tag=distributed-systems">distributed-systems</a></span></p></header><nav class="toc" aria-label="목차"><p class="toc__label">목차</p><ol><li><a href="#ko-mod-n이-문제인-이유"><span class="toc__n">§1</span><span>mod-N이 문제인 이유</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-다섯-줄짜리-함수"><span class="toc__n">§2</span><span>다섯 줄짜리 함수</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-몇-번-도는가"><span class="toc__n">§3</span><span>몇 번 도는가</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-얼마나-고르게-나누나"><span class="toc__n">§4</span><span>얼마나 고르게 나누나</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-조회-비용"><span class="toc__n">§5</span><span>조회 비용</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-대신-포기하는-것"><span class="toc__n">§6</span><span>대신 포기하는 것</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-정리"><span class="toc__n">§7</span><span>정리</span><span class="toc__len" aria-hidden="true"></span></a></li></ol></nav><div class="prose"><p>샤드가 몇 개든 키를 골고루 나누고, 샤드를 하나 늘릴 때 옮겨야 하는 키는 최소로 줄이고 싶습니다. 보통 떠올리는 답은 가상 노드를 둔 해시 링입니다. 2014년 Google의 John Lamping과 Eric Veach가 낸 Jump Consistent Hash는 같은 일을 메모리 없이, 함수 하나로 합니다.<sup><a href="#ko-user-content-fn-1" id="ko-user-content-fnref-1" data-footnote-ref aria-describedby="ko-footnote-label">1</a></sup> 이 글의 숫자는 모두 Go 1.21.13(linux/arm64, Apple Silicon 노트북의 Docker)에서 splitmix64로 만든 키 100만 개로 잰 값입니다.</p>
+<h2 id="ko-mod-n이-문제인-이유">mod-N이 문제인 이유</h2>
+<p>가장 단순한 방법은 <code>hash(key) % n</code>입니다. 고르게 나뉘지만 <code>n</code>이 바뀌면 거의 모든 키의 자리가 바뀝니다.</p>
+<figure class="diagram" data-diagram="flowchart" style="--w:596px"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 595.5519999999999 181.8" width="595.5519999999999" height="181.8" role="img" aria-label="키, mod 10 → mod 11, Jump(10) → Jump(11), 90.8% 이동, 9.1% 이동, 전부 새 버킷으로">
+
+<defs>
+  <marker id="ko-dg0-arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+  <marker id="ko-dg0-arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+</defs>
+<polyline class="edge" data-from="K" data-to="M" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="100,90.9 124,90.9 124,58.45 148.00000000000006,58.45" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="K" data-to="J" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="100,90.9 124,90.9 124,123.35000000000001 148,123.35000000000001" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="M" data-to="MA" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="269.97800000000007,58.45 332.057,58.45" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="J" data-to="JA" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="298.13599999999997,123.35000000000001 332.057,123.35000000000001" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<g class="node" data-id="K" data-label="키" data-shape="rectangle">
+  <rect x="40" y="72.45" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="70" y="90.9" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">키</text>
+</g>
+<g class="node" data-id="M" data-label="mod 10 → mod 11" data-shape="rectangle">
+  <rect x="148.00000000000006" y="40" width="121.978" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="208.98900000000006" y="58.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">mod 10 → mod 11</text>
+</g>
+<g class="node" data-id="J" data-label="Jump(10) → Jump(11)" data-shape="rectangle">
+  <rect x="148" y="104.9" width="150.136" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="223.06799999999998" y="123.35000000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Jump(10) → Jump(11)</text>
+</g>
+<g class="node" data-id="MA" data-label="90.8% 이동" data-shape="rectangle">
+  <rect x="332.057" y="40" width="107.89899999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="386.0065" y="58.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">90.8% 이동</text>
+</g>
+<g class="node" data-id="JA" data-label="9.1% 이동, 전부 새 버킷으로" data-shape="rectangle">
+  <rect x="332.057" y="104.9" width="209.41599999999997" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="436.765" y="123.35000000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">9.1% 이동, 전부 새 버킷으로</text>
+</g>
+</svg></figure>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>방식</th><th style="text-align:right">10 → 11개로 늘릴 때 옮겨진 키</th><th style="text-align:right">비율</th></tr></thead><tbody><tr><td>mod-N</td><td style="text-align:right">908,262</td><td style="text-align:right">90.8%</td></tr><tr><td>Jump Consistent Hash</td><td style="text-align:right">91,359</td><td style="text-align:right">9.1%</td></tr><tr><td>해시 링(노드당 가상 노드 100개)</td><td style="text-align:right">86,250</td><td style="text-align:right">8.6%</td></tr><tr><td>이상적인 값 (1/11)</td><td style="text-align:right">90,909</td><td style="text-align:right">9.1%</td></tr></tbody></table>
+<p>11번째 버킷이 가져가야 할 몫은 전체의 1/11입니다. 그보다 많이 옮기는 것은 모두 낭비이고, 캐시라면 그만큼 미스가 납니다. mod-N은 열 배를 옮겼습니다.</p>
+<h2 id="ko-다섯-줄짜리-함수">다섯 줄짜리 함수</h2>
+<p>논문에 실린 코드를 Go로 옮기면 이렇습니다.</p>
+<div class="walk"><div class="walk__fig"><div class="expressive-code"><link rel="stylesheet" href="/blog/assets/ec.vx73c.css"/><script type="module" src="/blog/assets/ec.g1fg5.js"></script><figure class="frame has-title"><figcaption class="header"><span class="title">jump.go</span></figcaption><pre data-language="go"><code><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">func</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">Jump</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">key </span><span style="--0:#E2B071;--1:#87500C">uint64</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> n </span><span style="--0:#E2B071;--1:#87500C">int32</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">int32</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">var</span><span style="--0:#E6E3D9;--1:#2B2A26"> b</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> j </span><span style="--0:#E2B071;--1:#87500C">int64</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">-</span><span style="--0:#EF9A7A;--1:#9F4129">1</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> j </span><span style="--0:#A3A19B;--1:#5E5B55">&lt;</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">int64</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">n</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">    </span></span><span style="--0:#E6E3D9;--1:#2B2A26">b </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> j</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">    </span></span><span style="--0:#E6E3D9;--1:#2B2A26">key </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> key</span><span style="--0:#A3A19B;--1:#5E5B55">*</span><span style="--0:#EF9A7A;--1:#9F4129">2862933555777941757</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">+</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">1</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">    </span></span><span style="--0:#E6E3D9;--1:#2B2A26">j </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">int64</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E2B071;--1:#87500C">float64</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">b</span><span style="--0:#A3A19B;--1:#5E5B55">+</span><span style="--0:#EF9A7A;--1:#9F4129">1</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">*</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E2B071;--1:#87500C">float64</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E2B071;--1:#87500C">int64</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#EF9A7A;--1:#9F4129">1</span><span style="--0:#A3A19B;--1:#5E5B55">)&lt;&lt;</span><span style="--0:#EF9A7A;--1:#9F4129">31</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">/</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">float64</span><span style="--0:#A3A19B;--1:#5E5B55">((</span><span style="--0:#E6E3D9;--1:#2B2A26">key</span><span style="--0:#A3A19B;--1:#5E5B55">&gt;&gt;</span><span style="--0:#EF9A7A;--1:#9F4129">33</span><span style="--0:#A3A19B;--1:#5E5B55">)+</span><span style="--0:#EF9A7A;--1:#9F4129">1</span><span style="--0:#A3A19B;--1:#5E5B55">)))</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">return</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">int32</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">b</span><span style="--0:#A3A19B;--1:#5E5B55">)</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div></code></pre></figure></div></div><div class="walk__steps"><div class="step" data-lines="1-2"><p><code>b</code>는 이 키가 마지막으로 머문 버킷, <code>j</code>는 다음에 뛰어갈 버킷입니다. 처음에는 버킷 0에 있습니다.</p></div><div class="step" data-lines="5"><p>키를 64비트 선형 합동 생성기의 씨앗으로 씁니다. 같은 키는 언제나 같은 난수열을 만듭니다.</p></div><div class="step" data-lines="6"><p>핵심 줄입니다. 난수 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>r</mi><mo>∈</mo><mo stretchy="false">(</mo><mn>0</mn><mo separator="true">,</mo><mn>1</mn><mo stretchy="false">]</mo></mrow><annotation encoding="application/x-tex">r \in (0, 1]</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.5782em;vertical-align:-0.0391em"></span><span class="mord mathnormal" style="margin-right:0.0278em">r</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">∈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mopen">(</span><span class="mord">0</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em"></span><span class="mord">1</span><span class="mclose">]</span></span></span></span>을 뽑아 다음 점프 위치를 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false">⌊</mo><mo stretchy="false">(</mo><mi>b</mi><mo>+</mo><mn>1</mn><mo stretchy="false">)</mo><mi mathvariant="normal">/</mi><mi>r</mi><mo stretchy="false">⌋</mo></mrow><annotation encoding="application/x-tex">\lfloor (b+1)/r \rfloor</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mopen">⌊(</span><span class="mord mathnormal">b</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">1</span><span class="mclose">)</span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.0278em">r</span><span class="mclose">⌋</span></span></span></span>로 정합니다. 버킷이 하나씩 늘 때마다 키가 새 버킷으로 옮겨 갈 확률은 1/(새 버킷 수)인데, 그 사건을 하나하나 흉내 내지 않고 다음에 옮기는 지점으로 곧장 건너뜁니다.</p></div><div class="step" data-lines="3,8"><p>점프 위치가 <code>n</code>을 넘으면 멈추고 직전 버킷을 돌려줍니다. 버킷 수가 <code>n</code>일 때 이 키가 있어야 할 자리입니다.</p></div></div></div>
+<p>왜 건너뛰어도 되는지가 이 알고리즘의 전부입니다. 버킷이 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>b</mi><mo>+</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">b+1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7778em;vertical-align:-0.0833em"></span><span class="mord mathnormal">b</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">1</span></span></span></span>개일 때 키가 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>b</mi></mrow><annotation encoding="application/x-tex">b</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal">b</span></span></span></span>에 있었다면, <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>i</mi></mrow><annotation encoding="application/x-tex">i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6595em"></span><span class="mord mathnormal">i</span></span></span></span>개가 될 때까지 한 번도 옮기지 않을 확률은 다음과 같습니다.</p>
+<span class="katex-display"><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mi>P</mi><mo stretchy="false">(</mo><mtext>옮기지 않음</mtext><mo stretchy="false">)</mo><mo>=</mo><munderover><mo>∏</mo><mrow><mi>k</mi><mo>=</mo><mi>b</mi><mo>+</mo><mn>2</mn></mrow><mi>i</mi></munderover><mrow><mo fence="true">(</mo><mn>1</mn><mo>−</mo><mfrac><mn>1</mn><mi>k</mi></mfrac><mo fence="true">)</mo></mrow><mo>=</mo><mfrac><mrow><mi>b</mi><mo>+</mo><mn>1</mn></mrow><mi>i</mi></mfrac></mrow><annotation encoding="application/x-tex">P(\text{옮기지 않음}) = \prod_{k=b+2}^{i} \left(1 - \frac{1}{k}\right) = \frac{b+1}{i}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.1389em">P</span><span class="mopen">(</span><span class="mord text"><span class="mord hangul_fallback">옮기지</span><span class="mord"> </span><span class="mord hangul_fallback">않음</span></span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:3.1721em;vertical-align:-1.3604em"></span><span class="mop op-limits"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.8117em"><span style="top:-1.8479em;margin-left:0em"><span class="pstrut" style="height:3.05em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight" style="margin-right:0.0315em">k</span><span class="mrel mtight">=</span><span class="mord mathnormal mtight">b</span><span class="mbin mtight">+</span><span class="mord mtight">2</span></span></span></span><span style="top:-3.05em"><span class="pstrut" style="height:3.05em"></span><span><span class="mop op-symbol large-op">∏</span></span></span><span style="top:-4.3em;margin-left:0em"><span class="pstrut" style="height:3.05em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight">i</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:1.3604em"><span></span></span></span></span></span><span class="mspace" style="margin-right:0.1667em"></span><span class="minner"><span class="mopen delimcenter" style="top:0em"><span class="delimsizing size3">(</span></span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.3214em"><span style="top:-2.314em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span><span style="top:-3.23em"><span class="pstrut" style="height:3em"></span><span class="frac-line" style="border-bottom-width:0.04em"></span></span><span style="top:-3.677em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mclose delimcenter" style="top:0em"><span class="delimsizing size3">)</span></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:2.0574em;vertical-align:-0.686em"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.3714em"><span style="top:-2.314em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord mathnormal">i</span></span></span><span style="top:-3.23em"><span class="pstrut" style="height:3em"></span><span class="frac-line" style="border-bottom-width:0.04em"></span></span><span style="top:-3.677em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord mathnormal">b</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mord">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span></span></span></span></span>
+<p>곱의 앞뒤가 지워져 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false">(</mo><mi>b</mi><mo>+</mo><mn>1</mn><mo stretchy="false">)</mo><mi mathvariant="normal">/</mi><mi>i</mi></mrow><annotation encoding="application/x-tex">(b+1)/i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mopen">(</span><span class="mord mathnormal">b</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">1</span><span class="mclose">)</span><span class="mord">/</span><span class="mord mathnormal">i</span></span></span></span>만 남습니다. 그러니 균등 난수 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>r</mi></mrow><annotation encoding="application/x-tex">r</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4306em"></span><span class="mord mathnormal" style="margin-right:0.0278em">r</span></span></span></span>을 하나 뽑아 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>r</mi><mo>≤</mo><mo stretchy="false">(</mo><mi>b</mi><mo>+</mo><mn>1</mn><mo stretchy="false">)</mo><mi mathvariant="normal">/</mi><mi>i</mi></mrow><annotation encoding="application/x-tex">r \le (b+1)/i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7719em;vertical-align:-0.136em"></span><span class="mord mathnormal" style="margin-right:0.0278em">r</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≤</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mopen">(</span><span class="mord mathnormal">b</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">1</span><span class="mclose">)</span><span class="mord">/</span><span class="mord mathnormal">i</span></span></span></span>를 만족하는 가장 큰 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>i</mi></mrow><annotation encoding="application/x-tex">i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6595em"></span><span class="mord mathnormal">i</span></span></span></span>, 곧 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false">⌊</mo><mo stretchy="false">(</mo><mi>b</mi><mo>+</mo><mn>1</mn><mo stretchy="false">)</mo><mi mathvariant="normal">/</mi><mi>r</mi><mo stretchy="false">⌋</mo></mrow><annotation encoding="application/x-tex">\lfloor (b+1)/r \rfloor</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mopen">⌊(</span><span class="mord mathnormal">b</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">1</span><span class="mclose">)</span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.0278em">r</span><span class="mclose">⌋</span></span></span></span>까지 한 번에 뛰면 됩니다.</p>
+<h2 id="ko-몇-번-도는가">몇 번 도는가</h2>
+<p>버킷 수가 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi></mrow><annotation encoding="application/x-tex">k</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span></span>일 때 옮길 확률이 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1</mn><mi mathvariant="normal">/</mi><mi>k</mi></mrow><annotation encoding="application/x-tex">1/k</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">1/</span><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span></span>이므로, 기대 점프 수는 조화수 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>H</mi><mi>n</mi></msub><mo>≈</mo><mi>ln</mi><mo>⁡</mo><mi>n</mi><mo>+</mo><mi>γ</mi></mrow><annotation encoding="application/x-tex">H_n \approx \ln n + \gamma</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8333em;vertical-align:-0.15em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0813em">H</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.1514em"><span style="top:-2.55em;margin-left:-0.0813em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight">n</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.7778em;vertical-align:-0.0833em"></span><span class="mop">ln</span><span class="mspace" style="margin-right:0.1667em"></span><span class="mord mathnormal">n</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.625em;vertical-align:-0.1944em"></span><span class="mord mathnormal" style="margin-right:0.0556em">γ</span></span></span></span>입니다. 잰 값도 같았습니다.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th style="text-align:right">버킷 수</th><th style="text-align:right">평균 반복 횟수</th><th style="text-align:right">ln n + γ</th></tr></thead><tbody><tr><td style="text-align:right">10</td><td style="text-align:right">2.93</td><td style="text-align:right">2.88</td></tr><tr><td style="text-align:right">1,000</td><td style="text-align:right">7.49</td><td style="text-align:right">7.48</td></tr><tr><td style="text-align:right">100,000</td><td style="text-align:right">12.09</td><td style="text-align:right">12.09</td></tr></tbody></table>
+<p>버킷이 1만 배 늘어도 반복은 네 배 남짓 늘어납니다.</p>
+<h2 id="ko-얼마나-고르게-나누나">얼마나 고르게 나누나</h2>
+<p>버킷 10개에 키 100만 개를 넣고 가장 적게 받은 버킷과 가장 많이 받은 버킷을 봤습니다. 이상적인 값은 10만 개입니다.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>방식</th><th style="text-align:right">최소</th><th style="text-align:right">최대</th><th style="text-align:right">최대/평균</th></tr></thead><tbody><tr><td>Jump Consistent Hash</td><td style="text-align:right">99,715</td><td style="text-align:right">100,456</td><td style="text-align:right">1.005</td></tr><tr><td>해시 링, 가상 노드 1개</td><td style="text-align:right">10,700</td><td style="text-align:right">319,124</td><td style="text-align:right">3.19</td></tr><tr><td>해시 링, 가상 노드 10개</td><td style="text-align:right">36,440</td><td style="text-align:right">166,584</td><td style="text-align:right">1.67</td></tr><tr><td>해시 링, 가상 노드 100개</td><td style="text-align:right">91,164</td><td style="text-align:right">112,757</td><td style="text-align:right">1.13</td></tr><tr><td>해시 링, 가상 노드 1,000개</td><td style="text-align:right">96,498</td><td style="text-align:right">103,343</td><td style="text-align:right">1.03</td></tr></tbody></table>
+<figure class="diagram" data-diagram="xychart" style="--w:750px"><svg data-xychart-colors="0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 750 464" width="750" height="464" role="img" aria-label="xychart">
+
+
+<circle cx="128" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="404" r="1.5" class="xychart-grid"></circle>
+<path d="M168,73.5 Q168,65.5 176,65.5 L200,65.5 Q208,65.5 208,73.5 L208,396 Q208,404 200,404 L176,404 Q168,404 168,396 Z" class="xychart-bar xychart-color-0" data-value="3.19" data-label="&quot;링 v1&quot;"></path>
+<path d="M288,308.5 Q288,300.5 296,300.5 L320,300.5 Q328,300.5 328,308.5 L328,396 Q328,404 320,404 L296,404 Q288,404 288,396 Z" class="xychart-bar xychart-color-0" data-value="1.67" data-label="&quot;링 v10&quot;"></path>
+<path d="M408,391.9 Q408,383.9 416,383.9 L440,383.9 Q448,383.9 448,391.9 L448,396 Q448,404 440,404 L416,404 Q408,404 408,396 Z" class="xychart-bar xychart-color-0" data-value="1.13" data-label="&quot;링 v100&quot;"></path>
+<path d="M528,401.7 Q528,399.4 530.3,399.4 L565.7,399.4 Q568,399.4 568,401.7 L568,401.7 Q568,404 565.7,404 L530.3,404 Q528,404 528,401.7 Z" class="xychart-bar xychart-color-0" data-value="1.03" data-label="&quot;링 v1000&quot;"></path>
+<path d="M648,403.6 Q648,403.2 648.4,403.2 L687.6,403.2 Q688,403.2 688,403.6 L688,403.6 Q688,404 687.6,404 L648.4,404 Q648,404 648,403.6 Z" class="xychart-bar xychart-color-0" data-value="1.005" data-label="&quot;Jump&quot;"></path>
+<text x="188" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;링 v1&quot;</text>
+<text x="308" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;링 v10&quot;</text>
+<text x="428" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;링 v100&quot;</text>
+<text x="548" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;링 v1000&quot;</text>
+<text x="668" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;Jump&quot;</text>
+<text x="110" y="404" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">1</text>
+<text x="110" y="326.72727272727275" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">1.5</text>
+<text x="110" y="249.45454545454547" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">2</text>
+<text x="110" y="172.1818181818182" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">2.5</text>
+<text x="110" y="94.90909090909093" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">3</text>
+<text x="26" y="234" text-anchor="middle" transform="rotate(-90,26,234)" font-size="15" font-weight="500" dy="0.35em" class="xychart-axis-title">배</text>
+<text x="375" y="40" text-anchor="middle" font-size="18" font-weight="600" dy="0.35em" class="xychart-title">가장 많이 받은 버킷 / 평균</text>
+</svg></figure>
+<p>해시 링이 Jump만큼 고르려면 노드당 가상 노드를 1,000개 넘게 둬야 합니다. 버킷 1,000개짜리 클러스터라면 링에 점이 100만 개 찍힙니다. Jump는 아무것도 저장하지 않습니다.</p>
+<h2 id="ko-조회-비용">조회 비용</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>방식</th><th style="text-align:right">버킷 수</th><th style="text-align:right">ns/op</th><th>들고 있는 상태</th></tr></thead><tbody><tr><td>Jump</td><td style="text-align:right">10</td><td style="text-align:right">18.1</td><td>없음</td></tr><tr><td>Jump</td><td style="text-align:right">1,000</td><td style="text-align:right">47.6</td><td>없음</td></tr><tr><td>Jump</td><td style="text-align:right">100,000</td><td style="text-align:right">70.5</td><td>없음</td></tr><tr><td>링(가상 노드 100개)</td><td style="text-align:right">10</td><td style="text-align:right">19.2</td><td>항목 1,000개</td></tr><tr><td>링(가상 노드 100개)</td><td style="text-align:right">1,000</td><td style="text-align:right">51.7</td><td>항목 100,000개</td></tr></tbody></table>
+<p>링은 정렬된 배열을 이진 탐색하므로 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>O</mi><mo stretchy="false">(</mo><mi>log</mi><mo>⁡</mo><mi>n</mi><mi>v</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">O(\log nv)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.0278em">O</span><span class="mopen">(</span><span class="mop">lo<span style="margin-right:0.0139em">g</span></span><span class="mspace" style="margin-right:0.1667em"></span><span class="mord mathnormal">n</span><span class="mord mathnormal" style="margin-right:0.0359em">v</span><span class="mclose">)</span></span></span></span>이고, Jump는 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>O</mi><mo stretchy="false">(</mo><mi>log</mi><mo>⁡</mo><mi>n</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">O(\log n)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.0278em">O</span><span class="mopen">(</span><span class="mop">lo<span style="margin-right:0.0139em">g</span></span><span class="mspace" style="margin-right:0.1667em"></span><span class="mord mathnormal">n</span><span class="mclose">)</span></span></span></span>입니다. 시간은 비슷하지만 Jump는 메모리를 쓰지 않고, 노드 목록이 바뀔 때 다시 만들 자료구조도 없습니다.</p>
+<h2 id="ko-대신-포기하는-것">대신 포기하는 것</h2>
+<p>Jump는 버킷에 이름을 붙이지 않습니다. 돌려주는 것은 <code>0</code>부터 <code>n-1</code>까지의 번호뿐이고, 버킷은 끝에서만 늘리고 줄일 수 있습니다. 가운데 3번 노드가 죽었다고 3번만 빼면 그 뒤 번호가 모두 밀려 mod-N과 같은 일이 벌어집니다.</p>
+<p>그래서 맞는 자리가 정해져 있습니다.</p>
+<ul>
+<li>샤드 번호가 고정된 저장소. 샤드 하나가 죽으면 복제본이 같은 번호를 이어받습니다.</li>
+<li>번호와 실제 주소의 매핑을 따로 두는 시스템. 노드가 바뀌면 매핑만 고칩니다.</li>
+<li>노드가 수시로 들고 나는 캐시 클러스터라면 해시 링이나 rendezvous 해싱이 더 맞습니다.</li>
+</ul>
+<p>가중치도 직접 지원하지 않습니다. 큰 노드에 번호를 여러 개 주는 식으로 흉내 낼 수는 있지만, 그 순간 번호표를 따로 관리해야 해서 Jump의 장점이 줄어듭니다.</p>
+<h2 id="ko-정리">정리</h2>
+<p>옮기는 키의 양은 해시 링과 같고, 분포는 가상 노드 1,000개짜리 링보다 고르고, 메모리는 0입니다. 대가는 버킷을 끝에서만 붙이고 뗄 수 있다는 제약 하나입니다. 샤드 번호가 고정된 시스템이라면 링을 만들기 전에 이 다섯 줄을 먼저 떠올려 볼 만합니다.</p>
+<section data-footnotes class="footnotes"><h2 class="sr-only" id="ko-footnote-label">각주</h2>
+<ol>
+<li id="ko-user-content-fn-1">
+<p>John Lamping, Eric Veach, “A Fast, Minimal Memory, Consistent Hash Algorithm”, arXiv:1406.2294 (2014). 상수 2862933555777941757은 논문 코드 그대로입니다. <a href="#ko-user-content-fnref-1" data-footnote-backref aria-label="Back to reference 1" class="data-footnote-backref">↩</a></p>
+</li>
+</ol>
+</section></div><footer class="post__end"><p class="post__source">원문 마크다운: <a href="/blog/jump-consistent-hash/ko.md">jump-consistent-hash/ko.md</a></p><nav class="post__nav" aria-label="다른 글"><a class="newer" href="/blog/cuckoo-vs-bloom/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 745.4860000000001 187.95000000000002">
+
+
+<polyline class="edge" data-from="X" data-to="H" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="100,97.05 126.892,97.05 126.892,64.60000000000001 153.784,64.60000000000001" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="X" data-to="F" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="100,97.05 126.892,97.05 126.892,129.5 153.784,129.5" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="H" data-to="I2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="257.978,64.60000000000001 284.87,64.60000000000001 284.87,123.35000000000001 424.64500000000004,123.35000000000001" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="F" data-to="I2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="293.546,129.5 424.64500000000004,129.5" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="H" data-to="B1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="257.978,64.60000000000001 284.87,64.60000000000001 284.87,58.45 311.762,58.45" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="I2" data-to="B2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="573.299,123.35000000000001 609.299,123.35000000000001 609.299,97.05000000000001 621.299,97.05000000000001" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="B1" data-to="B2" data-style="dotted" data-arrow-start="false" data-arrow-end="true" data-label="가득 차면 하나를 쫓아냄" points="391.503,58.45 609.299,58.45 609.299,84.75 621.299,84.75" fill="none" stroke="var(--_line)" stroke-width="1" stroke-dasharray="4 4" />
+
+<g class="node" data-id="X" data-label="x" data-shape="rectangle">
+  <rect x="40" y="78.6" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node is-hub" data-id="H" data-label="hash(x) → i1" data-shape="rectangle">
+  <rect x="153.784" y="46.150000000000006" width="104.194" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="F" data-label="fingerprint(x) → fp" data-shape="rectangle">
+  <rect x="153.784" y="111.05000000000001" width="139.762" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="I2" data-label="i2 = i1 XOR hash(fp)" data-shape="rectangle">
+  <rect x="424.64500000000004" y="104.9" width="148.654" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="B1" data-label="버킷 i1" data-shape="rectangle">
+  <rect x="311.762" y="40" width="79.74100000000001" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="B2" data-label="버킷 i2" data-shape="rectangle">
+  <rect x="621.299" y="72.45" width="84.18700000000001" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>다음 글 →</small><span class="post__nav-title">Cuckoo filter는 정말 Bloom filter보다 나은가</span></a></nav></footer></article><article class="post" lang="en" data-minutes="4"><header class="post__head"><p class="post__cwd"><a href="/blog/">~/blog</a>/jump-consistent-hash/en.mdx</p><h1 class="post__title" style="view-transition-name: t-jump-consistent-hash">Jump Consistent Hash: consistent hashing in five lines and no memory</h1><p class="post__dek">Growing from 10 to 11 buckets, mod-N moves 91% of keys and Jump Consistent Hash moves 9.1%. How it does that with no ring and no table, measured next to a hash ring.</p><p class="post__meta"><time datetime="2023-03-14">2023-03-14</time><span>4 min read</span><span><a href="/blog/?tag=algorithm">algorithm</a> · <a href="/blog/?tag=distributed-systems">distributed-systems</a></span></p></header><nav class="toc" aria-label="Contents"><p class="toc__label">Contents</p><ol><li><a href="#en-why-mod-n-hurts"><span class="toc__n">§1</span><span>Why mod-N hurts</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-a-five-line-function"><span class="toc__n">§2</span><span>A five-line function</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-how-many-iterations"><span class="toc__n">§3</span><span>How many iterations</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-how-evenly-it-spreads"><span class="toc__n">§4</span><span>How evenly it spreads</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-lookup-cost"><span class="toc__n">§5</span><span>Lookup cost</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-what-you-give-up"><span class="toc__n">§6</span><span>What you give up</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-summary"><span class="toc__n">§7</span><span>Summary</span><span class="toc__len" aria-hidden="true"></span></a></li></ol></nav><div class="prose"><p>Whatever the shard count, we want keys spread evenly, and when a shard is added we want to move as few keys as possible. The usual answer is a hash ring with virtual nodes. Jump Consistent Hash, published by John Lamping and Eric Veach at Google in 2014, does the same job with one function and no memory.<sup><a href="#en-user-content-fn-1" id="en-user-content-fnref-1" data-footnote-ref aria-describedby="en-footnote-label">1</a></sup> Every number in this post was measured with Go 1.21.13 (linux/arm64, Docker on an Apple Silicon laptop) on one million keys generated by splitmix64.</p>
+<h2 id="en-why-mod-n-hurts">Why mod-N hurts</h2>
+<p>The simplest scheme is <code>hash(key) % n</code>. It spreads evenly, but when <code>n</code> changes almost every key lands somewhere else.</p>
+<figure class="diagram" data-diagram="flowchart" style="--w:615px"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 614.552 181.8" width="614.552" height="181.8" role="img" aria-label="key, mod 10 → mod 11, Jump(10) → Jump(11), 90.8% moved, 9.1% moved, all to the new bucket">
+
+<defs>
+  <marker id="en-dg0-arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+  <marker id="en-dg0-arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+</defs>
+<polyline class="edge" data-from="K" data-to="M" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="104.17999999999999,90.9 128.18,90.9 128.18,58.45 152.1800000000001,58.45" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="K" data-to="J" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="104.17999999999999,90.9 128.18,90.9 128.18,123.35000000000001 152.18,123.35000000000001" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="M" data-to="MA" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="274.1580000000001,58.45 336.237,58.45" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="J" data-to="JA" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="302.316,123.35000000000001 336.237,123.35000000000001" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<g class="node" data-id="K" data-label="key" data-shape="rectangle">
+  <rect x="40" y="72.45" width="64.17999999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="72.09" y="90.9" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">key</text>
+</g>
+<g class="node" data-id="M" data-label="mod 10 → mod 11" data-shape="rectangle">
+  <rect x="152.1800000000001" y="40" width="121.978" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="213.1690000000001" y="58.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">mod 10 → mod 11</text>
+</g>
+<g class="node" data-id="J" data-label="Jump(10) → Jump(11)" data-shape="rectangle">
+  <rect x="152.18" y="104.9" width="150.136" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="227.248" y="123.35000000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Jump(10) → Jump(11)</text>
+</g>
+<g class="node" data-id="MA" data-label="90.8% moved" data-shape="rectangle">
+  <rect x="336.237" y="40" width="116.79099999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="394.6325" y="58.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">90.8% moved</text>
+</g>
+<g class="node" data-id="JA" data-label="9.1% moved, all to the new bucket" data-shape="rectangle">
+  <rect x="336.237" y="104.9" width="224.236" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="448.355" y="123.35000000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">9.1% moved, all to the new bucket</text>
+</g>
+</svg></figure>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Scheme</th><th style="text-align:right">Keys moved going 10 → 11</th><th style="text-align:right">Share</th></tr></thead><tbody><tr><td>mod-N</td><td style="text-align:right">908,262</td><td style="text-align:right">90.8%</td></tr><tr><td>Jump Consistent Hash</td><td style="text-align:right">91,359</td><td style="text-align:right">9.1%</td></tr><tr><td>Hash ring (100 virtual nodes per node)</td><td style="text-align:right">86,250</td><td style="text-align:right">8.6%</td></tr><tr><td>Ideal (1/11)</td><td style="text-align:right">90,909</td><td style="text-align:right">9.1%</td></tr></tbody></table>
+<p>The eleventh bucket should take 1/11 of the keys. Anything moved beyond that is waste, and in a cache every wasted move is a miss. mod-N moved ten times the ideal.</p>
+<h2 id="en-a-five-line-function">A five-line function</h2>
+<p>Here is the paper’s code in Go.</p>
+<div class="walk"><div class="walk__fig"><div class="expressive-code"><link rel="stylesheet" href="/blog/assets/ec.vx73c.css"/><script type="module" src="/blog/assets/ec.g1fg5.js"></script><figure class="frame has-title"><figcaption class="header"><span class="title">jump.go</span></figcaption><pre data-language="go"><code><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">func</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">Jump</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">key </span><span style="--0:#E2B071;--1:#87500C">uint64</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> n </span><span style="--0:#E2B071;--1:#87500C">int32</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">int32</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">var</span><span style="--0:#E6E3D9;--1:#2B2A26"> b</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> j </span><span style="--0:#E2B071;--1:#87500C">int64</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">-</span><span style="--0:#EF9A7A;--1:#9F4129">1</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">0</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> j </span><span style="--0:#A3A19B;--1:#5E5B55">&lt;</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">int64</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">n</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">{</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">    </span></span><span style="--0:#E6E3D9;--1:#2B2A26">b </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> j</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">    </span></span><span style="--0:#E6E3D9;--1:#2B2A26">key </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> key</span><span style="--0:#A3A19B;--1:#5E5B55">*</span><span style="--0:#EF9A7A;--1:#9F4129">2862933555777941757</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">+</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">1</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">    </span></span><span style="--0:#E6E3D9;--1:#2B2A26">j </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">int64</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E2B071;--1:#87500C">float64</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">b</span><span style="--0:#A3A19B;--1:#5E5B55">+</span><span style="--0:#EF9A7A;--1:#9F4129">1</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">*</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E2B071;--1:#87500C">float64</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E2B071;--1:#87500C">int64</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#EF9A7A;--1:#9F4129">1</span><span style="--0:#A3A19B;--1:#5E5B55">)&lt;&lt;</span><span style="--0:#EF9A7A;--1:#9F4129">31</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">/</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">float64</span><span style="--0:#A3A19B;--1:#5E5B55">((</span><span style="--0:#E6E3D9;--1:#2B2A26">key</span><span style="--0:#A3A19B;--1:#5E5B55">&gt;&gt;</span><span style="--0:#EF9A7A;--1:#9F4129">33</span><span style="--0:#A3A19B;--1:#5E5B55">)+</span><span style="--0:#EF9A7A;--1:#9F4129">1</span><span style="--0:#A3A19B;--1:#5E5B55">)))</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#E2B071;--1:#87500C">return</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#E2B071;--1:#87500C">int32</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">b</span><span style="--0:#A3A19B;--1:#5E5B55">)</span></div></div><div class="ec-line"><div class="code"><span style="--0:#A3A19B;--1:#5E5B55">}</span></div></div></code></pre></figure></div></div><div class="walk__steps"><div class="step" data-lines="1-2"><p><code>b</code> is the bucket the key last sat in, <code>j</code> is the next bucket it jumps to. It starts in bucket 0.</p></div><div class="step" data-lines="5"><p>The key seeds a 64-bit linear congruential generator, so the same key always produces the same random sequence.</p></div><div class="step" data-lines="6"><p>The core line. Draw <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>r</mi><mo>∈</mo><mo stretchy="false">(</mo><mn>0</mn><mo separator="true">,</mo><mn>1</mn><mo stretchy="false">]</mo></mrow><annotation encoding="application/x-tex">r \in (0, 1]</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.5782em;vertical-align:-0.0391em"></span><span class="mord mathnormal" style="margin-right:0.0278em">r</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">∈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mopen">(</span><span class="mord">0</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em"></span><span class="mord">1</span><span class="mclose">]</span></span></span></span> and set the next jump to <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false">⌊</mo><mo stretchy="false">(</mo><mi>b</mi><mo>+</mo><mn>1</mn><mo stretchy="false">)</mo><mi mathvariant="normal">/</mi><mi>r</mi><mo stretchy="false">⌋</mo></mrow><annotation encoding="application/x-tex">\lfloor (b+1)/r \rfloor</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mopen">⌊(</span><span class="mord mathnormal">b</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">1</span><span class="mclose">)</span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.0278em">r</span><span class="mclose">⌋</span></span></span></span>. Each time a bucket is added, the key moves to the new bucket with probability 1/(new bucket count). Instead of simulating each of those events, the function skips straight to the next one that moves the key.</p></div><div class="step" data-lines="3,8"><p>Once the jump passes <code>n</code>, stop and return the previous bucket. That is where the key belongs when there are <code>n</code> buckets.</p></div></div></div>
+<p>Why skipping is allowed is the whole algorithm. If the key sat in <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>b</mi></mrow><annotation encoding="application/x-tex">b</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal">b</span></span></span></span> with <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>b</mi><mo>+</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">b+1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7778em;vertical-align:-0.0833em"></span><span class="mord mathnormal">b</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">1</span></span></span></span> buckets, the probability it never moves until there are <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>i</mi></mrow><annotation encoding="application/x-tex">i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6595em"></span><span class="mord mathnormal">i</span></span></span></span> buckets is:</p>
+<span class="katex-display"><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mi>P</mi><mo stretchy="false">(</mo><mtext>no move</mtext><mo stretchy="false">)</mo><mo>=</mo><munderover><mo>∏</mo><mrow><mi>k</mi><mo>=</mo><mi>b</mi><mo>+</mo><mn>2</mn></mrow><mi>i</mi></munderover><mrow><mo fence="true">(</mo><mn>1</mn><mo>−</mo><mfrac><mn>1</mn><mi>k</mi></mfrac><mo fence="true">)</mo></mrow><mo>=</mo><mfrac><mrow><mi>b</mi><mo>+</mo><mn>1</mn></mrow><mi>i</mi></mfrac></mrow><annotation encoding="application/x-tex">P(\text{no move}) = \prod_{k=b+2}^{i} \left(1 - \frac{1}{k}\right) = \frac{b+1}{i}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.1389em">P</span><span class="mopen">(</span><span class="mord text"><span class="mord">no move</span></span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:3.1721em;vertical-align:-1.3604em"></span><span class="mop op-limits"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.8117em"><span style="top:-1.8479em;margin-left:0em"><span class="pstrut" style="height:3.05em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight" style="margin-right:0.0315em">k</span><span class="mrel mtight">=</span><span class="mord mathnormal mtight">b</span><span class="mbin mtight">+</span><span class="mord mtight">2</span></span></span></span><span style="top:-3.05em"><span class="pstrut" style="height:3.05em"></span><span><span class="mop op-symbol large-op">∏</span></span></span><span style="top:-4.3em;margin-left:0em"><span class="pstrut" style="height:3.05em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight">i</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:1.3604em"><span></span></span></span></span></span><span class="mspace" style="margin-right:0.1667em"></span><span class="minner"><span class="mopen delimcenter" style="top:0em"><span class="delimsizing size3">(</span></span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.3214em"><span style="top:-2.314em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span><span style="top:-3.23em"><span class="pstrut" style="height:3em"></span><span class="frac-line" style="border-bottom-width:0.04em"></span></span><span style="top:-3.677em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mclose delimcenter" style="top:0em"><span class="delimsizing size3">)</span></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:2.0574em;vertical-align:-0.686em"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.3714em"><span style="top:-2.314em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord mathnormal">i</span></span></span><span style="top:-3.23em"><span class="pstrut" style="height:3em"></span><span class="frac-line" style="border-bottom-width:0.04em"></span></span><span style="top:-3.677em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord mathnormal">b</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mord">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span></span></span></span></span>
+<p>The product telescopes to <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false">(</mo><mi>b</mi><mo>+</mo><mn>1</mn><mo stretchy="false">)</mo><mi mathvariant="normal">/</mi><mi>i</mi></mrow><annotation encoding="application/x-tex">(b+1)/i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mopen">(</span><span class="mord mathnormal">b</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">1</span><span class="mclose">)</span><span class="mord">/</span><span class="mord mathnormal">i</span></span></span></span>. So draw one uniform <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>r</mi></mrow><annotation encoding="application/x-tex">r</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4306em"></span><span class="mord mathnormal" style="margin-right:0.0278em">r</span></span></span></span> and jump straight to the largest <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>i</mi></mrow><annotation encoding="application/x-tex">i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6595em"></span><span class="mord mathnormal">i</span></span></span></span> with <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>r</mi><mo>≤</mo><mo stretchy="false">(</mo><mi>b</mi><mo>+</mo><mn>1</mn><mo stretchy="false">)</mo><mi mathvariant="normal">/</mi><mi>i</mi></mrow><annotation encoding="application/x-tex">r \le (b+1)/i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7719em;vertical-align:-0.136em"></span><span class="mord mathnormal" style="margin-right:0.0278em">r</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≤</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mopen">(</span><span class="mord mathnormal">b</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">1</span><span class="mclose">)</span><span class="mord">/</span><span class="mord mathnormal">i</span></span></span></span>, which is <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false">⌊</mo><mo stretchy="false">(</mo><mi>b</mi><mo>+</mo><mn>1</mn><mo stretchy="false">)</mo><mi mathvariant="normal">/</mi><mi>r</mi><mo stretchy="false">⌋</mo></mrow><annotation encoding="application/x-tex">\lfloor (b+1)/r \rfloor</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mopen">⌊(</span><span class="mord mathnormal">b</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">1</span><span class="mclose">)</span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.0278em">r</span><span class="mclose">⌋</span></span></span></span>.</p>
+<h2 id="en-how-many-iterations">How many iterations</h2>
+<p>With <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi></mrow><annotation encoding="application/x-tex">k</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span></span> buckets the move probability is <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1</mn><mi mathvariant="normal">/</mi><mi>k</mi></mrow><annotation encoding="application/x-tex">1/k</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord">1/</span><span class="mord mathnormal" style="margin-right:0.0315em">k</span></span></span></span>, so the expected number of jumps is the harmonic number <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>H</mi><mi>n</mi></msub><mo>≈</mo><mi>ln</mi><mo>⁡</mo><mi>n</mi><mo>+</mo><mi>γ</mi></mrow><annotation encoding="application/x-tex">H_n \approx \ln n + \gamma</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8333em;vertical-align:-0.15em"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0813em">H</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.1514em"><span style="top:-2.55em;margin-left:-0.0813em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight">n</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.7778em;vertical-align:-0.0833em"></span><span class="mop">ln</span><span class="mspace" style="margin-right:0.1667em"></span><span class="mord mathnormal">n</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:0.625em;vertical-align:-0.1944em"></span><span class="mord mathnormal" style="margin-right:0.0556em">γ</span></span></span></span>. The measurements agree.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th style="text-align:right">Buckets</th><th style="text-align:right">Mean iterations</th><th style="text-align:right">ln n + γ</th></tr></thead><tbody><tr><td style="text-align:right">10</td><td style="text-align:right">2.93</td><td style="text-align:right">2.88</td></tr><tr><td style="text-align:right">1,000</td><td style="text-align:right">7.49</td><td style="text-align:right">7.48</td></tr><tr><td style="text-align:right">100,000</td><td style="text-align:right">12.09</td><td style="text-align:right">12.09</td></tr></tbody></table>
+<p>Ten thousand times more buckets costs a bit over four times more iterations.</p>
+<h2 id="en-how-evenly-it-spreads">How evenly it spreads</h2>
+<p>One million keys into 10 buckets, looking at the lightest and heaviest bucket. Ideal is 100,000.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Scheme</th><th style="text-align:right">Min</th><th style="text-align:right">Max</th><th style="text-align:right">Max/mean</th></tr></thead><tbody><tr><td>Jump Consistent Hash</td><td style="text-align:right">99,715</td><td style="text-align:right">100,456</td><td style="text-align:right">1.005</td></tr><tr><td>Hash ring, 1 virtual node</td><td style="text-align:right">10,700</td><td style="text-align:right">319,124</td><td style="text-align:right">3.19</td></tr><tr><td>Hash ring, 10 virtual nodes</td><td style="text-align:right">36,440</td><td style="text-align:right">166,584</td><td style="text-align:right">1.67</td></tr><tr><td>Hash ring, 100 virtual nodes</td><td style="text-align:right">91,164</td><td style="text-align:right">112,757</td><td style="text-align:right">1.13</td></tr><tr><td>Hash ring, 1,000 virtual nodes</td><td style="text-align:right">96,498</td><td style="text-align:right">103,343</td><td style="text-align:right">1.03</td></tr></tbody></table>
+<figure class="diagram" data-diagram="xychart" style="--w:750px"><svg data-xychart-colors="0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 750 464" width="750" height="464" role="img" aria-label="xychart">
+
+
+<circle cx="128" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="56.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="75.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="94.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="114.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="133.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="152.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="172.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="191.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="210.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="230.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="249.5" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="268.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="288.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="307.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="326.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="346" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="365.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="384.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="148" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="168" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="188" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="208" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="228" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="248" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="268" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="288" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="308" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="328" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="348" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="368" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="388" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="408" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="448" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="468" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="488" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="508" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="528" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="548" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="568" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="588" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="608" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="628" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="648" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="668" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="688" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="708" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="404" r="1.5" class="xychart-grid"></circle>
+<path d="M168,73.5 Q168,65.5 176,65.5 L200,65.5 Q208,65.5 208,73.5 L208,396 Q208,404 200,404 L176,404 Q168,404 168,396 Z" class="xychart-bar xychart-color-0" data-value="3.19" data-label="&quot;ring v1&quot;"></path>
+<path d="M288,308.5 Q288,300.5 296,300.5 L320,300.5 Q328,300.5 328,308.5 L328,396 Q328,404 320,404 L296,404 Q288,404 288,396 Z" class="xychart-bar xychart-color-0" data-value="1.67" data-label="&quot;ring v10&quot;"></path>
+<path d="M408,391.9 Q408,383.9 416,383.9 L440,383.9 Q448,383.9 448,391.9 L448,396 Q448,404 440,404 L416,404 Q408,404 408,396 Z" class="xychart-bar xychart-color-0" data-value="1.13" data-label="&quot;ring v100&quot;"></path>
+<path d="M528,401.7 Q528,399.4 530.3,399.4 L565.7,399.4 Q568,399.4 568,401.7 L568,401.7 Q568,404 565.7,404 L530.3,404 Q528,404 528,401.7 Z" class="xychart-bar xychart-color-0" data-value="1.03" data-label="&quot;ring v1000&quot;"></path>
+<path d="M648,403.6 Q648,403.2 648.4,403.2 L687.6,403.2 Q688,403.2 688,403.6 L688,403.6 Q688,404 687.6,404 L648.4,404 Q648,404 648,403.6 Z" class="xychart-bar xychart-color-0" data-value="1.005" data-label="&quot;Jump&quot;"></path>
+<text x="188" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;ring v1&quot;</text>
+<text x="308" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;ring v10&quot;</text>
+<text x="428" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;ring v100&quot;</text>
+<text x="548" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;ring v1000&quot;</text>
+<text x="668" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;Jump&quot;</text>
+<text x="110" y="404" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">1</text>
+<text x="110" y="326.72727272727275" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">1.5</text>
+<text x="110" y="249.45454545454547" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">2</text>
+<text x="110" y="172.1818181818182" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">2.5</text>
+<text x="110" y="94.90909090909093" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">3</text>
+<text x="26" y="234" text-anchor="middle" transform="rotate(-90,26,234)" font-size="15" font-weight="500" dy="0.35em" class="xychart-axis-title">x</text>
+<text x="375" y="40" text-anchor="middle" font-size="18" font-weight="600" dy="0.35em" class="xychart-title">Heaviest bucket / mean</text>
+</svg></figure>
+<p>For a ring to match Jump it needs more than 1,000 virtual nodes per node. With 1,000 buckets, that is a million points on the ring. Jump stores nothing.</p>
+<h2 id="en-lookup-cost">Lookup cost</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Scheme</th><th style="text-align:right">Buckets</th><th style="text-align:right">ns/op</th><th>State held</th></tr></thead><tbody><tr><td>Jump</td><td style="text-align:right">10</td><td style="text-align:right">18.1</td><td>none</td></tr><tr><td>Jump</td><td style="text-align:right">1,000</td><td style="text-align:right">47.6</td><td>none</td></tr><tr><td>Jump</td><td style="text-align:right">100,000</td><td style="text-align:right">70.5</td><td>none</td></tr><tr><td>Ring (100 virtual nodes)</td><td style="text-align:right">10</td><td style="text-align:right">19.2</td><td>1,000 entries</td></tr><tr><td>Ring (100 virtual nodes)</td><td style="text-align:right">1,000</td><td style="text-align:right">51.7</td><td>100,000 entries</td></tr></tbody></table>
+<p>The ring binary-searches a sorted array, <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>O</mi><mo stretchy="false">(</mo><mi>log</mi><mo>⁡</mo><mi>n</mi><mi>v</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">O(\log nv)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.0278em">O</span><span class="mopen">(</span><span class="mop">lo<span style="margin-right:0.0139em">g</span></span><span class="mspace" style="margin-right:0.1667em"></span><span class="mord mathnormal">n</span><span class="mord mathnormal" style="margin-right:0.0359em">v</span><span class="mclose">)</span></span></span></span>; Jump is <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>O</mi><mo stretchy="false">(</mo><mi>log</mi><mo>⁡</mo><mi>n</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">O(\log n)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal" style="margin-right:0.0278em">O</span><span class="mopen">(</span><span class="mop">lo<span style="margin-right:0.0139em">g</span></span><span class="mspace" style="margin-right:0.1667em"></span><span class="mord mathnormal">n</span><span class="mclose">)</span></span></span></span>. Time is similar, but Jump uses no memory and has no structure to rebuild when the node list changes.</p>
+<h2 id="en-what-you-give-up">What you give up</h2>
+<p>Jump does not name buckets. It returns a number from <code>0</code> to <code>n-1</code>, and buckets can only be added or removed at the end. If node 3 in the middle dies and you just drop it, every number after it shifts and you are back to mod-N.</p>
+<p>So it fits particular places:</p>
+<ul>
+<li>Stores with fixed shard numbers, where a replica takes over a dead shard’s number.</li>
+<li>Systems that keep a separate number-to-address mapping and only update that mapping when nodes change.</li>
+<li>For cache clusters where nodes come and go freely, a hash ring or rendezvous hashing fits better.</li>
+</ul>
+<p>It has no weights either. You can fake them by giving a big node several numbers, but then you are managing a number table and most of the appeal is gone.</p>
+<h2 id="en-summary">Summary</h2>
+<p>It moves as few keys as a hash ring, spreads more evenly than a ring with 1,000 virtual nodes, and uses zero memory. The price is a single constraint: buckets are only added or removed at the end. If your shard numbers are fixed, these five lines are worth considering before building a ring.</p>
+<section data-footnotes class="footnotes"><h2 class="sr-only" id="en-footnote-label">Notes</h2>
+<ol>
+<li id="en-user-content-fn-1">
+<p>John Lamping, Eric Veach, “A Fast, Minimal Memory, Consistent Hash Algorithm”, arXiv:1406.2294 (2014). The constant 2862933555777941757 is taken from the paper’s code. <a href="#en-user-content-fnref-1" data-footnote-backref aria-label="Back to reference 1" class="data-footnote-backref">↩</a></p>
+</li>
+</ol>
+</section></div><footer class="post__end"><p class="post__source">Source markdown: <a href="/blog/jump-consistent-hash/en.md">jump-consistent-hash/en.md</a></p><nav class="post__nav" aria-label="More posts"><a class="newer" href="/blog/cuckoo-vs-bloom/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 745.4860000000001 187.95000000000002">
+
+
+<polyline class="edge" data-from="X" data-to="H" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="100,97.05 126.892,97.05 126.892,64.60000000000001 153.784,64.60000000000001" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="X" data-to="F" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="100,97.05 126.892,97.05 126.892,129.5 153.784,129.5" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="H" data-to="I2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="257.978,64.60000000000001 284.87,64.60000000000001 284.87,123.35000000000001 424.64500000000004,123.35000000000001" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="F" data-to="I2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="293.546,129.5 424.64500000000004,129.5" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="H" data-to="B1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="257.978,64.60000000000001 284.87,64.60000000000001 284.87,58.45 311.762,58.45" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="I2" data-to="B2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="573.299,123.35000000000001 609.299,123.35000000000001 609.299,97.05000000000001 621.299,97.05000000000001" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="B1" data-to="B2" data-style="dotted" data-arrow-start="false" data-arrow-end="true" data-label="가득 차면 하나를 쫓아냄" points="391.503,58.45 609.299,58.45 609.299,84.75 621.299,84.75" fill="none" stroke="var(--_line)" stroke-width="1" stroke-dasharray="4 4" />
+
+<g class="node" data-id="X" data-label="x" data-shape="rectangle">
+  <rect x="40" y="78.6" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node is-hub" data-id="H" data-label="hash(x) → i1" data-shape="rectangle">
+  <rect x="153.784" y="46.150000000000006" width="104.194" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="F" data-label="fingerprint(x) → fp" data-shape="rectangle">
+  <rect x="153.784" y="111.05000000000001" width="139.762" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="I2" data-label="i2 = i1 XOR hash(fp)" data-shape="rectangle">
+  <rect x="424.64500000000004" y="104.9" width="148.654" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="B1" data-label="버킷 i1" data-shape="rectangle">
+  <rect x="311.762" y="40" width="79.74100000000001" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="B2" data-label="버킷 i2" data-shape="rectangle">
+  <rect x="621.299" y="72.45" width="84.18700000000001" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>Newer →</small><span class="post__nav-title">Is a cuckoo filter really better than a Bloom filter?</span></a></nav></footer></article></main><div class="status"><a class="status__file" data-href="/blog/jump-consistent-hash/{lang}.md" href="/blog/jump-consistent-hash/ko.md">ko.mdx</a><span class="status__sec"></span><span class="status__left"></span><button class="status__toc" type="button"><span lang="ko">목차</span><span lang="en">Contents</span></button></div><dialog class="sheet" id="toc-sheet" aria-label="Contents"><button class="sheet__close" type="button" data-close>esc</button><div class="sheet__body"></div></dialog><script type="module" src="/blog/assets/Reader.astro_astro_type_script_index_0_lang.CRI3uLjw.js"></script><dialog class="sheet" id="keys" aria-labelledby="keys-title"><button class="sheet__close" type="button" data-close>esc</button><p class="toc__label" id="keys-title"><span lang="ko">단축키</span><span lang="en">Keyboard</span></p><dl class="keys"><dt><kbd>/</kbd> <kbd>⌘K</kbd></dt><dd><span lang="ko">글 검색</span><span lang="en">Search posts</span></dd><dt><kbd>t</kbd></dt><dd><span lang="ko">밝은/어두운 테마</span><span lang="en">Light or dark theme</span></dd><dt><kbd>l</kbd></dt><dd><span lang="ko">한국어/영어, 읽던 자리 유지</span><span lang="en">Korean or English, keeping your place</span></dd><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd><span lang="ko">이전/다음 절</span><span lang="en">Previous or next section</span></dd><dt><kbd>?</kbd></dt><dd><span lang="ko">이 목록</span><span lang="en">This list</span></dd></dl></dialog><dialog class="search" id="search" aria-label="Search"><label class="search__line"><span class="search__caret" aria-hidden="true">&gt;</span><input type="search" role="combobox" aria-expanded="true" aria-controls="search-results" aria-autocomplete="list" autocomplete="off" spellcheck="false" enterkeyhint="go"></label><p class="search__status" aria-live="polite"><span class="tool__name" data-call-name></span><span class="tool__arg" data-call-arg></span><span class="search__count" data-call-count></span></p><ul class="search__results" id="search-results" role="listbox" aria-label="Results"></ul><p class="search__keys"><span><kbd>↑</kbd><kbd>↓</kbd> <span lang="ko">이동</span><span lang="en">move</span></span><span><kbd>↵</kbd> <span lang="ko">열기</span><span lang="en">open</span></span><span><kbd>esc</kbd> <span lang="ko">닫기</span><span lang="en">close</span></span></p></dialog><script type="module" src="/blog/assets/Base.astro_astro_type_script_index_0_lang.BxD9tEXi.js"></script></body></html>

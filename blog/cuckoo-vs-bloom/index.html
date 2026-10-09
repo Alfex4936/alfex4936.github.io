@@ -1,0 +1,1872 @@
+<!DOCTYPE html><html lang="ko" data-lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title data-ko="Cuckoo filter는 정말 Bloom filter보다 나은가 · seok" data-en="Is a cuckoo filter really better than a Bloom filter? · seok">Cuckoo filter는 정말 Bloom filter보다 나은가 · seok</title><meta name="description" content="Cuckoo filter 논문의 부제는 Practically Better Than Bloom입니다. 버킷 크기별 적재율, 같은 공간에서의 오탐률, 삭제가 실제로 어떻게 동작하는지 직접 구현해 재 보니 '항상'은 아니었습니다."><meta property="og:title" content="Cuckoo filter는 정말 Bloom filter보다 나은가 · seok"><meta property="og:description" content="Cuckoo filter 논문의 부제는 Practically Better Than Bloom입니다. 버킷 크기별 적재율, 같은 공간에서의 오탐률, 삭제가 실제로 어떻게 동작하는지 직접 구현해 재 보니 '항상'은 아니었습니다."><meta property="og:url" content="https://alfex4936.github.io/blog/cuckoo-vs-bloom/"><meta property="og:type" content="article"><meta property="og:locale" content="ko_KR"><meta property="og:locale:alternate" content="en_US"><meta property="article:published_time" content="2023-06-22T00:00:00.000Z"><meta property="og:image" content="https://alfex4936.github.io/blog/og/cuckoo-vs-bloom.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="theme-color" content="#141413" media="(prefers-color-scheme: dark)"><meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)"><link rel="canonical" href="https://alfex4936.github.io/blog/cuckoo-vs-bloom/"><link rel="icon" href="/favicon.ico"><link rel="preload" href="/blog/fonts/title.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="/blog/fonts/body.woff2" as="font" type="font/woff2" crossorigin><link rel="alternate" type="application/rss+xml" title="seok · blog (한국어)" href="/blog/ko/rss.xml"><link rel="alternate" type="application/rss+xml" title="seok · blog (English)" href="/blog/en/rss.xml"><script>
+      // Same keys as the landing page, so the toggles carry across alfex4936.github.io.
+      ;(() => {
+        const q = new URLSearchParams(location.search).get('lang')
+        const stored = localStorage.getItem('portfolio:lang')
+        const lang = q === 'ko' || q === 'en' ? q : stored === 'ko' || stored === 'en' ? stored : navigator.language.startsWith('ko') ? 'ko' : 'en'
+        const root = document.documentElement
+        root.dataset.lang = root.lang = lang
+        const theme = localStorage.getItem('portfolio:theme')
+        if (theme === 'dark' || theme === 'light') root.dataset.theme = theme
+        const t = document.querySelector('title')
+        t.textContent = t.dataset[lang]
+      })()
+    </script><link rel="stylesheet" href="/blog/assets/Step.FmcF6wk0.css"><link rel="stylesheet" href="/blog/assets/all.DMtbdYXv.css"></head><body><a class="skip" href="#main"><span lang="ko">본문으로</span><span lang="en">Skip to content</span></a><header class="bar"><nav class="bar__path" aria-label="Path"><a href="/">seok</a><span class="sep">·</span><a href="/blog/">~/blog</a><span class="sep">/</span><span class="here">cuckoo-vs-bloom</span></nav><nav class="bar__ctl" aria-label="Search, language and theme"><button type="button" class="bar__search" data-search aria-keyshortcuts="/ Control+K Meta+K"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.5"></circle><path d="M10.4 10.4 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg><span class="bar__search-label"><span lang="ko">검색</span><span lang="en">Search</span></span><kbd>/</kbd></button><span class="bar__sep" aria-hidden="true">·</span><button type="button" data-lang-set="ko" aria-pressed="false">ko</button><button type="button" data-lang-set="en" aria-pressed="false">en</button><span class="bar__sep" aria-hidden="true">·</span><button type="button" data-theme-set="dark" aria-pressed="false">dark</button><button type="button" data-theme-set="light" aria-pressed="false">light</button></nav></header><main id="main"><article class="post" lang="ko" data-minutes="6"><header class="post__head"><p class="post__cwd"><a href="/blog/">~/blog</a>/cuckoo-vs-bloom/ko.mdx</p><h1 class="post__title" style="view-transition-name: t-cuckoo-vs-bloom">Cuckoo filter는 정말 Bloom filter보다 나은가</h1><p class="post__dek">Cuckoo filter 논문의 부제는 Practically Better Than Bloom입니다. 버킷 크기별 적재율, 같은 공간에서의 오탐률, 삭제가 실제로 어떻게 동작하는지 직접 구현해 재 보니 &#39;항상&#39;은 아니었습니다.</p><p class="post__meta"><time datetime="2023-06-22">2023-06-22</time><span>6분</span><span><a href="/blog/?tag=algorithm">algorithm</a> · <a href="/blog/?tag=data-structures">data-structures</a></span></p></header><nav class="toc" aria-label="목차"><p class="toc__label">목차</p><ol><li><a href="#ko-지문-하나에-자리-두-개"><span class="toc__n">§1</span><span>지문 하나에 자리 두 개</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-버킷-크기와-적재율"><span class="toc__n">§2</span><span>버킷 크기와 적재율</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-같은-공간에서-오탐률"><span class="toc__n">§3</span><span>같은 공간에서 오탐률</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-삭제는-얼마나-안전한가"><span class="toc__n">§4</span><span>삭제는 얼마나 안전한가</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-언제-무엇을-쓰나"><span class="toc__n">§5</span><span>언제 무엇을 쓰나</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-정리"><span class="toc__n">§6</span><span>정리</span><span class="toc__len" aria-hidden="true"></span></a></li></ol></nav><div class="prose"><p>Bloom filter는 원소를 지울 수 없습니다. 비트 하나가 여러 원소의 몫이라 하나를 지우면 다른 원소까지 사라집니다. 2014년 Fan 등이 발표한 Cuckoo filter는 원소 대신 지문(fingerprint)을 cuckoo 해시 테이블에 넣어 삭제를 지원하고, 같은 공간에서 오탐률도 더 낮다고 주장합니다.<sup><a href="#ko-user-content-fn-1" id="ko-user-content-fnref-1" data-footnote-ref aria-describedby="ko-footnote-label">1</a></sup> 논문 부제가 “Practically Better Than Bloom”입니다. 두 구조를 Python으로 구현해서 이 주장이 어디까지 맞는지 확인했습니다. 해시는 blake2b, 환경은 Python 3(Apple Silicon 노트북)입니다. 아래 코드는 원소 수 집계 같은 부분을 뺀 발췌입니다. 시간이 아니라 비율만 재므로 언어는 결과에 영향이 없습니다.</p>
+<h2 id="ko-지문-하나에-자리-두-개">지문 하나에 자리 두 개</h2>
+<p>Cuckoo filter는 원소 <code>x</code>의 지문 <code>fp</code>를 두 후보 버킷 중 빈 자리가 있는 곳에 넣습니다. 둘 다 차 있으면 한쪽의 지문 하나를 쫓아내고 그 지문을 자기 다른 자리로 보냅니다. 뻐꾸기가 남의 둥지에서 알을 밀어내는 것과 같다고 해서 이 이름이 붙었습니다.</p>
+<figure class="diagram" data-diagram="flowchart" style="--w:746px"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 745.4860000000001 187.95000000000002" width="745.4860000000001" height="187.95000000000002" role="img" aria-label="x, hash(x) → i1, fingerprint(x) → fp, i2 = i1 XOR hash(fp), 버킷 i1, 버킷 i2">
+
+<defs>
+  <marker id="ko-dg0-arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+  <marker id="ko-dg0-arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+</defs>
+<polyline class="edge" data-from="X" data-to="H" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="100,97.05 126.892,97.05 126.892,64.60000000000001 153.784,64.60000000000001" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="X" data-to="F" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="100,97.05 126.892,97.05 126.892,129.5 153.784,129.5" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="H" data-to="I2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="257.978,64.60000000000001 284.87,64.60000000000001 284.87,123.35000000000001 424.64500000000004,123.35000000000001" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="F" data-to="I2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="293.546,129.5 424.64500000000004,129.5" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="H" data-to="B1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="257.978,64.60000000000001 284.87,64.60000000000001 284.87,58.45 311.762,58.45" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="I2" data-to="B2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="573.299,123.35000000000001 609.299,123.35000000000001 609.299,97.05000000000001 621.299,97.05000000000001" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="B1" data-to="B2" data-style="dotted" data-arrow-start="false" data-arrow-end="true" data-label="가득 차면 하나를 쫓아냄" points="391.503,58.45 609.299,58.45 609.299,84.75 621.299,84.75" fill="none" stroke="var(--_line)" stroke-width="1" stroke-dasharray="4 4" marker-end="url(#ko-dg0-arrowhead)"></polyline>
+<g class="edge-label" data-from="B1" data-to="B2" data-label="가득 차면 하나를 쫓아냄">
+  <rect x="435.503" y="42.45" width="141.79600000000005" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1"></rect>
+  <text x="506.401" y="57.6" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">가득 차면 하나를 쫓아냄</text>
+</g>
+<g class="node" data-id="X" data-label="x" data-shape="rectangle">
+  <rect x="40" y="78.6" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="70" y="97.05" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">x</text>
+</g>
+<g class="node" data-id="H" data-label="hash(x) → i1" data-shape="rectangle">
+  <rect x="153.784" y="46.150000000000006" width="104.194" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="205.881" y="64.60000000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">hash(x) → i1</text>
+</g>
+<g class="node" data-id="F" data-label="fingerprint(x) → fp" data-shape="rectangle">
+  <rect x="153.784" y="111.05000000000001" width="139.762" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="223.665" y="129.5" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">fingerprint(x) → fp</text>
+</g>
+<g class="node" data-id="I2" data-label="i2 = i1 XOR hash(fp)" data-shape="rectangle">
+  <rect x="424.64500000000004" y="104.9" width="148.654" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="498.97200000000004" y="123.35000000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">i2 = i1 XOR hash(fp)</text>
+</g>
+<g class="node" data-id="B1" data-label="버킷 i1" data-shape="rectangle">
+  <rect x="311.762" y="40" width="79.74100000000001" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="351.6325" y="58.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">버킷 i1</text>
+</g>
+<g class="node" data-id="B2" data-label="버킷 i2" data-shape="rectangle">
+  <rect x="621.299" y="72.45" width="84.18700000000001" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="663.3924999999999" y="90.9" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">버킷 i2</text>
+</g>
+</svg></figure>
+<p>까다로운 점은 쫓겨난 지문의 다른 자리를 원래 원소 없이 알아내야 한다는 것입니다. 테이블에는 지문만 있으니까요. 논문의 해법이 partial-key cuckoo hashing입니다.</p>
+<div class="walk"><div class="walk__fig"><div class="expressive-code"><link rel="stylesheet" href="/blog/assets/ec.vx73c.css"/><script type="module" src="/blog/assets/ec.g1fg5.js"></script><figure class="frame has-title"><figcaption class="header"><span class="title">cuckoo.py</span></figcaption><pre data-language="python"><code><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">def</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">_alt</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">s</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> i</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> fp</span><span style="--0:#A3A19B;--1:#5E5B55">):</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#E2B071;--1:#87500C">return</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">i </span><span style="--0:#A3A19B;--1:#5E5B55">^</span><span style="--0:#E6E3D9;--1:#2B2A26"> h64</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">fp</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">99</span><span style="--0:#A3A19B;--1:#5E5B55">))</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">%</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">nb</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">def</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">add</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">s</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> x</span><span style="--0:#A3A19B;--1:#5E5B55">):</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">    </span></span><span style="--0:#E6E3D9;--1:#2B2A26">fp</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> i1 </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">_fp</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">x</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26">; i2 </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">_alt</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">i1</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> fp</span><span style="--0:#A3A19B;--1:#5E5B55">)</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#E2B071;--1:#87500C">in</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">i1</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> i2</span><span style="--0:#A3A19B;--1:#5E5B55">):</span></div></div><div class="ec-line"><div class="code"><span class="indent">        </span><span style="--0:#E2B071;--1:#87500C">if</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">len</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">t</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">])</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&lt;</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">bs</span><span style="--0:#A3A19B;--1:#5E5B55">:</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">            </span></span><span style="--0:#E6E3D9;--1:#2B2A26">s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">t</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">].</span><span style="--0:#E6E3D9;--1:#2B2A26">append</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">fp</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26">; </span><span style="--0:#E2B071;--1:#87500C">return</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">True</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">    </span></span><span style="--0:#E6E3D9;--1:#2B2A26">i </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">rng</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">choice</span><span style="--0:#A3A19B;--1:#5E5B55">((</span><span style="--0:#E6E3D9;--1:#2B2A26">i1</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> i2</span><span style="--0:#A3A19B;--1:#5E5B55">))</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> _ </span><span style="--0:#E2B071;--1:#87500C">in</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">range</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">mk</span><span style="--0:#A3A19B;--1:#5E5B55">):</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">        </span></span><span style="--0:#E6E3D9;--1:#2B2A26">j </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">rng</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">randrange</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#F3E2C4;--1:#5A4521">len</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">t</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">]))</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">        </span></span><span style="--0:#E6E3D9;--1:#2B2A26">fp</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">t</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">][</span><span style="--0:#E6E3D9;--1:#2B2A26">j</span><span style="--0:#A3A19B;--1:#5E5B55">]</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">t</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">][</span><span style="--0:#E6E3D9;--1:#2B2A26">j</span><span style="--0:#A3A19B;--1:#5E5B55">],</span><span style="--0:#E6E3D9;--1:#2B2A26"> fp</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">        </span></span><span style="--0:#E6E3D9;--1:#2B2A26">i </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">_alt</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> fp</span><span style="--0:#A3A19B;--1:#5E5B55">)</span></div></div><div class="ec-line"><div class="code"><span class="indent">        </span><span style="--0:#E2B071;--1:#87500C">if</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">len</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">t</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">])</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&lt;</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">bs</span><span style="--0:#A3A19B;--1:#5E5B55">:</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">            </span></span><span style="--0:#E6E3D9;--1:#2B2A26">s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">t</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">].</span><span style="--0:#E6E3D9;--1:#2B2A26">append</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">fp</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26">; </span><span style="--0:#E2B071;--1:#87500C">return</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">True</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#E2B071;--1:#87500C">return</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">False</span></div></div></code></pre></figure></div></div><div class="walk__steps"><div class="step" data-lines="1-2"><p>다른 자리는 현재 자리와 지문의 해시를 XOR해서 구합니다. XOR은 자기 역원이므로 <code>i1</code>에서 <code>i2</code>를, <code>i2</code>에서 <code>i1</code>을 같은 식으로 얻습니다. 원래 키가 없어도 됩니다. 버킷 수가 2의 거듭제곱이어야 <code>% nb</code>가 이 성질을 깨지 않습니다.</p></div><div class="step" data-lines="5-8"><p>두 후보 중 빈 자리가 있으면 바로 넣습니다. 테이블이 비어 있을 때는 대부분 여기서 끝납니다.</p></div><div class="step" data-lines="9-15"><p>둘 다 차 있으면 무작위로 지문 하나를 꺼내고 내 지문을 그 자리에 넣습니다. 꺼낸 지문은 <code>_alt</code>로 자기 다른 자리를 찾아갑니다. 거기도 차 있으면 또 쫓아냅니다.</p></div><div class="step" data-lines="16"><p>정해진 횟수(여기서는 500번) 안에 빈 자리를 못 찾으면 삽입이 실패합니다. 이때가 필터가 “가득 찬” 순간입니다.</p></div></div></div>
+<h2 id="ko-버킷-크기와-적재율">버킷 크기와 적재율</h2>
+<p>버킷 하나에 지문을 몇 개 담느냐가 공간 효율을 정합니다. 버킷 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mn>2</mn><mn>14</mn></msup></mrow><annotation encoding="application/x-tex">2^{14}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8141em"></span><span class="mord"><span class="mord">2</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">14</span></span></span></span></span></span></span></span></span></span></span></span>개, 16비트 지문으로 첫 삽입 실패가 날 때까지 넣고 적재율을 봤습니다. 시드를 바꿔 세 번 반복했습니다.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th style="text-align:right">버킷당 슬롯</th><th style="text-align:right">시도 1</th><th style="text-align:right">시도 2</th><th style="text-align:right">시도 3</th></tr></thead><tbody><tr><td style="text-align:right">1</td><td style="text-align:right">52.3%</td><td style="text-align:right">53.2%</td><td style="text-align:right">48.9%</td></tr><tr><td style="text-align:right">2</td><td style="text-align:right">87.2%</td><td style="text-align:right">87.0%</td><td style="text-align:right">87.6%</td></tr><tr><td style="text-align:right">4</td><td style="text-align:right">96.6%</td><td style="text-align:right">96.3%</td><td style="text-align:right">96.6%</td></tr><tr><td style="text-align:right">8</td><td style="text-align:right">99.1%</td><td style="text-align:right">98.7%</td><td style="text-align:right">99.1%</td></tr></tbody></table>
+<figure class="diagram" data-diagram="xychart" style="--w:750px"><svg data-xychart-colors="0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 750 464" width="750" height="464" role="img" aria-label="xychart">
+
+
+<circle cx="128" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="404" r="1.5" class="xychart-grid"></circle>
+<path d="M183,346.8 Q183,338.8 191,338.8 L215,338.8 Q223,338.8 223,346.8 L223,396 Q223,404 215,404 L191,404 Q183,404 183,396 Z" class="xychart-bar xychart-color-0" data-value="51.5" data-label="&quot;b=1&quot;"></path>
+<path d="M333,144 Q333,136 341,136 L365,136 Q373,136 373,144 L373,396 Q373,404 365,404 L341,404 Q333,404 333,396 Z" class="xychart-bar xychart-color-0" data-value="87.3" data-label="&quot;b=2&quot;"></path>
+<path d="M483,91.8 Q483,83.8 491,83.8 L515,83.8 Q523,83.8 523,91.8 L523,396 Q523,404 515,404 L491,404 Q483,404 483,396 Z" class="xychart-bar xychart-color-0" data-value="96.5" data-label="&quot;b=4&quot;"></path>
+<path d="M633,77.7 Q633,69.7 641,69.7 L665,69.7 Q673,69.7 673,77.7 L673,396 Q673,404 665,404 L641,404 Q633,404 633,396 Z" class="xychart-bar xychart-color-0" data-value="99" data-label="&quot;b=8&quot;"></path>
+<text x="203" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;b=1&quot;</text>
+<text x="353" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;b=2&quot;</text>
+<text x="503" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;b=4&quot;</text>
+<text x="653" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;b=8&quot;</text>
+<text x="110" y="404" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">40</text>
+<text x="110" y="347.3333333333333" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">50</text>
+<text x="110" y="290.6666666666667" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">60</text>
+<text x="110" y="234" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">70</text>
+<text x="110" y="177.33333333333334" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">80</text>
+<text x="110" y="120.66666666666663" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">90</text>
+<text x="110" y="64" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">100</text>
+<text x="26" y="234" text-anchor="middle" transform="rotate(-90,26,234)" font-size="15" font-weight="500" dy="0.35em" class="xychart-axis-title">%</text>
+<text x="375" y="40" text-anchor="middle" font-size="18" font-weight="600" dy="0.35em" class="xychart-title">첫 실패 시점 적재율 (%)</text>
+</svg></figure>
+<p>슬롯이 하나면 절반을 겨우 채웁니다. 넷이면 96%까지 갑니다. 논문이 기본값으로 버킷당 4슬롯을 권하는 이유입니다. 8로 늘리면 더 채울 수 있지만 조회 때 비교할 지문이 두 배가 되고, 그만큼 오탐도 늘어납니다.</p>
+<h2 id="ko-같은-공간에서-오탐률">같은 공간에서 오탐률</h2>
+<p>공정하게 비교하려면 원소당 비트 수를 맞춰야 합니다. Cuckoo filter를 슬롯 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mn>2</mn><mn>16</mn></msup></mrow><annotation encoding="application/x-tex">2^{16}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8141em"></span><span class="mord"><span class="mord">2</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">16</span></span></span></span></span></span></span></span></span></span></span></span>개, 버킷당 4슬롯으로 만들어 95%까지 채우고, 같은 원소 수에 같은 총 비트를 Bloom filter에 줬습니다. Bloom의 해시 함수 개수 <code>k</code>는 최적값을 썼습니다. 넣지 않은 원소 40만 개로 조회했습니다.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th style="text-align:right">지문 비트</th><th style="text-align:right">원소당 비트</th><th style="text-align:right">Cuckoo 오탐률</th><th style="text-align:right">Cuckoo 상한 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2</mn><mi>b</mi><mi mathvariant="normal">/</mi><msup><mn>2</mn><mi>f</mi></msup></mrow><annotation encoding="application/x-tex">2b/2^f</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0991em;vertical-align:-0.25em"></span><span class="mord">2</span><span class="mord mathnormal">b</span><span class="mord">/</span><span class="mord"><span class="mord">2</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8491em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight" style="margin-right:0.1076em">f</span></span></span></span></span></span></span></span></span></span></span></th><th style="text-align:right">Bloom <code>k</code></th><th style="text-align:right">Bloom 오탐률</th><th style="text-align:right">Bloom 이론값</th></tr></thead><tbody><tr><td style="text-align:right">8</td><td style="text-align:right">8.42</td><td style="text-align:right">2.98%</td><td style="text-align:right">3.13%</td><td style="text-align:right">6</td><td style="text-align:right"><strong>1.78%</strong></td><td style="text-align:right">1.75%</td></tr><tr><td style="text-align:right">12</td><td style="text-align:right">12.63</td><td style="text-align:right"><strong>0.182%</strong></td><td style="text-align:right">0.195%</td><td style="text-align:right">9</td><td style="text-align:right">0.219%</td><td style="text-align:right">0.232%</td></tr><tr><td style="text-align:right">16</td><td style="text-align:right">16.84</td><td style="text-align:right"><strong>0.014%</strong></td><td style="text-align:right">0.012%</td><td style="text-align:right">12</td><td style="text-align:right">0.028%</td><td style="text-align:right">0.031%</td></tr></tbody></table>
+<p>원소당 8비트 남짓에서는 Bloom이 이깁니다. 12비트부터 Cuckoo가 앞서고, 16비트에서는 오탐률이 절반입니다.</p>
+<p>이유는 식에 있습니다. Cuckoo는 조회 때 버킷 두 개, 지문 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2</mn><mi>b</mi><mo>=</mo><mn>8</mn></mrow><annotation encoding="application/x-tex">2b = 8</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord">2</span><span class="mord mathnormal">b</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">8</span></span></span></span>개와 비교하므로 오탐률이 대략 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2</mn><mi>b</mi><mi mathvariant="normal">/</mi><msup><mn>2</mn><mi>f</mi></msup></mrow><annotation encoding="application/x-tex">2b/2^f</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0991em;vertical-align:-0.25em"></span><span class="mord">2</span><span class="mord mathnormal">b</span><span class="mord">/</span><span class="mord"><span class="mord">2</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8491em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight" style="margin-right:0.1076em">f</span></span></span></span></span></span></span></span></span></span></span>입니다. Bloom은 최적일 때 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false">(</mo><mn>1</mn><mi mathvariant="normal">/</mi><mn>2</mn><msup><mo stretchy="false">)</mo><mi>k</mi></msup></mrow><annotation encoding="application/x-tex">(1/2)^{k}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0991em;vertical-align:-0.25em"></span><span class="mopen">(</span><span class="mord">1/2</span><span class="mclose"><span class="mclose">)</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8491em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight" style="margin-right:0.0315em">k</span></span></span></span></span></span></span></span></span></span></span></span>이고 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi><mo>≈</mo><mn>0.69</mn><mo>⋅</mo><mi>m</mi><mi mathvariant="normal">/</mi><mi>n</mi></mrow><annotation encoding="application/x-tex">k \approx 0.69 \cdot m/n</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal" style="margin-right:0.0315em">k</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">0.69</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal">m</span><span class="mord">/</span><span class="mord mathnormal">n</span></span></span></span>입니다.</p>
+<span class="katex-display"><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><msub><mi>ε</mi><mtext>cuckoo</mtext></msub><mo>≈</mo><mfrac><mrow><mn>2</mn><mi>b</mi></mrow><msup><mn>2</mn><mi>f</mi></msup></mfrac><mo separator="true">,</mo><mspace width="2em"></mspace><msub><mi>ε</mi><mtext>bloom</mtext></msub><mo>≈</mo><msup><mn>0.6185</mn><mrow><mtext> </mtext><mi>m</mi><mi mathvariant="normal">/</mi><mi>n</mi></mrow></msup></mrow><annotation encoding="application/x-tex">\varepsilon_{\text{cuckoo}} \approx \frac{2b}{2^{f}}, \qquad \varepsilon_{\text{bloom}} \approx 0.6185^{\,m/n}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6331em;vertical-align:-0.15em"></span><span class="mord"><span class="mord mathnormal">ε</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em"><span style="top:-2.55em;margin-left:0em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">cuckoo</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:2.0574em;vertical-align:-0.686em"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.3714em"><span style="top:-2.314em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord"><span class="mord">2</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.7751em"><span style="top:-2.989em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight" style="margin-right:0.1076em">f</span></span></span></span></span></span></span></span></span></span></span><span style="top:-3.23em"><span class="pstrut" style="height:3em"></span><span class="frac-line" style="border-bottom-width:0.04em"></span></span><span style="top:-3.677em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord">2</span><span class="mord mathnormal">b</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:2em"></span><span class="mspace" style="margin-right:0.1667em"></span><span class="mord"><span class="mord mathnormal">ε</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em"><span style="top:-2.55em;margin-left:0em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">bloom</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.938em"></span><span class="mord">0.618</span><span class="mord"><span class="mord">5</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.938em"><span style="top:-3.113em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mspace mtight" style="margin-right:0.1952em"></span><span class="mord mathnormal mtight">m</span><span class="mord mtight">/</span><span class="mord mathnormal mtight">n</span></span></span></span></span></span></span></span></span></span></span></span></span>
+<p>원소당 비트가 늘 때 Cuckoo는 비트 하나당 오탐률이 절반으로 줄고 Bloom은 0.6185배로 줄어듭니다. 출발점은 Cuckoo가 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2</mn><mi>b</mi></mrow><annotation encoding="application/x-tex">2b</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord">2</span><span class="mord mathnormal">b</span></span></span></span> 배만큼 불리하지만 기울기가 더 가파르니 어느 지점에서 교차합니다. 제 구현에서는 8과 12비트 사이였습니다. 논문은 버킷 안의 지문을 정렬해 압축하는 semi-sorting을 쓰면 교차점이 원소당 약 7비트까지 내려간다고 합니다. 저는 semi-sorting을 구현하지 않았습니다.</p>
+<blockquote>
+<p>오탐률 3% 언저리를 쓰는 곳이라면 Bloom이 더 작습니다. 0.1% 이하가 필요하면 Cuckoo가 더 작습니다.</p>
+</blockquote>
+<h2 id="ko-삭제는-얼마나-안전한가">삭제는 얼마나 안전한가</h2>
+<p>삭제가 Cuckoo filter의 진짜 장점입니다. 원소 1만 개를 넣고 짝수 5천 개를 지운 뒤 조회했습니다.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>확인 대상</th><th style="text-align:right">결과</th></tr></thead><tbody><tr><td>남아 있어야 할 홀수</td><td style="text-align:right">5,000 / 5,000 있음</td></tr><tr><td>지운 짝수 중 “있음”으로 답한 수</td><td style="text-align:right">4</td></tr></tbody></table>
+<p>남은 4개는 지운 원소의 지문이 다른 원소 지문과 우연히 겹친 오탐입니다. 지운 뒤에도 오탐률만큼은 “있음”으로 답할 수 있다는 뜻이고, 이는 정상 동작입니다.</p>
+<p>함정은 따로 있습니다. 넣은 적 없는 원소를 지우면 안 됩니다. 오탐으로 “있음”이 나오는 원소를 일부러 찾아 <code>remove</code>를 불렀더니, 같은 지문을 가진 진짜 원소 하나가 사라졌습니다. 필터는 지문만 보므로 둘을 구별할 수 없습니다. 같은 원소를 두 번 지우는 것도 마찬가지입니다.</p>
+<p>따라서 Cuckoo filter의 삭제는 “확실히 넣었던 원소를 한 번만 지운다”는 조건을 호출하는 쪽이 지켜야 합니다. 원본 집합이 다른 곳에 있고 필터는 그 앞의 캐시 역할만 할 때는 쉽게 지켜지는 조건입니다. 외부 입력을 그대로 지우는 구조에서는 지켜지지 않습니다.</p>
+<h2 id="ko-언제-무엇을-쓰나">언제 무엇을 쓰나</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>상황</th><th>고를 것</th></tr></thead><tbody><tr><td>오탐률 1~3%, 삭제 없음</td><td>Bloom</td></tr><tr><td>오탐률 0.1% 이하</td><td>Cuckoo</td></tr><tr><td>삭제 필요, 지울 원소가 확실히 들어 있음</td><td>Cuckoo</td></tr><tr><td>삭제 필요, 지울 원소를 보장할 수 없음</td><td>Counting Bloom이나 원본 조회</td></tr><tr><td>크기를 미리 알 수 없음</td><td>둘 다 아님. Scalable Bloom 등</td></tr></tbody></table>
+<p>Cuckoo filter는 가득 차면 삽입이 실패합니다. Bloom filter는 넘치게 넣어도 오탐률이 서서히 나빠질 뿐 실패하지 않습니다. 운영에서는 이 차이가 오탐률 수치보다 클 때가 많습니다.</p>
+<h2 id="ko-정리">정리</h2>
+<p>부제는 반쯤 맞습니다. 버킷당 4슬롯이면 96%까지 채우고, 원소당 12비트 이상에서는 같은 공간에 오탐률이 더 낮으며, 삭제도 됩니다. 그러나 원소당 8비트 언저리에서는 Bloom이 더 정확하고, 삭제는 호출하는 쪽의 규율에 기대며, 꽉 차면 실패합니다. “Bloom보다 낫다”보다는 “목표 오탐률이 낮고 삭제가 필요하면 낫다”가 측정에 맞는 문장입니다.</p>
+<section data-footnotes class="footnotes"><h2 class="sr-only" id="ko-footnote-label">각주</h2>
+<ol>
+<li id="ko-user-content-fn-1">
+<p>Bin Fan, David G. Andersen, Michael Kaminsky, Michael D. Mitzenmacher, “Cuckoo Filter: Practically Better Than Bloom”, CoNEXT 2014. <a href="#ko-user-content-fnref-1" data-footnote-backref aria-label="Back to reference 1" class="data-footnote-backref">↩</a></p>
+</li>
+</ol>
+</section></div><footer class="post__end"><p class="post__source">원문 마크다운: <a href="/blog/cuckoo-vs-bloom/ko.md">cuckoo-vs-bloom/ko.md</a></p><nav class="post__nav" aria-label="다른 글"><a class="older" href="/blog/jump-consistent-hash/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 595.5519999999999 181.8">
+
+
+<polyline class="edge" data-from="K" data-to="M" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="100,90.9 124,90.9 124,58.45 148.00000000000006,58.45" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="K" data-to="J" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="100,90.9 124,90.9 124,123.35000000000001 148,123.35000000000001" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="M" data-to="MA" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="269.97800000000007,58.45 332.057,58.45" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="J" data-to="JA" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="298.13599999999997,123.35000000000001 332.057,123.35000000000001" fill="none" stroke="var(--_line)" stroke-width="1" />
+<g class="node is-hub" data-id="K" data-label="키" data-shape="rectangle">
+  <rect x="40" y="72.45" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="M" data-label="mod 10 → mod 11" data-shape="rectangle">
+  <rect x="148.00000000000006" y="40" width="121.978" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="J" data-label="Jump(10) → Jump(11)" data-shape="rectangle">
+  <rect x="148" y="104.9" width="150.136" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="MA" data-label="90.8% 이동" data-shape="rectangle">
+  <rect x="332.057" y="40" width="107.89899999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="JA" data-label="9.1% 이동, 전부 새 버킷으로" data-shape="rectangle">
+  <rect x="332.057" y="104.9" width="209.41599999999997" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>← 이전 글</small><span class="post__nav-title">Jump Consistent Hash: 메모리 없이 다섯 줄로 하는 일관된 해싱</span></a><a class="newer" href="/blog/redis-listpack/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 775.0339999999999 327.6">
+
+
+<g class="subgraph" data-id="ZL" data-label="ziplist: 항목마다 앞 항목의 길이">
+  <rect x="40" y="173.8" width="695.0339999999999" height="113.80000000000001" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="40" y="173.8" width="695.0339999999999" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  
+</g>
+<g class="subgraph" data-id="LP" data-label="listpack: 항목마다 자기 길이">
+  <rect x="40" y="40" width="456.884" height="113.80000000000001" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="40" y="40" width="456.884" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  
+</g>
+<polyline class="edge" data-from="Z0" data-to="Z1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="177.97799999999998,240.47500000000002 225.97799999999998,240.47500000000002" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="Z1" data-to="Z2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="360.553,248.925 408.553,248.925" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="Z2" data-to="Z3" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="543.1279999999999,248.925 591.1279999999999,248.925" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="L0" data-to="L1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="177.97799999999998,110.9 225.97799999999998,110.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="L1" data-to="L2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="329.431,110.9 377.431,110.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<g class="node" data-id="Z0" data-label="새 항목 300B" data-shape="rectangle">
+  <rect x="56" y="222.025" width="121.97799999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node is-hub" data-id="Z1" data-label="prevlen 1→5B
+길이 250→254B" data-shape="rectangle">
+  <rect x="225.97799999999998" y="217.8" width="134.575" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="Z2" data-label="prevlen 1→5B
+길이 250→254B" data-shape="rectangle">
+  <rect x="408.553" y="222.025" width="134.575" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="Z3" data-label="prevlen 1→5B ..." data-shape="rectangle">
+  <rect x="591.1279999999999" y="226.25" width="127.906" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="L0" data-label="새 항목 300B
+backlen 2B" data-shape="rectangle">
+  <rect x="56" y="84" width="121.97799999999998" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="L1" data-label="변화 없음" data-shape="rectangle">
+  <rect x="225.97799999999998" y="92.45" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="L2" data-label="변화 없음" data-shape="rectangle">
+  <rect x="377.431" y="92.45" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>다음 글 →</small><span class="post__nav-title">Redis listpack: 512번째 필드와 513번째 필드 사이</span></a></nav></footer></article><article class="post" lang="en" data-minutes="5"><header class="post__head"><p class="post__cwd"><a href="/blog/">~/blog</a>/cuckoo-vs-bloom/en.mdx</p><h1 class="post__title" style="view-transition-name: t-cuckoo-vs-bloom">Is a cuckoo filter really better than a Bloom filter?</h1><p class="post__dek">The cuckoo filter paper is subtitled Practically Better Than Bloom. Implementing both and measuring load factor by bucket size, false-positive rate at equal space, and deletion shows it is not always true.</p><p class="post__meta"><time datetime="2023-06-22">2023-06-22</time><span>5 min read</span><span><a href="/blog/?tag=algorithm">algorithm</a> · <a href="/blog/?tag=data-structures">data-structures</a></span></p></header><nav class="toc" aria-label="Contents"><p class="toc__label">Contents</p><ol><li><a href="#en-one-fingerprint-two-places"><span class="toc__n">§1</span><span>One fingerprint, two places</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-bucket-size-and-load-factor"><span class="toc__n">§2</span><span>Bucket size and load factor</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-false-positive-rate-in-equal-space"><span class="toc__n">§3</span><span>False-positive rate in equal space</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-how-safe-is-deletion"><span class="toc__n">§4</span><span>How safe is deletion</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-when-to-use-which"><span class="toc__n">§5</span><span>When to use which</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-summary"><span class="toc__n">§6</span><span>Summary</span><span class="toc__len" aria-hidden="true"></span></a></li></ol></nav><div class="prose"><p>You cannot delete from a Bloom filter. Each bit is shared by several items, so clearing one removes others too. The cuckoo filter, published by Fan et al. in 2014, stores fingerprints in a cuckoo hash table instead, which makes deletion possible, and claims a lower false-positive rate in the same space.<sup><a href="#en-user-content-fn-1" id="en-user-content-fnref-1" data-footnote-ref aria-describedby="en-footnote-label">1</a></sup> The paper’s subtitle is “Practically Better Than Bloom”. I implemented both in Python to see how far that holds. Hashing is blake2b, the environment Python 3 on an Apple Silicon laptop. Only ratios are measured, not time, so the language does not affect the results. The code below is an excerpt with bookkeeping such as the item counter removed.</p>
+<h2 id="en-one-fingerprint-two-places">One fingerprint, two places</h2>
+<p>A cuckoo filter puts the fingerprint <code>fp</code> of item <code>x</code> into whichever of two candidate buckets has room. If both are full, it evicts one fingerprint and sends that one to its other place. The name comes from the cuckoo pushing eggs out of another bird’s nest.</p>
+<figure class="diagram" data-diagram="flowchart" style="--w:726px"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 725.8420000000001 187.95000000000002" width="725.8420000000001" height="187.95000000000002" role="img" aria-label="x, hash(x) → i1, fingerprint(x) → fp, i2 = i1 XOR hash(fp), bucket i1, bucket i2">
+
+<defs>
+  <marker id="en-dg0-arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+  <marker id="en-dg0-arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round"></polygon>
+  </marker>
+</defs>
+<polyline class="edge" data-from="X" data-to="H" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="100,97.05 126.892,97.05 126.892,64.60000000000001 153.784,64.60000000000001" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="X" data-to="F" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="100,97.05 126.892,97.05 126.892,129.5 153.784,129.5" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="H" data-to="I2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="257.978,64.60000000000001 284.87,64.60000000000001 284.87,123.35000000000001 394.627,123.35000000000001" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="F" data-to="I2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="293.546,129.5 394.627,129.5" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="H" data-to="B1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="257.978,64.60000000000001 284.87,64.60000000000001 284.87,58.45 311.762,58.45" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="I2" data-to="B2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="543.281,123.35000000000001 579.281,123.35000000000001 579.281,97.05000000000001 591.281,97.05000000000001" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<polyline class="edge" data-from="B1" data-to="B2" data-style="dotted" data-arrow-start="false" data-arrow-end="true" data-label="evict one when full" points="401.877,58.45 579.281,58.45 579.281,84.75 591.281,84.75" fill="none" stroke="var(--_line)" stroke-width="1" stroke-dasharray="4 4" marker-end="url(#en-dg0-arrowhead)"></polyline>
+<g class="edge-label" data-from="B1" data-to="B2" data-label="evict one when full">
+  <rect x="445.877" y="42.45" width="101.40400000000002" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1"></rect>
+  <text x="496.579" y="57.6" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">evict one when full</text>
+</g>
+<g class="node" data-id="X" data-label="x" data-shape="rectangle">
+  <rect x="40" y="78.6" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="70" y="97.05" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">x</text>
+</g>
+<g class="node" data-id="H" data-label="hash(x) → i1" data-shape="rectangle">
+  <rect x="153.784" y="46.150000000000006" width="104.194" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="205.881" y="64.60000000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">hash(x) → i1</text>
+</g>
+<g class="node" data-id="F" data-label="fingerprint(x) → fp" data-shape="rectangle">
+  <rect x="153.784" y="111.05000000000001" width="139.762" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="223.665" y="129.5" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">fingerprint(x) → fp</text>
+</g>
+<g class="node" data-id="I2" data-label="i2 = i1 XOR hash(fp)" data-shape="rectangle">
+  <rect x="394.627" y="104.9" width="148.654" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="468.954" y="123.35000000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">i2 = i1 XOR hash(fp)</text>
+</g>
+<g class="node" data-id="B1" data-label="bucket i1" data-shape="rectangle">
+  <rect x="311.762" y="40" width="90.11500000000001" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="356.8195" y="58.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">bucket i1</text>
+</g>
+<g class="node" data-id="B2" data-label="bucket i2" data-shape="rectangle">
+  <rect x="591.281" y="72.45" width="94.561" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75"></rect>
+  <text x="638.5614999999999" y="90.9" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">bucket i2</text>
+</g>
+</svg></figure>
+<p>The tricky part is finding an evicted fingerprint’s other place without the original item, because the table only holds fingerprints. The paper’s answer is partial-key cuckoo hashing.</p>
+<div class="walk"><div class="walk__fig"><div class="expressive-code"><link rel="stylesheet" href="/blog/assets/ec.vx73c.css"/><script type="module" src="/blog/assets/ec.g1fg5.js"></script><figure class="frame has-title"><figcaption class="header"><span class="title">cuckoo.py</span></figcaption><pre data-language="python"><code><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">def</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">_alt</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">s</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> i</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> fp</span><span style="--0:#A3A19B;--1:#5E5B55">):</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#E2B071;--1:#87500C">return</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">i </span><span style="--0:#A3A19B;--1:#5E5B55">^</span><span style="--0:#E6E3D9;--1:#2B2A26"> h64</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">fp</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">99</span><span style="--0:#A3A19B;--1:#5E5B55">))</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">%</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">nb</span></div></div><div class="ec-line"><div class="code">
+</div></div><div class="ec-line"><div class="code"><span style="--0:#E2B071;--1:#87500C">def</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">add</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">s</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> x</span><span style="--0:#A3A19B;--1:#5E5B55">):</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">    </span></span><span style="--0:#E6E3D9;--1:#2B2A26">fp</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> i1 </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">_fp</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">x</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26">; i2 </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">_alt</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">i1</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> fp</span><span style="--0:#A3A19B;--1:#5E5B55">)</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> i </span><span style="--0:#E2B071;--1:#87500C">in</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">i1</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> i2</span><span style="--0:#A3A19B;--1:#5E5B55">):</span></div></div><div class="ec-line"><div class="code"><span class="indent">        </span><span style="--0:#E2B071;--1:#87500C">if</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">len</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">t</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">])</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&lt;</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">bs</span><span style="--0:#A3A19B;--1:#5E5B55">:</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">            </span></span><span style="--0:#E6E3D9;--1:#2B2A26">s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">t</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">].</span><span style="--0:#E6E3D9;--1:#2B2A26">append</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">fp</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26">; </span><span style="--0:#E2B071;--1:#87500C">return</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">True</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">    </span></span><span style="--0:#E6E3D9;--1:#2B2A26">i </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">rng</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">choice</span><span style="--0:#A3A19B;--1:#5E5B55">((</span><span style="--0:#E6E3D9;--1:#2B2A26">i1</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> i2</span><span style="--0:#A3A19B;--1:#5E5B55">))</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#E2B071;--1:#87500C">for</span><span style="--0:#E6E3D9;--1:#2B2A26"> _ </span><span style="--0:#E2B071;--1:#87500C">in</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">range</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">mk</span><span style="--0:#A3A19B;--1:#5E5B55">):</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">        </span></span><span style="--0:#E6E3D9;--1:#2B2A26">j </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">rng</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">randrange</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#F3E2C4;--1:#5A4521">len</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">t</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">]))</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">        </span></span><span style="--0:#E6E3D9;--1:#2B2A26">fp</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">t</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">][</span><span style="--0:#E6E3D9;--1:#2B2A26">j</span><span style="--0:#A3A19B;--1:#5E5B55">]</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">t</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">][</span><span style="--0:#E6E3D9;--1:#2B2A26">j</span><span style="--0:#A3A19B;--1:#5E5B55">],</span><span style="--0:#E6E3D9;--1:#2B2A26"> fp</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">        </span></span><span style="--0:#E6E3D9;--1:#2B2A26">i </span><span style="--0:#A3A19B;--1:#5E5B55">=</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">_alt</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">,</span><span style="--0:#E6E3D9;--1:#2B2A26"> fp</span><span style="--0:#A3A19B;--1:#5E5B55">)</span></div></div><div class="ec-line"><div class="code"><span class="indent">        </span><span style="--0:#E2B071;--1:#87500C">if</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#F3E2C4;--1:#5A4521">len</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">t</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">])</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#A3A19B;--1:#5E5B55">&lt;</span><span style="--0:#E6E3D9;--1:#2B2A26"> s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">bs</span><span style="--0:#A3A19B;--1:#5E5B55">:</span></div></div><div class="ec-line"><div class="code"><span class="indent"><span style="--0:#E6E3D9;--1:#2B2A26">            </span></span><span style="--0:#E6E3D9;--1:#2B2A26">s</span><span style="--0:#A3A19B;--1:#5E5B55">.</span><span style="--0:#E6E3D9;--1:#2B2A26">t</span><span style="--0:#A3A19B;--1:#5E5B55">[</span><span style="--0:#E6E3D9;--1:#2B2A26">i</span><span style="--0:#A3A19B;--1:#5E5B55">].</span><span style="--0:#E6E3D9;--1:#2B2A26">append</span><span style="--0:#A3A19B;--1:#5E5B55">(</span><span style="--0:#E6E3D9;--1:#2B2A26">fp</span><span style="--0:#A3A19B;--1:#5E5B55">)</span><span style="--0:#E6E3D9;--1:#2B2A26">; </span><span style="--0:#E2B071;--1:#87500C">return</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">True</span></div></div><div class="ec-line"><div class="code"><span class="indent">    </span><span style="--0:#E2B071;--1:#87500C">return</span><span style="--0:#E6E3D9;--1:#2B2A26"> </span><span style="--0:#EF9A7A;--1:#9F4129">False</span></div></div></code></pre></figure></div></div><div class="walk__steps"><div class="step" data-lines="1-2"><p>The other place is the current place XORed with a hash of the fingerprint. XOR is its own inverse, so the same expression takes <code>i1</code> to <code>i2</code> and <code>i2</code> back to <code>i1</code>. The original key is not needed. The bucket count must be a power of two so that <code>% nb</code> does not break this.</p></div><div class="step" data-lines="5-8"><p>If either candidate has a free slot, insert there. While the table is mostly empty, this is where nearly every insert ends.</p></div><div class="step" data-lines="9-15"><p>If both are full, pick a random fingerprint, put ours in its slot, and send the evicted one to its other place via <code>_alt</code>. If that is full too, evict again.</p></div><div class="step" data-lines="16"><p>If no free slot turns up within a fixed number of kicks (500 here), the insert fails. That is the moment the filter is “full”.</p></div></div></div>
+<h2 id="en-bucket-size-and-load-factor">Bucket size and load factor</h2>
+<p>How many fingerprints a bucket holds decides space efficiency. With <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mn>2</mn><mn>14</mn></msup></mrow><annotation encoding="application/x-tex">2^{14}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8141em"></span><span class="mord"><span class="mord">2</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">14</span></span></span></span></span></span></span></span></span></span></span></span> buckets and 16-bit fingerprints I inserted until the first failure and recorded the load factor, three times with different seeds.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th style="text-align:right">Slots per bucket</th><th style="text-align:right">Trial 1</th><th style="text-align:right">Trial 2</th><th style="text-align:right">Trial 3</th></tr></thead><tbody><tr><td style="text-align:right">1</td><td style="text-align:right">52.3%</td><td style="text-align:right">53.2%</td><td style="text-align:right">48.9%</td></tr><tr><td style="text-align:right">2</td><td style="text-align:right">87.2%</td><td style="text-align:right">87.0%</td><td style="text-align:right">87.6%</td></tr><tr><td style="text-align:right">4</td><td style="text-align:right">96.6%</td><td style="text-align:right">96.3%</td><td style="text-align:right">96.6%</td></tr><tr><td style="text-align:right">8</td><td style="text-align:right">99.1%</td><td style="text-align:right">98.7%</td><td style="text-align:right">99.1%</td></tr></tbody></table>
+<figure class="diagram" data-diagram="xychart" style="--w:750px"><svg data-xychart-colors="0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 750 464" width="750" height="464" role="img" aria-label="xychart">
+
+
+<circle cx="128" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="64" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="82.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="101.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="120.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="139.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="158.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="177.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="196.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="215.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="234" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="252.9" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="271.8" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="290.7" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="309.6" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="328.4" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="347.3" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="366.2" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="385.1" r="1.5" class="xychart-grid"></circle>
+<circle cx="128" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="146.8" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="165.5" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="184.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="203" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="221.8" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="240.5" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="259.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="278" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="296.8" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="315.5" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="334.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="353" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="371.8" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="390.5" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="409.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="428" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="446.8" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="465.5" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="484.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="503" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="521.8" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="540.5" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="559.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="578" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="596.8" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="615.5" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="634.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="653" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="671.8" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="690.5" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="709.3" cy="404" r="1.5" class="xychart-grid"></circle>
+<circle cx="728" cy="404" r="1.5" class="xychart-grid"></circle>
+<path d="M183,346.8 Q183,338.8 191,338.8 L215,338.8 Q223,338.8 223,346.8 L223,396 Q223,404 215,404 L191,404 Q183,404 183,396 Z" class="xychart-bar xychart-color-0" data-value="51.5" data-label="&quot;b=1&quot;"></path>
+<path d="M333,144 Q333,136 341,136 L365,136 Q373,136 373,144 L373,396 Q373,404 365,404 L341,404 Q333,404 333,396 Z" class="xychart-bar xychart-color-0" data-value="87.3" data-label="&quot;b=2&quot;"></path>
+<path d="M483,91.8 Q483,83.8 491,83.8 L515,83.8 Q523,83.8 523,91.8 L523,396 Q523,404 515,404 L491,404 Q483,404 483,396 Z" class="xychart-bar xychart-color-0" data-value="96.5" data-label="&quot;b=4&quot;"></path>
+<path d="M633,77.7 Q633,69.7 641,69.7 L665,69.7 Q673,69.7 673,77.7 L673,396 Q673,404 665,404 L641,404 Q633,404 633,396 Z" class="xychart-bar xychart-color-0" data-value="99" data-label="&quot;b=8&quot;"></path>
+<text x="203" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;b=1&quot;</text>
+<text x="353" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;b=2&quot;</text>
+<text x="503" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;b=4&quot;</text>
+<text x="653" y="422" text-anchor="middle" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">&quot;b=8&quot;</text>
+<text x="110" y="404" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">40</text>
+<text x="110" y="347.3333333333333" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">50</text>
+<text x="110" y="290.6666666666667" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">60</text>
+<text x="110" y="234" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">70</text>
+<text x="110" y="177.33333333333334" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">80</text>
+<text x="110" y="120.66666666666663" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">90</text>
+<text x="110" y="64" text-anchor="end" font-size="14" font-weight="400" dy="0.35em" class="xychart-label">100</text>
+<text x="26" y="234" text-anchor="middle" transform="rotate(-90,26,234)" font-size="15" font-weight="500" dy="0.35em" class="xychart-axis-title">%</text>
+<text x="375" y="40" text-anchor="middle" font-size="18" font-weight="600" dy="0.35em" class="xychart-title">Load factor at first failure (%)</text>
+</svg></figure>
+<p>One slot barely fills half. Four reach 96%, which is why the paper recommends four slots per bucket. Eight fill more, but a lookup compares twice as many fingerprints and false positives grow accordingly.</p>
+<h2 id="en-false-positive-rate-in-equal-space">False-positive rate in equal space</h2>
+<p>A fair comparison fixes bits per item. I built a cuckoo filter with <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mn>2</mn><mn>16</mn></msup></mrow><annotation encoding="application/x-tex">2^{16}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8141em"></span><span class="mord"><span class="mord">2</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">16</span></span></span></span></span></span></span></span></span></span></span></span> slots and four slots per bucket, filled it to 95%, and gave a Bloom filter the same item count and the same total bits, with the optimal number of hash functions <code>k</code>. Lookups used 400,000 items that were never inserted.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th style="text-align:right">Fingerprint bits</th><th style="text-align:right">Bits per item</th><th style="text-align:right">Cuckoo FPR</th><th style="text-align:right">Cuckoo bound <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2</mn><mi>b</mi><mi mathvariant="normal">/</mi><msup><mn>2</mn><mi>f</mi></msup></mrow><annotation encoding="application/x-tex">2b/2^f</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0991em;vertical-align:-0.25em"></span><span class="mord">2</span><span class="mord mathnormal">b</span><span class="mord">/</span><span class="mord"><span class="mord">2</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8491em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight" style="margin-right:0.1076em">f</span></span></span></span></span></span></span></span></span></span></span></th><th style="text-align:right">Bloom <code>k</code></th><th style="text-align:right">Bloom FPR</th><th style="text-align:right">Bloom theory</th></tr></thead><tbody><tr><td style="text-align:right">8</td><td style="text-align:right">8.42</td><td style="text-align:right">2.98%</td><td style="text-align:right">3.13%</td><td style="text-align:right">6</td><td style="text-align:right"><strong>1.78%</strong></td><td style="text-align:right">1.75%</td></tr><tr><td style="text-align:right">12</td><td style="text-align:right">12.63</td><td style="text-align:right"><strong>0.182%</strong></td><td style="text-align:right">0.195%</td><td style="text-align:right">9</td><td style="text-align:right">0.219%</td><td style="text-align:right">0.232%</td></tr><tr><td style="text-align:right">16</td><td style="text-align:right">16.84</td><td style="text-align:right"><strong>0.014%</strong></td><td style="text-align:right">0.012%</td><td style="text-align:right">12</td><td style="text-align:right">0.028%</td><td style="text-align:right">0.031%</td></tr></tbody></table>
+<p>At a little over 8 bits per item Bloom wins. From 12 bits cuckoo leads, and at 16 its false-positive rate is half of Bloom’s.</p>
+<p>The formulas explain it. A cuckoo lookup compares against two buckets, <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2</mn><mi>b</mi><mo>=</mo><mn>8</mn></mrow><annotation encoding="application/x-tex">2b = 8</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord">2</span><span class="mord mathnormal">b</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">8</span></span></span></span> fingerprints, so its rate is about <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2</mn><mi>b</mi><mi mathvariant="normal">/</mi><msup><mn>2</mn><mi>f</mi></msup></mrow><annotation encoding="application/x-tex">2b/2^f</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0991em;vertical-align:-0.25em"></span><span class="mord">2</span><span class="mord mathnormal">b</span><span class="mord">/</span><span class="mord"><span class="mord">2</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8491em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight" style="margin-right:0.1076em">f</span></span></span></span></span></span></span></span></span></span></span>. An optimal Bloom filter has <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false">(</mo><mn>1</mn><mi mathvariant="normal">/</mi><mn>2</mn><msup><mo stretchy="false">)</mo><mi>k</mi></msup></mrow><annotation encoding="application/x-tex">(1/2)^{k}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0991em;vertical-align:-0.25em"></span><span class="mopen">(</span><span class="mord">1/2</span><span class="mclose"><span class="mclose">)</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8491em"><span style="top:-3.063em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight" style="margin-right:0.0315em">k</span></span></span></span></span></span></span></span></span></span></span></span> with <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi><mo>≈</mo><mn>0.69</mn><mo>⋅</mo><mi>m</mi><mi mathvariant="normal">/</mi><mi>n</mi></mrow><annotation encoding="application/x-tex">k \approx 0.69 \cdot m/n</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord mathnormal" style="margin-right:0.0315em">k</span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.6444em"></span><span class="mord">0.69</span><span class="mspace" style="margin-right:0.2222em"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222em"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em"></span><span class="mord mathnormal">m</span><span class="mord">/</span><span class="mord mathnormal">n</span></span></span></span>.</p>
+<span class="katex-display"><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><msub><mi>ε</mi><mtext>cuckoo</mtext></msub><mo>≈</mo><mfrac><mrow><mn>2</mn><mi>b</mi></mrow><msup><mn>2</mn><mi>f</mi></msup></mfrac><mo separator="true">,</mo><mspace width="2em"></mspace><msub><mi>ε</mi><mtext>bloom</mtext></msub><mo>≈</mo><msup><mn>0.6185</mn><mrow><mtext> </mtext><mi>m</mi><mi mathvariant="normal">/</mi><mi>n</mi></mrow></msup></mrow><annotation encoding="application/x-tex">\varepsilon_{\text{cuckoo}} \approx \frac{2b}{2^{f}}, \qquad \varepsilon_{\text{bloom}} \approx 0.6185^{\,m/n}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6331em;vertical-align:-0.15em"></span><span class="mord"><span class="mord mathnormal">ε</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em"><span style="top:-2.55em;margin-left:0em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">cuckoo</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:2.0574em;vertical-align:-0.686em"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.3714em"><span style="top:-2.314em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord"><span class="mord">2</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.7751em"><span style="top:-2.989em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight" style="margin-right:0.1076em">f</span></span></span></span></span></span></span></span></span></span></span><span style="top:-3.23em"><span class="pstrut" style="height:3em"></span><span class="frac-line" style="border-bottom-width:0.04em"></span></span><span style="top:-3.677em"><span class="pstrut" style="height:3em"></span><span class="mord"><span class="mord">2</span><span class="mord mathnormal">b</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:2em"></span><span class="mspace" style="margin-right:0.1667em"></span><span class="mord"><span class="mord mathnormal">ε</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em"><span style="top:-2.55em;margin-left:0em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">bloom</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2778em"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2778em"></span></span><span class="base"><span class="strut" style="height:0.938em"></span><span class="mord">0.618</span><span class="mord"><span class="mord">5</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.938em"><span style="top:-3.113em;margin-right:0.05em"><span class="pstrut" style="height:2.7em"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mspace mtight" style="margin-right:0.1952em"></span><span class="mord mathnormal mtight">m</span><span class="mord mtight">/</span><span class="mord mathnormal mtight">n</span></span></span></span></span></span></span></span></span></span></span></span></span>
+<p>Each extra bit per item halves the cuckoo rate but only multiplies the Bloom rate by 0.6185. Cuckoo starts <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2</mn><mi>b</mi></mrow><annotation encoding="application/x-tex">2b</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em"></span><span class="mord">2</span><span class="mord mathnormal">b</span></span></span></span> times behind with a steeper slope, so the lines cross. In my implementation the crossover is between 8 and 12 bits. The paper reports it drops to about 7 bits per item with semi-sorting, which compresses the sorted fingerprints within a bucket. I did not implement semi-sorting.</p>
+<blockquote>
+<p>If you live around a 3% false-positive rate, Bloom is smaller. If you need 0.1% or less, cuckoo is smaller.</p>
+</blockquote>
+<h2 id="en-how-safe-is-deletion">How safe is deletion</h2>
+<p>Deletion is the cuckoo filter’s real advantage. I inserted 10,000 items, deleted the 5,000 even ones, and queried.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Check</th><th style="text-align:right">Result</th></tr></thead><tbody><tr><td>Odd items that should remain</td><td style="text-align:right">5,000 / 5,000 present</td></tr><tr><td>Deleted even items still answering “present”</td><td style="text-align:right">4</td></tr></tbody></table>
+<p>The 4 are deleted items whose fingerprint happens to collide with a remaining item’s. After deletion an item can still answer “present” at the false-positive rate, which is correct behaviour.</p>
+<p>The trap is elsewhere: you must not delete an item that was never inserted. I searched for an item that is a false positive and called <code>remove</code> on it, and a real member with the same fingerprint disappeared. The filter only sees fingerprints and cannot tell the two apart. Deleting the same item twice does the same damage.</p>
+<p>So deletion holds only if the caller guarantees it deletes items that were definitely inserted, once each. That is easy when the authoritative set lives elsewhere and the filter is a cache in front of it. It does not hold when external input is deleted directly.</p>
+<h2 id="en-when-to-use-which">When to use which</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Situation</th><th>Choice</th></tr></thead><tbody><tr><td>1–3% false positives, no deletion</td><td>Bloom</td></tr><tr><td>0.1% false positives or less</td><td>Cuckoo</td></tr><tr><td>Deletion, deleted items known to be present</td><td>Cuckoo</td></tr><tr><td>Deletion, no such guarantee</td><td>Counting Bloom, or check the source set</td></tr><tr><td>Size unknown in advance</td><td>Neither; e.g. Scalable Bloom</td></tr></tbody></table>
+<p>A full cuckoo filter rejects inserts. A Bloom filter overfilled only degrades its false-positive rate gradually. In production this difference often matters more than the rates.</p>
+<h2 id="en-summary">Summary</h2>
+<p>The subtitle is half right. With four slots per bucket it fills to 96%, from 12 bits per item it has a lower false-positive rate in the same space, and it supports deletion. But around 8 bits per item Bloom is more accurate, deletion depends on the caller’s discipline, and a full filter fails. “Better than Bloom when the target false-positive rate is low and you need deletion” is the sentence the measurements support.</p>
+<section data-footnotes class="footnotes"><h2 class="sr-only" id="en-footnote-label">Notes</h2>
+<ol>
+<li id="en-user-content-fn-1">
+<p>Bin Fan, David G. Andersen, Michael Kaminsky, Michael D. Mitzenmacher, “Cuckoo Filter: Practically Better Than Bloom”, CoNEXT 2014. <a href="#en-user-content-fnref-1" data-footnote-backref aria-label="Back to reference 1" class="data-footnote-backref">↩</a></p>
+</li>
+</ol>
+</section></div><footer class="post__end"><p class="post__source">Source markdown: <a href="/blog/cuckoo-vs-bloom/en.md">cuckoo-vs-bloom/en.md</a></p><nav class="post__nav" aria-label="More posts"><a class="older" href="/blog/jump-consistent-hash/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 595.5519999999999 181.8">
+
+
+<polyline class="edge" data-from="K" data-to="M" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="100,90.9 124,90.9 124,58.45 148.00000000000006,58.45" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="K" data-to="J" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="100,90.9 124,90.9 124,123.35000000000001 148,123.35000000000001" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="M" data-to="MA" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="269.97800000000007,58.45 332.057,58.45" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="J" data-to="JA" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="298.13599999999997,123.35000000000001 332.057,123.35000000000001" fill="none" stroke="var(--_line)" stroke-width="1" />
+<g class="node is-hub" data-id="K" data-label="키" data-shape="rectangle">
+  <rect x="40" y="72.45" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="M" data-label="mod 10 → mod 11" data-shape="rectangle">
+  <rect x="148.00000000000006" y="40" width="121.978" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="J" data-label="Jump(10) → Jump(11)" data-shape="rectangle">
+  <rect x="148" y="104.9" width="150.136" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="MA" data-label="90.8% 이동" data-shape="rectangle">
+  <rect x="332.057" y="40" width="107.89899999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="JA" data-label="9.1% 이동, 전부 새 버킷으로" data-shape="rectangle">
+  <rect x="332.057" y="104.9" width="209.41599999999997" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>← Older</small><span class="post__nav-title">Jump Consistent Hash: consistent hashing in five lines and no memory</span></a><a class="newer" href="/blog/redis-listpack/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 775.0339999999999 327.6">
+
+
+<g class="subgraph" data-id="ZL" data-label="ziplist: 항목마다 앞 항목의 길이">
+  <rect x="40" y="173.8" width="695.0339999999999" height="113.80000000000001" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="40" y="173.8" width="695.0339999999999" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  
+</g>
+<g class="subgraph" data-id="LP" data-label="listpack: 항목마다 자기 길이">
+  <rect x="40" y="40" width="456.884" height="113.80000000000001" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="40" y="40" width="456.884" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  
+</g>
+<polyline class="edge" data-from="Z0" data-to="Z1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="177.97799999999998,240.47500000000002 225.97799999999998,240.47500000000002" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="Z1" data-to="Z2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="360.553,248.925 408.553,248.925" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="Z2" data-to="Z3" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="543.1279999999999,248.925 591.1279999999999,248.925" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="L0" data-to="L1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="177.97799999999998,110.9 225.97799999999998,110.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="L1" data-to="L2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="329.431,110.9 377.431,110.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<g class="node" data-id="Z0" data-label="새 항목 300B" data-shape="rectangle">
+  <rect x="56" y="222.025" width="121.97799999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node is-hub" data-id="Z1" data-label="prevlen 1→5B
+길이 250→254B" data-shape="rectangle">
+  <rect x="225.97799999999998" y="217.8" width="134.575" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="Z2" data-label="prevlen 1→5B
+길이 250→254B" data-shape="rectangle">
+  <rect x="408.553" y="222.025" width="134.575" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="Z3" data-label="prevlen 1→5B ..." data-shape="rectangle">
+  <rect x="591.1279999999999" y="226.25" width="127.906" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="L0" data-label="새 항목 300B
+backlen 2B" data-shape="rectangle">
+  <rect x="56" y="84" width="121.97799999999998" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="L1" data-label="변화 없음" data-shape="rectangle">
+  <rect x="225.97799999999998" y="92.45" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+<g class="node" data-id="L2" data-label="변화 없음" data-shape="rectangle">
+  <rect x="377.431" y="92.45" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  
+</g>
+</svg></span><small>Newer →</small><span class="post__nav-title">Redis listpack: between field 512 and field 513</span></a></nav></footer></article></main><div class="status"><a class="status__file" data-href="/blog/cuckoo-vs-bloom/{lang}.md" href="/blog/cuckoo-vs-bloom/ko.md">ko.mdx</a><span class="status__sec"></span><span class="status__left"></span><button class="status__toc" type="button"><span lang="ko">목차</span><span lang="en">Contents</span></button></div><dialog class="sheet" id="toc-sheet" aria-label="Contents"><button class="sheet__close" type="button" data-close>esc</button><div class="sheet__body"></div></dialog><script type="module" src="/blog/assets/Reader.astro_astro_type_script_index_0_lang.CRI3uLjw.js"></script><dialog class="sheet" id="keys" aria-labelledby="keys-title"><button class="sheet__close" type="button" data-close>esc</button><p class="toc__label" id="keys-title"><span lang="ko">단축키</span><span lang="en">Keyboard</span></p><dl class="keys"><dt><kbd>/</kbd> <kbd>⌘K</kbd></dt><dd><span lang="ko">글 검색</span><span lang="en">Search posts</span></dd><dt><kbd>t</kbd></dt><dd><span lang="ko">밝은/어두운 테마</span><span lang="en">Light or dark theme</span></dd><dt><kbd>l</kbd></dt><dd><span lang="ko">한국어/영어, 읽던 자리 유지</span><span lang="en">Korean or English, keeping your place</span></dd><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd><span lang="ko">이전/다음 절</span><span lang="en">Previous or next section</span></dd><dt><kbd>?</kbd></dt><dd><span lang="ko">이 목록</span><span lang="en">This list</span></dd></dl></dialog><dialog class="search" id="search" aria-label="Search"><label class="search__line"><span class="search__caret" aria-hidden="true">&gt;</span><input type="search" role="combobox" aria-expanded="true" aria-controls="search-results" aria-autocomplete="list" autocomplete="off" spellcheck="false" enterkeyhint="go"></label><p class="search__status" aria-live="polite"><span class="tool__name" data-call-name></span><span class="tool__arg" data-call-arg></span><span class="search__count" data-call-count></span></p><ul class="search__results" id="search-results" role="listbox" aria-label="Results"></ul><p class="search__keys"><span><kbd>↑</kbd><kbd>↓</kbd> <span lang="ko">이동</span><span lang="en">move</span></span><span><kbd>↵</kbd> <span lang="ko">열기</span><span lang="en">open</span></span><span><kbd>esc</kbd> <span lang="ko">닫기</span><span lang="en">close</span></span></p></dialog><script type="module" src="/blog/assets/Base.astro_astro_type_script_index_0_lang.BxD9tEXi.js"></script></body></html>
