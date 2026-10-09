@@ -204,6 +204,10 @@ Rust의 `slice::sort`는 **TimSort**를 단순하게 만든 것입니다. 뒤에
 
 Go의 `sort.Stable`은 **버퍼를 쓰지 않습니다.** 정확히는 쓸 수 없습니다. `sort.Interface`로는 원소를 꺼내 다른 곳에 저장할 방법이 없고, 할 수 있는 것은 두 자리를 비교하고 바꾸는 것뿐입니다. 그래서 20개씩 삽입 정렬한 다음, Kim과 Kutzner의 **SymMerge**로 제자리 병합합니다.[^6] 두 덩어리를 대칭으로 이진 탐색해 자를 자리를 찾고, 가운데 부분을 회전(rotation)해 맞바꾼 다음 양쪽을 재귀로 병합합니다. 회전은 교환으로만 이루어지니 교환이 많아집니다.
 
+아래에서는 같은 키를 가진 원소에 서로 다른 입력 번호를 붙였습니다. 키 1의 원래 순서는 2, 4, 6입니다. 불안정한 Lomuto 퀵소트는 이 순서를 뒤집지만, 안정 정렬은 보존합니다.
+
+<SortStabilityViz keys={[2, 1, 2, 1, 2, 1]} unstableAlgo="lomuto" stableAlgo="stable-rust" caption="큰 숫자는 정렬 키, 작은 숫자는 입력에서의 위치입니다." />
+
 <SortViz algo="stable-cpp,stable-rust,stable-go" inputs="random,organ,sorted,few" n={80} caption="C++ stable_sort, Rust sort, Go sort.Stable. 막대가 한 칸씩 옮겨지는 것은 버퍼에서 되돌려 쓰는 것이고, Go 쪽의 긴 교환 줄은 회전입니다." />
 
 n=1,000에서 센 값입니다. '쓰기'는 버퍼와 배열 사이에서 원소를 옮긴 횟수입니다.

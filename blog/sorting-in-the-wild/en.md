@@ -204,6 +204,10 @@ Rust's `slice::sort` is a simplified **TimSort**. It scans from the back for run
 
 Go's `sort.Stable` **uses no buffer.** More precisely, it can't. `sort.Interface` gives no way to take an element out and store it elsewhere; all you can do is compare two positions and swap them. So it insertion-sorts blocks of 20 and then merges in place with **SymMerge** by Kim and Kutzner.[^6] It binary-searches both halves symmetrically for the cut points, rotates the middle part to swap them, and recursively merges each side. Rotations are built from swaps, so the swap count goes up.
 
+The figure gives equal keys distinct input positions. The original order of key 1 is 2, 4, 6. Lomuto quicksort reverses it; the stable sort preserves it.
+
+<SortStabilityViz keys={[2, 1, 2, 1, 2, 1]} unstableAlgo="lomuto" stableAlgo="stable-rust" caption="The large number is the sort key; the small number is the item's input position." />
+
 <SortViz algo="stable-cpp,stable-rust,stable-go" inputs="random,organ,sorted,few" n={80} caption="C++ stable_sort, Rust sort and Go sort.Stable. Bars moving one at a time are being written back from the buffer; the long swap sequences on the Go side are rotations." />
 
 Counts at n=1,000. 'Writes' are element moves between the buffer and the array.
