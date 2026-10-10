@@ -1,9 +1,9 @@
 # Why Hangul takes two columns in a terminal
 
 > Why one Hangul syllable is as wide as two Latin letters, why arrows and box-drawing characters change width from one setup to the next, and why string length is not a column count.
-> 2026-10-02 · https://alfex4936.github.io/blog/hangul-width/
+> 2024-11-19 · https://alfex4936.github.io/blog/hangul-width/
 
-The code font on this blog draws each Hangul syllable exactly two columns wide. Why that matters comes from how a terminal decides how wide a character is. The property values below were checked against `EastAsianWidth.txt` from Unicode 18.0, and the code output was produced by Node.js (ICU 78.3).
+The code font on this blog draws each Hangul syllable exactly two columns wide. Why that matters comes from how a terminal decides how wide a character is. The property values below were checked against `EastAsianWidth.txt` from Unicode 16.0, and the code output was produced by Node.js 22.11 (ICU 75.1).
 
 ## Width is a property of the character
 

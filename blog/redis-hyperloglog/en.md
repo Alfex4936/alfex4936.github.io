@@ -1,9 +1,9 @@
 # Redis HyperLogLog: counting a million users in 14 KB
 
-> Counting unique visitors with a SET takes 37 MB for a million; HyperLogLog takes 14 KB. How it counts, and how far off it is, measured.
-> 2026-09-21 · https://alfex4936.github.io/blog/redis-hyperloglog/
+> Counting unique visitors with a SET takes 48 MB for a million; HyperLogLog takes 14 KB. How it counts, and how far off it is, measured.
+> 2024-05-28 · https://alfex4936.github.io/blog/redis-hyperloglog/
 
-Some questions only need how many, not who: unique visitors in a day, for one. Every number in this post was measured on a local Redis 8.10.2 (Homebrew build, libc malloc) loaded with `user:0` through `user:999999`.
+Some questions only need how many, not who: unique visitors in a day, for one. Every number in this post was measured on Redis 7.2.4 in Docker (official image, jemalloc) loaded with `user:0` through `user:999999`.
 
 ## Counting exactly
 
@@ -13,10 +13,10 @@ A SET gives the exact count. In exchange it has to hold every member.
 $ redis-cli SCARD visitors:set
 (integer) 1000000
 $ redis-cli MEMORY USAGE visitors:set SAMPLES 0
-(integer) 37277585
+(integer) 48388640
 ```
 
-A million members take 37,277,585 bytes, about 37 MB. That is one day; keep a set per day and it adds up.
+A million members take 48,388,640 bytes, about 48 MB. That is one day; keep a set per day and it adds up.
 
 ## How HyperLogLog counts
 
@@ -67,10 +67,10 @@ A register is 6 bits, so 16,384 × 6 bits is 12,288 bytes, and a 16-byte header 
 $ redis-cli STRLEN visitors:hll
 (integer) 12304
 $ redis-cli MEMORY USAGE visitors:hll SAMPLES 0
-(integer) 14367
+(integer) 14392
 ```
 
-The same million members, counted in about 1/2,600 of the space the SET takes.
+The same million members, counted in about 1/3,400 of the space the SET takes.
 
 ## How far off it is
 
@@ -84,11 +84,11 @@ Measured at several sizes:
 
 | Members | PFCOUNT | Error | String | MEMORY USAGE |
 | ---: | ---: | ---: | ---: | ---: |
-| 100 | 100 | 0.00% | 283 B | 538 B |
-| 1,000 | 1,007 | +0.70% | 1,910 B | 2,587 B |
-| 10,000 | 10,089 | +0.89% | 12,304 B | 14,364 B |
-| 100,000 | 99,471 | −0.53% | 12,304 B | 14,365 B |
-| 1,000,000 | 999,674 | −0.03% | 12,304 B | 14,367 B |
+| 100 | 100 | 0.00% | 283 B | 440 B |
+| 1,000 | 1,007 | +0.70% | 1,910 B | 2,616 B |
+| 10,000 | 10,089 | +0.89% | 12,304 B | 14,392 B |
+| 100,000 | 99,471 | −0.53% | 12,304 B | 14,392 B |
+| 1,000,000 | 999,674 | −0.03% | 12,304 B | 14,392 B |
 
 ```mermaid
 xychart-beta
