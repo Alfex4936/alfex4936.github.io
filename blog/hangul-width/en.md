@@ -56,6 +56,15 @@ Decomposed vowels and trailing consonants attach to the letter before them to fo
 한글 (NFD) → 1112 1161 11AB 1100 1173 11AF
 ```
 
+<Quiz lang="en" title="Checkpoint: a decomposed syllable's width" items={[
+  {
+    q: "You decompose the same Hangul text into NFD. Should the terminal column count increase just because there are more code points?",
+    choices: ["Yes. Add a column for every code point.", "No. The vowels and trailing consonants attach to the leading consonant to form the same syllable.", "Reduce it, because every decomposed syllable is zero columns."],
+    answer: 1,
+    why: "The post identifies leading jamo as W, while most wcwidth implementations assign zero columns to the attached vowels and trailing consonants. More code points in the representation do not make the visible syllable wider.",
+  },
+]} />
+
 ## Ambiguous width
 
 `§`, `·`, `→` and the box-drawing `─` `│` (U+2500–U+254B) are all A, because older East Asian character sets such as EUC-KR made them two columns. Terminals have a setting for whether ambiguous characters are double width, and when that setting and the width the font actually draws disagree, the lines of a box no longer meet.
@@ -120,3 +129,18 @@ What it returns:
 | `！` | 2 | 1 |
 
 This function does not cover emoji or every combining sequence. For real use, an implementation that follows the full Unicode tables is safer: `string-width` in JavaScript, `go-runewidth` in Go.
+
+<Quiz lang="en" title="When a terminal table stops lining up" items={[
+  {
+    q: "Hangul aligns, but arrows and box-drawing lines shift in another terminal. What should you check first?",
+    choices: ["A setting that makes all precomposed Hangul half width.", "Only whether UTF-16 code units are used as the column count.", "Whether the ambiguous-width setting matches the width drawn by the font."],
+    answer: 2,
+    why: "The arrows and box characters shown have property A, so a setup may treat them as one or two columns. If the terminal's reserved columns differ from the font's drawn width, the lines no longer align.",
+  },
+  {
+    q: "User input includes emoji and combining sequences. Is the post's short columns function ready to use unchanged in a product?",
+    choices: ["No. Choose an implementation covering full Unicode tables and the sequences you need.", "Yes. Grapheme segmentation automatically determines every character's width.", "Yes. The first code point determines every emoji's width."],
+    answer: 0,
+    why: "Grapheme segmentation finds character boundaries; it does not guarantee display width. The sample covers only selected ranges. For real use, consider implementations such as string-width or go-runewidth.",
+  },
+]} />

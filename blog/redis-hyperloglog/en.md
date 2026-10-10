@@ -54,6 +54,15 @@ PFCOUNT estimates the count from how the register values are spread. Redis uses 
 
 A register is 6 bits, so 16,384 × 6 bits is 12,288 bytes, and a 16-byte header makes 12,304. The measurement agrees.
 
+<Quiz lang="en" title="Checkpoint: updating a register" items={[
+  {
+    q: "A user visits several times in one day. Does each PFADD of the same ID increase the estimate?",
+    choices: ["Yes, once per visit.", "No. The same hash updates the same register with the same value.", "Only the sparse representation deduplicates visits."],
+    answer: 1,
+    why: "The same ID produces the same hash and register value. A register keeps only its maximum, so a repeated visit adds no new information.",
+  },
+]} />
+
 ```bash
 $ redis-cli STRLEN visitors:hll
 (integer) 12304
@@ -126,7 +135,28 @@ Given several keys, PFCOUNT estimates the size of their union. A week's unique v
 
 </Walk>
 
-Where the exact number matters, billing for example, count with a SET or a database. Where an error under 1% is fine, unique visitors on a dashboard for instance, HyperLogLog saves a great deal of memory.
+Where the exact number matters, billing for example, count with a SET or a database. All the measurements above had errors under 1%, but neither those observations nor the 0.81% standard error bound future errors. HyperLogLog saves memory for dashboards that accept estimates. It does not guarantee a requirement that error must always stay within 1%.
+
+<Quiz lang="en" title="Designing a visitor counter" items={[
+  {
+    q: "You keep one HLL per day. How do you estimate weekly unique visitors without counting repeat visitors once per day?",
+    choices: ["Add the daily PFCOUNT results.", "Use the largest daily PFCOUNT result.", "Pass all day keys to one PFCOUNT call."],
+    answer: 2,
+    why: "PFCOUNT with several keys estimates their union. Adding daily estimates counts repeat visitors more than once; taking the maximum misses users who only visited on other days.",
+  },
+  {
+    q: "The measurement table reports 0.89% error. Does exceeding the 0.81% standard error alone prove an implementation bug?",
+    choices: ["No. Standard error is not a ceiling on individual measurements.", "Yes. Every measurement must fall within 0.81%.", "Yes. The dense representation stores an exact count."],
+    answer: 0,
+    why: "The post's 0.81% is a standard error determined by the register count. A single measurement can exceed it. Switching from sparse to dense does not turn an estimate into an exact count.",
+  },
+  {
+    q: "Billing requires both an exact unique-user count and the user list. Can you store only an HLL?",
+    choices: ["Yes. PFMERGE reconstructs the original IDs.", "No. Keep the members in a SET or database.", "Yes. Switching to dense reconstructs the original IDs."],
+    answer: 1,
+    why: "An HLL stores register information derived from hashes, not members. It cannot reconstruct an exact count or user list, and PFMERGE does not restore the original members.",
+  },
+]} />
 
 [^1]: Otmar Ertl, "New cardinality estimation algorithms for HyperLogLog sketches", arXiv:1702.01284. The comment on `hllSigma` in the Redis source points to it.
 [^2]: On the machine these numbers come from, `CONFIG GET hll-sparse-max-bytes` returned 3000.

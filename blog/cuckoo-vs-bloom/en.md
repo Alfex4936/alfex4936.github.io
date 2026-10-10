@@ -34,12 +34,16 @@ def add(s, x):
         if len(s.t[i]) < s.bs:
             s.t[i].append(fp); return True
     i = s.rng.choice((i1, i2))
+    undo = []
     for _ in range(s.mk):
         j = s.rng.randrange(len(s.t[i]))
+        undo.append((i, j, s.t[i][j]))
         fp, s.t[i][j] = s.t[i][j], fp
         i = s._alt(i, fp)
         if len(s.t[i]) < s.bs:
             s.t[i].append(fp); return True
+    for i, j, old_fp in reversed(undo):
+        s.t[i][j] = old_fp
     return False
 ```
 
@@ -55,15 +59,15 @@ If either candidate has a free slot, insert there. While the table is mostly emp
 
 </Step>
 
-<Step lines="9-15">
+<Step lines="9-17">
 
-If both are full, pick a random fingerprint, put ours in its slot, and send the evicted one to its other place via `_alt`. If that is full too, evict again.
+If both are full, pick a random fingerprint, put ours in its slot, and send the evicted one to its other place via `_alt`. If that is full too, evict again. Record each changed slot and its previous fingerprint in `undo`.
 
 </Step>
 
-<Step lines="16">
+<Step lines="18-20">
 
-If no free slot turns up within a fixed number of kicks (500 here), the insert fails. That is the moment the filter is "full".
+If no free slot turns up within a fixed number of kicks (500 here), the insert fails. This does not prove the whole table is full; the relocation path failed to find room. The last displaced fingerprint is still outside the table in `fp`, so returning failure without repair can lose an existing member. The example rolls changes back in reverse order to restore the table before the failed insert. Order matters because a slot may have been changed several times.
 
 </Step>
 
@@ -127,6 +131,15 @@ The trap is elsewhere: you must not delete an item that was never inserted. I se
 
 So deletion holds only if the caller guarantees it deletes items that were definitely inserted, once each. That is easy when the authoritative set lives elsewhere and the filter is a cache in front of it. It does not hold when external input is deleted directly.
 
+<Quiz lang="en" title="Checkpoint: authorizing deletion" items={[
+  {
+    q: "A cuckoo filter reports 'present' for a key absent from the source set. Can that response alone authorize deletion?",
+    choices: ["Yes. A successful lookup proves the key was inserted.", "No. Deletion may remove a real member's colliding fingerprint.", "Yes. Deletion only clears the false positive."],
+    answer: 1,
+    why: "The filter compares fingerprints, not keys. Removing a false-positive match may make a real member disappear from lookups. Establish membership in the source set before deleting.",
+  },
+]} />
+
 ## When to use which
 
 | Situation | Choice |
@@ -134,13 +147,36 @@ So deletion holds only if the caller guarantees it deletes items that were defin
 | 1–3% false positives, no deletion | Bloom |
 | 0.1% false positives or less | Cuckoo |
 | Deletion, deleted items known to be present | Cuckoo |
-| Deletion, no such guarantee | Counting Bloom, or check the source set |
+| Deletion, no such guarantee | Check insertion in the source set before deleting |
 | Size unknown in advance | Neither; e.g. Scalable Bloom |
 
-A full cuckoo filter rejects inserts. A Bloom filter overfilled only degrades its false-positive rate gradually. In production this difference often matters more than the rates.
+Counting Bloom does not remove the deletion requirement either. Counters replace shared bits and can be decremented, but decrementing for an item never inserted, or already deleted, can make another member disappear from lookups. An approximate "present" response must not authorize deletion. The caller must track successful insertions and deletions exactly or check the source set.
+
+A cuckoo filter can fail to find a slot within its relocation budget. Its failure path must roll back changes as above, or retain the displaced fingerprint separately, to avoid losing an existing member. Overfilling a Bloom filter only degrades its false-positive rate gradually. In production this difference often matters more than the rates.
 
 ## Summary
 
 The subtitle is half right. With four slots per bucket it fills to 96%, from 12 bits per item it has a lower false-positive rate in the same space, and it supports deletion. But around 8 bits per item Bloom is more accurate, deletion depends on the caller's discipline, and a full filter fails. "Better than Bloom when the target false-positive rate is low and you need deletion" is the sentence the measurements support.
+
+<Quiz lang="en" title="Putting a filter in front of the source set" items={[
+  {
+    q: "In this post's equal-space comparison, you have 8.42 bits per item and need no deletion. Which measured false-positive rate favors your choice?",
+    choices: ["Cuckoo, because it has a lower rate at every bit budget.", "Neither, because equal space means equal rates.", "Bloom, because its rate is lower in this row."],
+    answer: 2,
+    why: "This row reports 1.78% for Bloom and 2.98% for cuckoo. Longer fingerprints reverse the ranking, so the paper's title is not a rule to always choose cuckoo.",
+  },
+  {
+    q: "An evicted fingerprint has no original key stored. With a power-of-two bucket count, how do you find its other candidate bucket?",
+    choices: ["XOR the current bucket index with the fingerprint's hash.", "You cannot find it without the original key.", "Scan the whole table for an identical fingerprint."],
+    answer: 0,
+    why: "Applying the same XOR twice reverses it. The current bucket and fingerprint suffice to travel between candidates. The bucket-count condition keeps the modulo operation from breaking this property.",
+  },
+  {
+    q: "The item count keeps growing beyond your estimate. How do these fixed-size filters behave on insertion?",
+    choices: ["Both reject inserts once their capacity is exceeded.", "Cuckoo can fail to find a slot; Bloom's false-positive rate degrades.", "Only Bloom rejects inserts; cuckoo grows automatically."],
+    answer: 1,
+    why: "Cuckoo must find an empty slot within a bounded number of relocations. Failure can leave a fingerprint displaced, so the example reverses its changes. Bloom can keep setting bits, but its false-positive rate rises. Unknown size calls for a scalable structure.",
+  },
+]} />
 
 [^1]: Bin Fan, David G. Andersen, Michael Kaminsky, Michael D. Mitzenmacher, "Cuckoo Filter: Practically Better Than Bloom", CoNEXT 2014.

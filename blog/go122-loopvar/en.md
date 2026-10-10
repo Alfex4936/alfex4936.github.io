@@ -70,6 +70,15 @@ The 1.21 toolchain could already opt in with `GOEXPERIMENT=loopvar`. Its purpose
 
 The last row is the escape hatch in the other direction. You can move the module to 1.22 and pin a single file that relies on the old behaviour with a `//go:build go1.21` constraint. The Go version in the build constraint becomes that file's language version.
 
+<Quiz lang="en" title="Checkpoint: the module language version" items={[
+  {
+    q: "Build the post's closure example with Go 1.22.12 in a go 1.21 module, with no build constraints or experiment override. What does go run . print?",
+    choices: ["0 1 2, because only the toolchain version matters.", "3 3 3, because the module's go line selects the old semantics.", "It refuses to build, because new toolchains cannot build old modules."],
+    answer: 1,
+    why: "In the toolchain comparison, a module package follows the language version in go.mod. Under the old semantics, closures called after the loop read the shared variable's final value.",
+  },
+]} />
+
 ## The go run main.go trap
 
 The row that stands out is the fifth one. Same directory, same `go.mod` (`go 1.21`), yet `go run .` prints `3 3 3` and `go run main.go` prints `0 1 2`.
@@ -142,5 +151,26 @@ Under 1.21 semantics `AddrTaken` needs one slice and one `i`: two allocations. T
 - A file that needs the old semantics can be pinned per file with `//go:build go1.21`.
 - Code that changes the counter in the body still works, because the value is copied before `i++` at the end of each iteration.
 - The cost appears only when an address escapes the loop: one extra heap allocation per iteration.
+
+<Quiz lang="en" title="Reproducing the loop-variable change" items={[
+  {
+    q: "In the same directory, go run . and go run main.go print different closure results. What explains the post's experiment?",
+    choices: ["Passing file names creates a package that belongs to no module.", "Passing a file name executes closures immediately.", "Only go run . changes the closure execution order."],
+    answer: 0,
+    why: "The experiment reports a nil Module for the command-line-arguments package built from explicit files. It uses the toolchain's language version rather than the module's go line. Compare package-level runs to match CI's semantics.",
+  },
+  {
+    q: "Under the new semantics, a closure changes i inside a three-clause for body. How is the next iteration's i formed?",
+    choices: ["Reset it to the declaration's initial value every time.", "Discard the body change and apply i++ to the old value.", "Copy the body's updated value into the new variable, then run the post statement."],
+    answer: 2,
+    why: "The variable is fresh but its value carries over. That is why the post's i += 2 example prints 2 5 under both semantics, preserving the effect of adjusting the counter inside the body.",
+  },
+  {
+    q: "After adopting the new semantics, which of the post's benchmarks should you inspect for per-iteration heap allocations?",
+    choices: ["Both, because every fresh variable must live on the heap.", "AddrTaken, which stores addresses in a slice that escapes the loop.", "Only NoEscape, which stores no addresses."],
+    answer: 1,
+    why: "Fresh-variable semantics and heap allocation are different things. AddrTaken retains each iteration's address outside the loop. A variable whose address does not escape need not get a heap allocation per iteration.",
+  },
+]} />
 
 [^1]: Go 1.22 Release Notes, "Changes to the language" (February 2024). The design background is in proposal golang/go#60078 and the Go blog post "Fixing For Loops in Go 1.22" (September 2023).

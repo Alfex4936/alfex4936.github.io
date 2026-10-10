@@ -26,6 +26,15 @@ graph LR
 
 The eleventh bucket should take 1/11 of the keys. Anything moved beyond that is waste, and in a cache every wasted move is a miss. mod-N moved ten times the ideal.
 
+<Quiz lang="en" title="Checkpoint: the new bucket's share" items={[
+  {
+    q: "When you append a bucket, what relocation pattern does Jump produce?",
+    choices: ["Most keys are redistributed among existing buckets.", "Moved keys go to the new bucket; the rest keep their existing bucket.", "No existing keys move; only newly created keys use the new bucket."],
+    answer: 1,
+    why: "Growth uses each key's probability of moving to the new bucket. In the post's experiment growing from 10 to 11, every relocated key went there. It avoids the reshuffling between existing buckets caused by mod-N.",
+  },
+]} />
+
 ## A five-line function
 
 Here is the paper's code in Go.
@@ -139,5 +148,20 @@ It has no weights either. You can fake them by giving a big node several numbers
 ## Summary
 
 It moves as few keys as a hash ring, spreads more evenly than a ring with 1,000 virtual nodes, and uses zero memory. The price is a single constraint: buckets are only added or removed at the end. If your shard numbers are fixed, these five lines are worth considering before building a ring.
+
+<Quiz lang="en" title="Growing and replacing shards" items={[
+  {
+    q: "A server for a middle shard dies. How do you hand it over to a replica while preserving Jump's existing placement?",
+    choices: ["Delete its number and shift later numbers down.", "Keep the bucket count but renumber every shard.", "Keep the shard number and update only its server-address mapping."],
+    answer: 2,
+    why: "Jump returns fixed numbers. Removing a middle number and shifting the list changes which server a number denotes. A replica inheriting the same number avoids that reshuffle.",
+  },
+  {
+    q: "As the bucket count grows, must Jump create a ring entry per bucket or inspect every bucket in order?",
+    choices: ["No. A repeatable random sequence seeded by the key skips directly to the next move.", "Yes. Virtual-node arrays are required for an even distribution.", "Yes. Every bucket must be visited to identify the last one."],
+    answer: 0,
+    why: "The product of no-move probabilities simplifies to a ratio, allowing the next move to be sampled directly. There is no ring to store, and the post's expected iteration count grows logarithmically rather than linearly.",
+  },
+]} />
 
 [^1]: John Lamping, Eric Veach, "A Fast, Minimal Memory, Consistent Hash Algorithm", arXiv:1406.2294 (2014). The constant 2862933555777941757 is taken from the paper's code.
