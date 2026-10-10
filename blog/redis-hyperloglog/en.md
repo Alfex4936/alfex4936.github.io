@@ -52,6 +52,12 @@ PFCOUNT estimates the count from how the register values are spread. Redis uses 
 
 </Walk>
 
+Changing the low bits and the remaining bits makes their roles visible. Choose "Same rank, another register": the candidate rank stays the same while the register index changes. A candidate smaller than the stored value is not written.
+
+<BitProbe lang="en" />
+
+The remaining bits can also all be zero. [`hllPatLen` in Redis 7.2.4](https://github.com/redis/redis/blob/7.2.4/src/hyperloglog.c) appends a sentinel 1 beyond the scanned bits, capping the rank at 51. The "All zero bits" example scans all 50 remaining bits before reaching that sentinel. This candidate rank is not a visitor count.
+
 A register is 6 bits, so 16,384 × 6 bits is 12,288 bytes, and a 16-byte header makes 12,304. The measurement agrees.
 
 <Quiz lang="en" title="Checkpoint: updating a register" items={[

@@ -70,6 +70,31 @@ The delayed reader inserts A again. The database holds B while the cache holds A
 
 TTL bounds the lifetime of that last `SET`, not staleness measured from the database commit. A delayed read or a lagging database replica can insert the old value much later. Extending TTL on every read can keep it alive even longer.
 
+The same code ends differently depending on where the other request intervenes. Choose an ordering below and advance one step at a time. Changed values are highlighted.
+
+<TracePlayer
+  lang="en"
+  title="When SET arrives after DEL"
+  columns={["Database", "Value held by reader", "Redis"]}
+  caption="An authored model of the example's execution order, not a measurement of request timing or Redis throughput. Each cell shows the state after that step."
+  tracks={[
+    { label: "Late SET: the old value returns", steps: [
+      { action: "Start", note: "The database holds A and the cache is empty.", values: ["A", "None", "None"] },
+      { action: "Reader: fetch A from the database", note: "The reader has not filled the cache yet.", values: ["A", "A", "None"] },
+      { action: "Writer: commit B", note: "The database changes to B. The A already held by the reader does not change.", values: ["B", "A", "None"] },
+      { action: "Writer: execute DEL", note: "Deleting the empty cache cannot delete the A held by the in-flight reader.", values: ["B", "A", "None"] },
+      { action: "Reader: SET A", note: "The database holds B, the cache holds A. TTL starts at this SET.", values: ["B", "A", "A · TTL 300s"] },
+    ] },
+    { label: "In this ordering, DEL arrives last", steps: [
+      { action: "Start", note: "Start with the same A and empty cache.", values: ["A", "None", "None"] },
+      { action: "Reader: fetch A from the database", note: "This reader also gets A.", values: ["A", "A", "None"] },
+      { action: "Reader: SET A", note: "This time the reader fills the cache before the writer intervenes.", values: ["A", "A", "A · TTL 300s"] },
+      { action: "Writer: commit B", note: "A remains cached until DEL.", values: ["B", "A", "A · TTL 300s"] },
+      { action: "Writer: execute DEL", note: "The cache is empty. The next miss reads the database again. This is one ordering, not a guarantee across all interleavings.", values: ["B", "A", "None"] },
+    ] },
+  ]}
+/>
+
 For prices or permissions where stale reads are unacceptable, read the database or design a protocol that checks versions against the authoritative data. Record failed invalidations so they can be retried. An outbox records the invalidation event in the same database transaction as the update; CDC is another option. Both still need to handle delivery delay and out-of-order events.
 
 <Quiz lang="en" title="Checkpoint: what TTL bounds" items={[
