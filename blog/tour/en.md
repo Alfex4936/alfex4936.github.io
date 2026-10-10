@@ -168,6 +168,65 @@ Code is set in Monoplex KR, which combines IBM Plex Mono with the Hangul of IBM 
 
 The source font is 2.7 MB per weight. The build keeps only the Hangul used in this repository: when this post was written, 406 syllables, 25.5 KB per weight.
 
+## Figures you can play with
+
+Some posts carry figures you can operate. They all render to HTML at build time; JavaScript only handles playback and buttons. These are samples; the linked posts show each one in its real context.
+
+The sorting figure runs the same input through two algorithms side by side, one step at a time. The input menu switches between random, already sorted, and many-duplicates arrays. The [sorting post](/blog/sorting-in-the-wild/) follows this through to what Rust, C++, and Go actually use.
+
+<SortViz lang="en" algo="lomuto,hoare" inputs="random,sorted,few" n={40} caption="The same 40 values through two partition schemes. Bar height is the value; highlighted slots are being compared or swapped." />
+
+Whether equal keys keep their order after sorting is faster to see than to read.
+
+<SortStabilityViz lang="en" keys={[2, 1, 2, 1, 2, 1]} unstableAlgo="lomuto" stableAlgo="stable-rust" caption="The large number is the sort key; the small number is the item's input position." />
+
+When order matters, the post uses a step player. Columns are state; buttons or arrow keys step through. The track buttons on top are different cases branching from the same start. Here is the <kbd>l</kbd> key from the next section in this form.
+
+<TracePlayer
+  lang="en"
+  title="Pressing l"
+  columns={["data-lang", "Reading position", "Visible text"]}
+  caption="A model of what chrome.js and reader.js do, in order. Not a timing measurement."
+  tracks={[
+    { label: "Korean to English", steps: [
+      { action: "Reading", note: "About 40% into section 3 of the Korean text.", values: ["ko", "§3 · 40%", "Korean"] },
+      { action: "l key", note: "chrome.js takes the key and asks reader.js where you are.", values: ["ko", "§3 · 40%", "Korean"] },
+      { action: "Switch data-lang", note: "One html attribute changes. Nothing reloads.", values: ["en", "§3 · 40%", "English"] },
+      { action: "Same place", note: "Scrolls to the 40% point of section 3 in English.", values: ["en", "§3 · 40%", "English §3"] },
+    ] },
+    { label: "l again", steps: [
+      { action: "Reading", note: "You read a little further in English, to 70% of the same section.", values: ["en", "§3 · 70%", "English"] },
+      { action: "l key", note: "Again it asks for the position first.", values: ["en", "§3 · 70%", "English"] },
+      { action: "Switch data-lang", note: "The hidden Korean shows again.", values: ["ko", "§3 · 70%", "Korean"] },
+      { action: "Same place", note: "You return to 70%, where you were, not the 40% you left from.", values: ["ko", "§3 · 70%", "Korean §3"] },
+    ] },
+  ]}
+/>
+
+To show the inside of a data structure, a post gets a figure built for that structure. This is the approximate LRU figure from the [Redis cache post](/blog/redis-cache-field-guide/).
+
+<LruSampleViz lang="en" caption="Each bar is one batch of keys; older keys are to the left. Solid bars are keys that survived eviction." />
+
+Bit-level rules are checked by flipping the bits yourself. This one is from the [HyperLogLog post](/blog/redis-hyperloglog/).
+
+<BitProbe lang="en" />
+
+Short checks sit in the middle of a post. Pick one and the answer and reason appear at once; choices are shuffled on every load.
+
+<Quiz lang="en" title="Checking this blog" items={[
+  { q: "What happens when you switch language with `l`?", choices: ["html's data-lang changes and the page scrolls to the same point in the same section", "The other language's page is loaded", "You go back to the top of the post"], answer: 0, why: "Both languages are in one page. That is why the build fails if the two languages have different section counts." },
+  { q: "What happens when you tap a footnote on a narrow screen?", choices: ["The note appears near where you are reading", "Nothing", "The footnote switches to Korean"], answer: 0, why: "It used to jump to the end of the post, which made it easy to lose your place. Now the note shows where you are." },
+]} />
+
+At the end of a post, things worth remembering become cards. Tap to flip.
+
+<FlashCards lang="en" title="Shortcuts and figures" cards={[
+  { front: "`t`", back: "Toggles light and dark theme." },
+  { front: "`[` `]`", back: "Previous and next section." },
+  { front: "Walk and Step", back: "Highlights part of the figure beside the text as you read." },
+  { front: "TracePlayer", back: "Keeps state in columns and replays an order one step at a time." },
+]} />
+
 ## For the reader
 
 On a wide screen, the contents on the left draw a bar as long as each section and fill it as you read. The status line at the bottom shows the section you are in and the time left, and the file name at its left opens this post's source markdown. Click a figure to see it large.
