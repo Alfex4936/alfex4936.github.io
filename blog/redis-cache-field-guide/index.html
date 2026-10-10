@@ -11,7 +11,7 @@
         const t = document.querySelector('title')
         t.textContent = t.dataset[lang]
       })()
-    </script><link rel="stylesheet" href="/blog/assets/BitProbe.Coo82TxN.css"><link rel="stylesheet" href="/blog/assets/all.CZwpVKsq.css"></head><body><a class="skip" href="#main"><span lang="ko">본문으로</span><span lang="en">Skip to content</span></a><header class="bar"><nav class="bar__path" aria-label="Path"><a href="/">seok</a><span class="sep">·</span><a href="/blog/">~/blog</a><span class="sep">/</span><span class="here">redis-cache-field-guide</span></nav><nav class="bar__ctl" aria-label="Search, language and theme"><button type="button" class="bar__search" data-search aria-keyshortcuts="/ Control+K Meta+K"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.5"></circle><path d="M10.4 10.4 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg><span class="bar__search-label"><span lang="ko">검색</span><span lang="en">Search</span></span><kbd>/</kbd></button><span class="bar__sep" aria-hidden="true">·</span><button type="button" data-lang-set="ko" aria-pressed="false">ko</button><button type="button" data-lang-set="en" aria-pressed="false">en</button><span class="bar__sep" aria-hidden="true">·</span><button type="button" data-theme-set="dark" aria-pressed="false">dark</button><button type="button" data-theme-set="light" aria-pressed="false">light</button></nav></header><main id="main"><article class="post" lang="ko" data-minutes="27"><header class="post__head"><p class="post__cwd"><a href="/blog/">~/blog</a>/redis-cache-field-guide/ko.mdx</p><h1 class="post__title" style="view-transition-name: t-redis-cache-field-guide">Redis 캐시 현장 안내서: 만료, 축출, 그리고 한꺼번에 몰려오는 요청</h1><p class="post__dek">캐시는 붙이기 쉽고 운영하기 어렵습니다. Redis 6.2 소스에서 만료와 축출이 실제로 어떻게 돌아가는지 읽고, 캐시 스탬피드와 근사 LRU를 직접 재 봤습니다. 끝에 면접 용어 정리와 퀴즈, 플래시카드가 있습니다.</p><p class="post__meta"><time datetime="2021-11-23">2021-11-23</time><span>27분</span><span><a href="/blog/?tag=redis">redis</a> · <a href="/blog/?tag=backend">backend</a> · <a href="/blog/?tag=cache">cache</a></span><span>고침 <time datetime="2026-10-10">2026-10-10</time></span></p></header><nav class="toc" aria-label="목차"><p class="toc__label">목차</p><ol><li><a href="#ko-캐시를-어디에-끼우는가"><span class="toc__n">§1</span><span>캐시를 어디에 끼우는가</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-만료-지운다는-것이-언제인가"><span class="toc__n">§2</span><span>만료: 지운다는 것이 언제인가</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-축출-메모리가-찼을-때"><span class="toc__n">§3</span><span>축출: 메모리가 찼을 때</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-캐시가-무너지는-네-가지-방식"><span class="toc__n">§4</span><span>캐시가 무너지는 네 가지 방식</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-캐시라도-알아야-하는-영속성"><span class="toc__n">§5</span><span>캐시라도 알아야 하는 영속성</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-캐시를-설계할-때-먼저-정하는-예산"><span class="toc__n">§6</span><span>캐시를 설계할 때 먼저 정하는 예산</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-장애가-났을-때-보는-순서"><span class="toc__n">§7</span><span>장애가 났을 때 보는 순서</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-면접-용어-정리"><span class="toc__n">§8</span><span>면접 용어 정리</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-퀴즈"><span class="toc__n">§9</span><span>퀴즈</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-플래시카드"><span class="toc__n">§10</span><span>플래시카드</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-정리"><span class="toc__n">§11</span><span>정리</span><span class="toc__len" aria-hidden="true"></span></a></li></ol></nav><div class="prose"><p>캐시를 처음 붙이면 응답 시간 그래프가 바닥으로 내려갑니다. 그다음 몇 달은 그 캐시 때문에 생긴 문제를 고치면서 보냅니다. 만료가 몰려 DB가 넘어가고, 없는 키를 계속 묻는 요청이 캐시를 그냥 통과하고, 메모리가 차서 쓰기가 막힙니다.</p>
+    </script><link rel="stylesheet" href="/blog/assets/SkipListViz.D9vGAP7W.css"><link rel="stylesheet" href="/blog/assets/all.CZwpVKsq.css"></head><body><a class="skip" href="#main"><span lang="ko">본문으로</span><span lang="en">Skip to content</span></a><header class="bar"><nav class="bar__path" aria-label="Path"><a href="/">seok</a><span class="sep">·</span><a href="/blog/">~/blog</a><span class="sep">/</span><span class="here">redis-cache-field-guide</span></nav><nav class="bar__ctl" aria-label="Search, language and theme"><button type="button" class="bar__search" data-search aria-keyshortcuts="/ Control+K Meta+K"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.5"></circle><path d="M10.4 10.4 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg><span class="bar__search-label"><span lang="ko">검색</span><span lang="en">Search</span></span><kbd>/</kbd></button><span class="bar__sep" aria-hidden="true">·</span><button type="button" data-lang-set="ko" aria-pressed="false">ko</button><button type="button" data-lang-set="en" aria-pressed="false">en</button><span class="bar__sep" aria-hidden="true">·</span><button type="button" data-theme-set="dark" aria-pressed="false">dark</button><button type="button" data-theme-set="light" aria-pressed="false">light</button></nav></header><main id="main"><article class="post" lang="ko" data-minutes="27"><header class="post__head"><p class="post__cwd"><a href="/blog/">~/blog</a>/redis-cache-field-guide/ko.mdx</p><h1 class="post__title" style="view-transition-name: t-redis-cache-field-guide">Redis 캐시 현장 안내서: 만료, 축출, 그리고 한꺼번에 몰려오는 요청</h1><p class="post__dek">캐시는 붙이기 쉽고 운영하기 어렵습니다. Redis 6.2 소스에서 만료와 축출이 실제로 어떻게 돌아가는지 읽고, 캐시 스탬피드와 근사 LRU를 직접 재 봤습니다. 끝에 면접 용어 정리와 퀴즈, 플래시카드가 있습니다.</p><p class="post__meta"><time datetime="2021-11-23">2021-11-23</time><span>27분</span><span><a href="/blog/?tag=redis">redis</a> · <a href="/blog/?tag=backend">backend</a> · <a href="/blog/?tag=cache">cache</a></span><span>고침 <time datetime="2026-10-10">2026-10-10</time></span></p></header><nav class="toc" aria-label="목차"><p class="toc__label">목차</p><ol><li><a href="#ko-캐시를-어디에-끼우는가"><span class="toc__n">§1</span><span>캐시를 어디에 끼우는가</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-만료-지운다는-것이-언제인가"><span class="toc__n">§2</span><span>만료: 지운다는 것이 언제인가</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-축출-메모리가-찼을-때"><span class="toc__n">§3</span><span>축출: 메모리가 찼을 때</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-캐시가-무너지는-네-가지-방식"><span class="toc__n">§4</span><span>캐시가 무너지는 네 가지 방식</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-캐시라도-알아야-하는-영속성"><span class="toc__n">§5</span><span>캐시라도 알아야 하는 영속성</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-캐시를-설계할-때-먼저-정하는-예산"><span class="toc__n">§6</span><span>캐시를 설계할 때 먼저 정하는 예산</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-장애가-났을-때-보는-순서"><span class="toc__n">§7</span><span>장애가 났을 때 보는 순서</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-면접-용어-정리"><span class="toc__n">§8</span><span>면접 용어 정리</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-퀴즈"><span class="toc__n">§9</span><span>퀴즈</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-플래시카드"><span class="toc__n">§10</span><span>플래시카드</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#ko-정리"><span class="toc__n">§11</span><span>정리</span><span class="toc__len" aria-hidden="true"></span></a></li></ol></nav><div class="prose"><p>캐시를 처음 붙이면 응답 시간 그래프가 바닥으로 내려갑니다. 그다음 몇 달은 그 캐시 때문에 생긴 문제를 고치면서 보냅니다. 만료가 몰려 DB가 넘어가고, 없는 키를 계속 묻는 요청이 캐시를 그냥 통과하고, 메모리가 차서 쓰기가 막힙니다.</p>
 <p>이 글은 그런 문제를 하나씩 보고, Redis가 각각을 어떻게 다루는지 소스에서 확인합니다. 소스는 Redis 6.2.6이고, 측정은 같은 버전의 공식 Docker 이미지에서 Python 클라이언트(redis-py)로 했습니다. 환경은 Apple Silicon 노트북입니다. 숫자는 이 환경에서 나온 것이니 절댓값보다 모양을 보시면 됩니다.</p>
 <p>앞부분은 캐시 패턴과 Redis의 만료, 축출 구조를 다루고, 뒷부분은 장애 유형별로 정리합니다. 마지막에 면접에서 자주 나오는 용어와 퀴즈가 있습니다. 백엔드 개발자와 Redis를 운영하는 분을 생각하고 썼지만, 프런트엔드 개발자가 읽어도 따라올 수 있게 썼습니다.</p>
 <h2 id="ko-캐시를-어디에-끼우는가">캐시를 어디에 끼우는가</h2>
@@ -1803,105 +1803,54 @@
 <p>Andrea Vattani, Flavio Chierichetti, Keegan Lowenstein, “Optimal Probabilistic Cache Stampede Prevention”, VLDB 2015. <a href="#ko-user-content-fnref-1" data-footnote-backref aria-label="Back to reference 1" class="data-footnote-backref">↩</a></p>
 </li>
 </ol>
-</section></div><footer class="post__end"><p class="post__source">원문 마크다운: <a href="/blog/redis-cache-field-guide/ko.md">redis-cache-field-guide/ko.md</a></p><nav class="post__nav" aria-label="다른 글"><a class="newer" href="/blog/sorting-in-the-wild/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560.1854166666667 1868.4969999999998">
+</section></div><footer class="post__end"><p class="post__source">원문 마크다운: <a href="/blog/redis-cache-field-guide/ko.md">redis-cache-field-guide/ko.md</a></p><nav class="post__nav" aria-label="다른 글"><a class="newer" href="/blog/skip-list/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 544.20825 456.5">
 
 
-<polyline class="edge" data-from="A" data-to="B" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="165.3055,76.9 165.3055,124.9" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="B" data-to="I" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예" points="143.6928333333333,232.9633333333333 143.6928333333333,615.719 91.72649999999999,615.719 91.72649999999999,709.929" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="B" data-to="L" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="186.91816666666665,232.9633333333333 186.91816666666665,290.576 238.8845,290.576 238.8845,370.87600000000003" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="L" data-to="H" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예" points="216.40733333333333,483.26183333333336 216.40733333333333,768.919 154.81824999999998,768.919 154.81825,849.2189999999999" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="L" data-to="P" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="261.3616666666667,483.2618333333333 261.3616666666667,541.739 322.95074999999997,541.739 322.95074999999997,622.039" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="P" data-to="S" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="322.95074999999997,675.8389999999999 322.95074999999997,709.929" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="S" data-to="PI" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예, 직전 분할도 고르면" points="295.90408333333335,845.1623333333333 295.90408333333335,922.1189999999999 255.65599999999998,922.1189999999999 255.65599999999998,1002.4189999999999" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="PI" data-to="DONE" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="성공" points="227.7928333333333,1056.2189999999998 227.7928333333333,1184.5189999999998" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="PI" data-to="E" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="실패" points="283.51916666666665,1056.2189999999998 283.51916666666665,1116.2189999999998 294.656,1116.2189999999998 294.656,1184.5189999999998 338.01916666666665,1184.5189999999998 338.01916666666665,1184.5189999999998" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="S" data-to="E" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="349.99741666666665,845.1623333333332 349.99741666666665,1116.2189999999998 390.2455,1116.2189999999998 390.2455,1184.5189999999998 358.01916666666665,1184.5189999999998 358.01916666666665,1184.5189999999998" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="E" data-to="EQ" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예" points="338.01916666666665,1221.4189999999999 338.01916666666665,1245.4189999999999 270.62191666666666,1245.4189999999999 270.62191666666666,1334.1689999999999" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="E" data-to="PART" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="358.01916666666665,1221.4189999999999 358.01916666666665,1262.3189999999997 425.41641666666663,1262.3189999999997 425.4164166666667,1334.1689999999999" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="PART" data-to="BAL" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="425.4164166666667,1371.069 425.41641666666663,1427.5189999999998" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="BAL" data-to="BR" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예" points="401.08675,1549.167333333333 401.08675,1609.4969999999998 390.29241666666667,1609.4969999999998 390.29241666666667,1689.7969999999998" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="BAL" data-to="REC" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="449.74608333333333,1549.167333333333 449.74608333333333,1609.4969999999998 460.54041666666666,1609.4969999999998 460.54041666666666,1779.5969999999998 442.6585833333333,1779.5969999999998 442.6585833333333,1791.5969999999998" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="BR" data-to="REC" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="390.29241666666667,1743.5969999999998 390.29241666666667,1779.5969999999998 408.17425,1779.5969999999998 408.17425,1791.5969999999998" fill="none" stroke="var(--_line)" stroke-width="1" />
-
-
-
-
-
-
-
-
-
-
-
-
-<g class="node" data-id="A" data-label="구간 v" data-shape="rectangle">
-  <rect x="124.69399999999999" y="40" width="81.22299999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<polyline class="edge" data-from="Q" data-to="N" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="223.21675000000002,76.9 223.21675000000002,100.9 122.47800000000001,100.9 122.47800000000001,124.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="Q" data-to="O" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="223.21675000000002,76.9 223.21675000000002,100.9 323.95550000000003,100.9 323.95550000000003,124.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="N" data-to="D" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="122.47800000000001,161.8 122.47800000000001,209.8" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="O" data-to="S" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="323.95550000000003,161.8 323.95550000000003,209.8" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="S" data-to="F" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="323.95550000000003,246.70000000000002 323.95550000000003,270.70000000000005 228.77425000000005,270.70000000000005 228.77425000000005,294.70000000000005" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="S" data-to="P" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="323.95550000000003,246.70000000000002 323.95550000000003,270.70000000000005 419.13675,270.70000000000005 419.13675,294.70000000000005" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="F" data-to="R" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="228.77425000000005,331.6 228.77425000000005,379.6" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="P" data-to="K" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="419.13675,331.6 419.13675,379.6" fill="none" stroke="var(--_line)" stroke-width="1" />
+<g class="node" data-id="Q" data-label="순위표에 묻습니다" data-shape="rectangle">
+  <rect x="141.85025000000002" y="40" width="162.733" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
   
 </g>
-<g class="node" data-id="B" data-label="길이 ≤ 20?
-(Go는 12)" data-shape="diamond">
-  <polygon points="165.3055,124.9 230.1435,189.738 165.3055,254.576 100.4675,189.738" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<g class="node" data-id="N" data-label="이름으로 점수 조회" data-shape="rectangle">
+  <rect x="40" y="124.9" width="164.95600000000002" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
   
 </g>
-<g class="node" data-id="I" data-label="삽입 정렬" data-shape="rectangle">
-  <rect x="39.999999999999986" y="709.929" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<g class="node" data-id="O" data-label="점수 순서와 순위 조회" data-shape="rectangle">
+  <rect x="232.95600000000002" y="124.9" width="181.999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
   
 </g>
-<g class="node" data-id="L" data-label="한도 소진?" data-shape="diamond">
-  <polygon points="238.88449999999997,370.876 306.316,438.3075 238.88449999999997,505.73900000000003 171.45299999999997,438.3075" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<g class="node" data-id="D" data-label="dict" data-shape="rectangle">
+  <rect x="91.12900000000002" y="209.8" width="62.69799999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
   
 </g>
-<g class="node" data-id="H" data-label="heapsort" data-shape="rectangle">
-  <rect x="107.16725" y="849.2189999999999" width="95.30199999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<g class="node is-hub" data-id="S" data-label="skip list" data-shape="rectangle">
+  <rect x="281.12100000000004" y="209.8" width="85.66900000000001" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
   
 </g>
-<g class="node" data-id="P" data-label="피벗 고르기
-3개, 50개 이상이면 9개" data-shape="rectangle">
-  <rect x="230.46925" y="622.039" width="184.96299999999997" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<g class="node" data-id="F" data-label="forward: 다음 노드" data-shape="rectangle">
+  <rect x="151.48325000000006" y="294.70000000000005" width="154.582" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
   
 </g>
-<g class="node" data-id="S" data-label="후보들이 이미
-순서대로였나?" data-shape="diamond">
-  <polygon points="322.95074999999997,709.929 404.09074999999996,791.069 322.95074999999997,872.209 241.81074999999998,791.069" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<g class="node" data-id="P" data-label="span: 건너뛴 원소 수" data-shape="rectangle">
+  <rect x="334.06525000000005" y="294.70000000000005" width="170.14299999999997" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
   
 </g>
-<g class="node" data-id="PI" data-label="부분 삽입 정렬 시도
-어긋난 곳 5개까지" data-shape="rectangle">
-  <rect x="172.06649999999996" y="1002.4189999999999" width="167.179" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<g class="node" data-id="R" data-label="범위 순회" data-shape="rectangle">
+  <rect x="177.04775000000004" y="379.6" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
   
 </g>
-<g class="node" data-id="DONE" data-label="끝" data-shape="rectangle">
-  <rect x="197.7928333333333" y="1184.5189999999998" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<g class="node" data-id="K" data-label="순위 계산" data-shape="rectangle">
+  <rect x="367.41025" y="379.6" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
   
 </g>
-<g class="node is-hub" data-id="E" data-label="E" data-shape="rectangle">
-  <rect x="318.01916666666665" y="1184.5189999999998" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  
-</g>
-<g class="node" data-id="EQ" data-label="같은 값을 한쪽에 몰고
-그 구간은 건너뜀" data-shape="rectangle">
-  <rect x="179.62241666666665" y="1334.1689999999999" width="181.999" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  
-</g>
-<g class="node" data-id="PART" data-label="분할" data-shape="rectangle">
-  <rect x="389.6214166666667" y="1334.1689999999999" width="71.59" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  
-</g>
-<g class="node" data-id="BAL" data-label="작은 쪽이
-길이/8 미만?" data-shape="diamond">
-  <polygon points="425.4164166666667,1427.5189999999998 498.4054166666667,1500.5079999999998 425.4164166666667,1573.4969999999998 352.42741666666666,1500.5079999999998" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  
-</g>
-<g class="node" data-id="BR" data-label="몇 개를 섞고
-한도 1 감소" data-shape="rectangle">
-  <rect x="330.0444166666667" y="1689.7969999999998" width="120.49599999999998" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  
-</g>
-<g class="node" data-id="REC" data-label="양쪽 재귀" data-shape="rectangle">
-  <rect x="373.68991666666665" y="1791.5969999999998" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  
-</g>
-</svg></span><small>다음 글 →</small><span class="post__nav-title">sort()를 부르면 실제로 도는 것: C++, Rust, Go의 퀵소트</span></a></nav></footer></article><article class="post" lang="en" data-minutes="22"><header class="post__head"><p class="post__cwd"><a href="/blog/">~/blog</a>/redis-cache-field-guide/en.mdx</p><h1 class="post__title" style="view-transition-name: t-redis-cache-field-guide">A Field Guide to Redis Caching: Expiry, Eviction, and the Herd at the Door</h1><p class="post__dek">A cache is easy to add and hard to run. I read how expiry and eviction actually work in the Redis 6.2 source, then measured a cache stampede and approximate LRU. Interview glossary, quiz, and flash cards at the end.</p><p class="post__meta"><time datetime="2021-11-23">2021-11-23</time><span>22 min read</span><span><a href="/blog/?tag=redis">redis</a> · <a href="/blog/?tag=backend">backend</a> · <a href="/blog/?tag=cache">cache</a></span><span>updated <time datetime="2026-10-10">2026-10-10</time></span></p></header><nav class="toc" aria-label="Contents"><p class="toc__label">Contents</p><ol><li><a href="#en-where-the-cache-goes"><span class="toc__n">§1</span><span>Where the cache goes</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-expiry-when-does-delete-happen"><span class="toc__n">§2</span><span>Expiry: when does “delete” happen</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-eviction-when-memory-is-full"><span class="toc__n">§3</span><span>Eviction: when memory is full</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-four-ways-a-cache-falls-over"><span class="toc__n">§4</span><span>Four ways a cache falls over</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-persistence-even-for-a-cache"><span class="toc__n">§5</span><span>Persistence, even for a cache</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-set-budgets-before-setting-ttls"><span class="toc__n">§6</span><span>Set budgets before setting TTLs</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-what-to-inspect-during-an-outage"><span class="toc__n">§7</span><span>What to inspect during an outage</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-interview-glossary"><span class="toc__n">§8</span><span>Interview glossary</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-quiz"><span class="toc__n">§9</span><span>Quiz</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-flash-cards"><span class="toc__n">§10</span><span>Flash cards</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-summary"><span class="toc__n">§11</span><span>Summary</span><span class="toc__len" aria-hidden="true"></span></a></li></ol></nav><div class="prose"><p>The first time you put a cache in front of something, the latency graph drops to the floor. You then spend the next few months fixing problems the cache caused. Expiries line up and knock the database over, requests for keys that do not exist sail straight through, and memory fills until writes stop.</p>
+</svg></span><small>다음 글 →</small><span class="post__nav-title">Skip list: 동전 던지기에서 Redis의 순위표까지</span></a></nav></footer></article><article class="post" lang="en" data-minutes="22"><header class="post__head"><p class="post__cwd"><a href="/blog/">~/blog</a>/redis-cache-field-guide/en.mdx</p><h1 class="post__title" style="view-transition-name: t-redis-cache-field-guide">A Field Guide to Redis Caching: Expiry, Eviction, and the Herd at the Door</h1><p class="post__dek">A cache is easy to add and hard to run. I read how expiry and eviction actually work in the Redis 6.2 source, then measured a cache stampede and approximate LRU. Interview glossary, quiz, and flash cards at the end.</p><p class="post__meta"><time datetime="2021-11-23">2021-11-23</time><span>22 min read</span><span><a href="/blog/?tag=redis">redis</a> · <a href="/blog/?tag=backend">backend</a> · <a href="/blog/?tag=cache">cache</a></span><span>updated <time datetime="2026-10-10">2026-10-10</time></span></p></header><nav class="toc" aria-label="Contents"><p class="toc__label">Contents</p><ol><li><a href="#en-where-the-cache-goes"><span class="toc__n">§1</span><span>Where the cache goes</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-expiry-when-does-delete-happen"><span class="toc__n">§2</span><span>Expiry: when does “delete” happen</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-eviction-when-memory-is-full"><span class="toc__n">§3</span><span>Eviction: when memory is full</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-four-ways-a-cache-falls-over"><span class="toc__n">§4</span><span>Four ways a cache falls over</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-persistence-even-for-a-cache"><span class="toc__n">§5</span><span>Persistence, even for a cache</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-set-budgets-before-setting-ttls"><span class="toc__n">§6</span><span>Set budgets before setting TTLs</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-what-to-inspect-during-an-outage"><span class="toc__n">§7</span><span>What to inspect during an outage</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-interview-glossary"><span class="toc__n">§8</span><span>Interview glossary</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-quiz"><span class="toc__n">§9</span><span>Quiz</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-flash-cards"><span class="toc__n">§10</span><span>Flash cards</span><span class="toc__len" aria-hidden="true"></span></a></li><li><a href="#en-summary"><span class="toc__n">§11</span><span>Summary</span><span class="toc__len" aria-hidden="true"></span></a></li></ol></nav><div class="prose"><p>The first time you put a cache in front of something, the latency graph drops to the floor. You then spend the next few months fixing problems the cache caused. Expiries line up and knock the database over, requests for keys that do not exist sail straight through, and memory fills until writes stop.</p>
 <p>This post walks through those problems one at a time and checks in the source how Redis handles each. The source is Redis 6.2.6; measurements were taken against the official Docker image of the same version with a Python client (redis-py), on an Apple Silicon laptop. The numbers come from that setup, so look at their shape more than their absolute values.</p>
 <p>The first half covers cache patterns and how Redis does expiry and eviction. The second half goes through failure modes. At the end there is a glossary of interview terms and a quiz. I wrote it with backend engineers and people who run Redis in mind, but a frontend developer should be able to follow along.</p>
 <h2 id="en-where-the-cache-goes">Where the cache goes</h2>
@@ -3693,102 +3642,51 @@
 <p>Andrea Vattani, Flavio Chierichetti, Keegan Lowenstein, “Optimal Probabilistic Cache Stampede Prevention”, VLDB 2015. <a href="#en-user-content-fnref-1" data-footnote-backref aria-label="Back to reference 1" class="data-footnote-backref">↩</a></p>
 </li>
 </ol>
-</section></div><footer class="post__end"><p class="post__source">Source markdown: <a href="/blog/redis-cache-field-guide/en.md">redis-cache-field-guide/en.md</a></p><nav class="post__nav" aria-label="More posts"><a class="newer" href="/blog/sorting-in-the-wild/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560.1854166666667 1868.4969999999998">
+</section></div><footer class="post__end"><p class="post__source">Source markdown: <a href="/blog/redis-cache-field-guide/en.md">redis-cache-field-guide/en.md</a></p><nav class="post__nav" aria-label="More posts"><a class="newer" href="/blog/skip-list/"><span class="cover" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 544.20825 456.5">
 
 
-<polyline class="edge" data-from="A" data-to="B" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="165.3055,76.9 165.3055,124.9" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="B" data-to="I" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예" points="143.6928333333333,232.9633333333333 143.6928333333333,615.719 91.72649999999999,615.719 91.72649999999999,709.929" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="B" data-to="L" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="186.91816666666665,232.9633333333333 186.91816666666665,290.576 238.8845,290.576 238.8845,370.87600000000003" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="L" data-to="H" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예" points="216.40733333333333,483.26183333333336 216.40733333333333,768.919 154.81824999999998,768.919 154.81825,849.2189999999999" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="L" data-to="P" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="261.3616666666667,483.2618333333333 261.3616666666667,541.739 322.95074999999997,541.739 322.95074999999997,622.039" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="P" data-to="S" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="322.95074999999997,675.8389999999999 322.95074999999997,709.929" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="S" data-to="PI" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예, 직전 분할도 고르면" points="295.90408333333335,845.1623333333333 295.90408333333335,922.1189999999999 255.65599999999998,922.1189999999999 255.65599999999998,1002.4189999999999" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="PI" data-to="DONE" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="성공" points="227.7928333333333,1056.2189999999998 227.7928333333333,1184.5189999999998" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="PI" data-to="E" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="실패" points="283.51916666666665,1056.2189999999998 283.51916666666665,1116.2189999999998 294.656,1116.2189999999998 294.656,1184.5189999999998 338.01916666666665,1184.5189999999998 338.01916666666665,1184.5189999999998" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="S" data-to="E" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="349.99741666666665,845.1623333333332 349.99741666666665,1116.2189999999998 390.2455,1116.2189999999998 390.2455,1184.5189999999998 358.01916666666665,1184.5189999999998 358.01916666666665,1184.5189999999998" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="E" data-to="EQ" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예" points="338.01916666666665,1221.4189999999999 338.01916666666665,1245.4189999999999 270.62191666666666,1245.4189999999999 270.62191666666666,1334.1689999999999" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="E" data-to="PART" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="358.01916666666665,1221.4189999999999 358.01916666666665,1262.3189999999997 425.41641666666663,1262.3189999999997 425.4164166666667,1334.1689999999999" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="PART" data-to="BAL" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="425.4164166666667,1371.069 425.41641666666663,1427.5189999999998" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="BAL" data-to="BR" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="예" points="401.08675,1549.167333333333 401.08675,1609.4969999999998 390.29241666666667,1609.4969999999998 390.29241666666667,1689.7969999999998" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="BAL" data-to="REC" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="아니오" points="449.74608333333333,1549.167333333333 449.74608333333333,1609.4969999999998 460.54041666666666,1609.4969999999998 460.54041666666666,1779.5969999999998 442.6585833333333,1779.5969999999998 442.6585833333333,1791.5969999999998" fill="none" stroke="var(--_line)" stroke-width="1" />
-<polyline class="edge" data-from="BR" data-to="REC" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="390.29241666666667,1743.5969999999998 390.29241666666667,1779.5969999999998 408.17425,1779.5969999999998 408.17425,1791.5969999999998" fill="none" stroke="var(--_line)" stroke-width="1" />
-
-
-
-
-
-
-
-
-
-
-
-
-<g class="node" data-id="A" data-label="구간 v" data-shape="rectangle">
-  <rect x="124.69399999999999" y="40" width="81.22299999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<polyline class="edge" data-from="Q" data-to="N" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="223.21675000000002,76.9 223.21675000000002,100.9 122.47800000000001,100.9 122.47800000000001,124.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="Q" data-to="O" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="223.21675000000002,76.9 223.21675000000002,100.9 323.95550000000003,100.9 323.95550000000003,124.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="N" data-to="D" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="122.47800000000001,161.8 122.47800000000001,209.8" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="O" data-to="S" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="323.95550000000003,161.8 323.95550000000003,209.8" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="S" data-to="F" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="323.95550000000003,246.70000000000002 323.95550000000003,270.70000000000005 228.77425000000005,270.70000000000005 228.77425000000005,294.70000000000005" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="S" data-to="P" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="323.95550000000003,246.70000000000002 323.95550000000003,270.70000000000005 419.13675,270.70000000000005 419.13675,294.70000000000005" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="F" data-to="R" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="228.77425000000005,331.6 228.77425000000005,379.6" fill="none" stroke="var(--_line)" stroke-width="1" />
+<polyline class="edge" data-from="P" data-to="K" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="419.13675,331.6 419.13675,379.6" fill="none" stroke="var(--_line)" stroke-width="1" />
+<g class="node" data-id="Q" data-label="순위표에 묻습니다" data-shape="rectangle">
+  <rect x="141.85025000000002" y="40" width="162.733" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
   
 </g>
-<g class="node" data-id="B" data-label="길이 ≤ 20?
-(Go는 12)" data-shape="diamond">
-  <polygon points="165.3055,124.9 230.1435,189.738 165.3055,254.576 100.4675,189.738" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<g class="node" data-id="N" data-label="이름으로 점수 조회" data-shape="rectangle">
+  <rect x="40" y="124.9" width="164.95600000000002" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
   
 </g>
-<g class="node" data-id="I" data-label="삽입 정렬" data-shape="rectangle">
-  <rect x="39.999999999999986" y="709.929" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<g class="node" data-id="O" data-label="점수 순서와 순위 조회" data-shape="rectangle">
+  <rect x="232.95600000000002" y="124.9" width="181.999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
   
 </g>
-<g class="node" data-id="L" data-label="한도 소진?" data-shape="diamond">
-  <polygon points="238.88449999999997,370.876 306.316,438.3075 238.88449999999997,505.73900000000003 171.45299999999997,438.3075" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<g class="node" data-id="D" data-label="dict" data-shape="rectangle">
+  <rect x="91.12900000000002" y="209.8" width="62.69799999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
   
 </g>
-<g class="node" data-id="H" data-label="heapsort" data-shape="rectangle">
-  <rect x="107.16725" y="849.2189999999999" width="95.30199999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<g class="node is-hub" data-id="S" data-label="skip list" data-shape="rectangle">
+  <rect x="281.12100000000004" y="209.8" width="85.66900000000001" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
   
 </g>
-<g class="node" data-id="P" data-label="피벗 고르기
-3개, 50개 이상이면 9개" data-shape="rectangle">
-  <rect x="230.46925" y="622.039" width="184.96299999999997" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<g class="node" data-id="F" data-label="forward: 다음 노드" data-shape="rectangle">
+  <rect x="151.48325000000006" y="294.70000000000005" width="154.582" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
   
 </g>
-<g class="node" data-id="S" data-label="후보들이 이미
-순서대로였나?" data-shape="diamond">
-  <polygon points="322.95074999999997,709.929 404.09074999999996,791.069 322.95074999999997,872.209 241.81074999999998,791.069" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<g class="node" data-id="P" data-label="span: 건너뛴 원소 수" data-shape="rectangle">
+  <rect x="334.06525000000005" y="294.70000000000005" width="170.14299999999997" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
   
 </g>
-<g class="node" data-id="PI" data-label="부분 삽입 정렬 시도
-어긋난 곳 5개까지" data-shape="rectangle">
-  <rect x="172.06649999999996" y="1002.4189999999999" width="167.179" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<g class="node" data-id="R" data-label="범위 순회" data-shape="rectangle">
+  <rect x="177.04775000000004" y="379.6" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
   
 </g>
-<g class="node" data-id="DONE" data-label="끝" data-shape="rectangle">
-  <rect x="197.7928333333333" y="1184.5189999999998" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<g class="node" data-id="K" data-label="순위 계산" data-shape="rectangle">
+  <rect x="367.41025" y="379.6" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
   
 </g>
-<g class="node is-hub" data-id="E" data-label="E" data-shape="rectangle">
-  <rect x="318.01916666666665" y="1184.5189999999998" width="60" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  
-</g>
-<g class="node" data-id="EQ" data-label="같은 값을 한쪽에 몰고
-그 구간은 건너뜀" data-shape="rectangle">
-  <rect x="179.62241666666665" y="1334.1689999999999" width="181.999" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  
-</g>
-<g class="node" data-id="PART" data-label="분할" data-shape="rectangle">
-  <rect x="389.6214166666667" y="1334.1689999999999" width="71.59" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  
-</g>
-<g class="node" data-id="BAL" data-label="작은 쪽이
-길이/8 미만?" data-shape="diamond">
-  <polygon points="425.4164166666667,1427.5189999999998 498.4054166666667,1500.5079999999998 425.4164166666667,1573.4969999999998 352.42741666666666,1500.5079999999998" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  
-</g>
-<g class="node" data-id="BR" data-label="몇 개를 섞고
-한도 1 감소" data-shape="rectangle">
-  <rect x="330.0444166666667" y="1689.7969999999998" width="120.49599999999998" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  
-</g>
-<g class="node" data-id="REC" data-label="양쪽 재귀" data-shape="rectangle">
-  <rect x="373.68991666666665" y="1791.5969999999998" width="103.453" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  
-</g>
-</svg></span><small>Newer →</small><span class="post__nav-title">What actually runs when you call sort(): quicksort in C++, Rust and Go</span></a></nav></footer></article></main><div class="status"><a class="status__file" data-href="/blog/redis-cache-field-guide/{lang}.md" href="/blog/redis-cache-field-guide/ko.md">ko.mdx</a><span class="status__sec"></span><span class="status__left"></span><button class="status__toc" type="button"><span lang="ko">목차</span><span lang="en">Contents</span></button></div><dialog class="sheet" id="toc-sheet" aria-label="Contents"><button class="sheet__close" type="button" data-close>esc</button><div class="sheet__body"></div></dialog><script type="module" src="/blog/assets/Reader.astro_astro_type_script_index_0_lang._8WtOG9g.js"></script><dialog class="sheet" id="keys" aria-labelledby="keys-title"><button class="sheet__close" type="button" data-close>esc</button><p class="toc__label" id="keys-title"><span lang="ko">단축키</span><span lang="en">Keyboard</span></p><dl class="keys"><dt><kbd>/</kbd> <kbd>⌘K</kbd></dt><dd><span lang="ko">글 검색</span><span lang="en">Search posts</span></dd><dt><kbd>t</kbd></dt><dd><span lang="ko">밝은/어두운 테마</span><span lang="en">Light or dark theme</span></dd><dt><kbd>l</kbd></dt><dd><span lang="ko">한국어/영어, 읽던 자리 유지</span><span lang="en">Korean or English, keeping your place</span></dd><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd><span lang="ko">이전/다음 절</span><span lang="en">Previous or next section</span></dd><dt><kbd>?</kbd></dt><dd><span lang="ko">이 목록</span><span lang="en">This list</span></dd></dl></dialog><dialog class="search" id="search" aria-label="Search"><label class="search__line"><span class="search__caret" aria-hidden="true">&gt;</span><input type="search" role="combobox" aria-expanded="true" aria-controls="search-results" aria-autocomplete="list" autocomplete="off" spellcheck="false" enterkeyhint="go"></label><p class="search__status" aria-live="polite"><span class="tool__name" data-call-name></span><span class="tool__arg" data-call-arg></span><span class="search__count" data-call-count></span></p><ul class="search__results" id="search-results" role="listbox" aria-label="Results"></ul><p class="search__keys"><span><kbd>↑</kbd><kbd>↓</kbd> <span lang="ko">이동</span><span lang="en">move</span></span><span><kbd>↵</kbd> <span lang="ko">열기</span><span lang="en">open</span></span><span><kbd>esc</kbd> <span lang="ko">닫기</span><span lang="en">close</span></span></p></dialog><script type="module" src="/blog/assets/Base.astro_astro_type_script_index_0_lang.BxD9tEXi.js"></script></body></html>
+</svg></span><small>Newer →</small><span class="post__nav-title">Skip lists: from coin flips to Redis rankings</span></a></nav></footer></article></main><div class="status"><a class="status__file" data-href="/blog/redis-cache-field-guide/{lang}.md" href="/blog/redis-cache-field-guide/ko.md">ko.mdx</a><span class="status__sec"></span><span class="status__left"></span><button class="status__toc" type="button"><span lang="ko">목차</span><span lang="en">Contents</span></button></div><dialog class="sheet" id="toc-sheet" aria-label="Contents"><button class="sheet__close" type="button" data-close>esc</button><div class="sheet__body"></div></dialog><script type="module" src="/blog/assets/Reader.astro_astro_type_script_index_0_lang._8WtOG9g.js"></script><dialog class="sheet" id="keys" aria-labelledby="keys-title"><button class="sheet__close" type="button" data-close>esc</button><p class="toc__label" id="keys-title"><span lang="ko">단축키</span><span lang="en">Keyboard</span></p><dl class="keys"><dt><kbd>/</kbd> <kbd>⌘K</kbd></dt><dd><span lang="ko">글 검색</span><span lang="en">Search posts</span></dd><dt><kbd>t</kbd></dt><dd><span lang="ko">밝은/어두운 테마</span><span lang="en">Light or dark theme</span></dd><dt><kbd>l</kbd></dt><dd><span lang="ko">한국어/영어, 읽던 자리 유지</span><span lang="en">Korean or English, keeping your place</span></dd><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd><span lang="ko">이전/다음 절</span><span lang="en">Previous or next section</span></dd><dt><kbd>?</kbd></dt><dd><span lang="ko">이 목록</span><span lang="en">This list</span></dd></dl></dialog><dialog class="search" id="search" aria-label="Search"><label class="search__line"><span class="search__caret" aria-hidden="true">&gt;</span><input type="search" role="combobox" aria-expanded="true" aria-controls="search-results" aria-autocomplete="list" autocomplete="off" spellcheck="false" enterkeyhint="go"></label><p class="search__status" aria-live="polite"><span class="tool__name" data-call-name></span><span class="tool__arg" data-call-arg></span><span class="search__count" data-call-count></span></p><ul class="search__results" id="search-results" role="listbox" aria-label="Results"></ul><p class="search__keys"><span><kbd>↑</kbd><kbd>↓</kbd> <span lang="ko">이동</span><span lang="en">move</span></span><span><kbd>↵</kbd> <span lang="ko">열기</span><span lang="en">open</span></span><span><kbd>esc</kbd> <span lang="ko">닫기</span><span lang="en">close</span></span></p></dialog><script type="module" src="/blog/assets/Base.astro_astro_type_script_index_0_lang.BxD9tEXi.js"></script></body></html>
