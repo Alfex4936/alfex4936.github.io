@@ -29,7 +29,7 @@ A skip list gives some nodes pointers that travel farther. The base level, L0, c
 
 Press `Next` below. Refusing a jump and descending is a step of its own. Change the target to 35 to try an unsuccessful search. Absence is established at the base level too.
 
-<SkipListViz lang="en" />
+> Interactive visual (try it on the original page: https://alfex4936.github.io/blog/skip-list/)
 
 Every upper level is a subset of the base list. Search may skip smaller values, but it never follows a link past the target. If it stops before the target, the lower level provides a finer path.
 
@@ -37,9 +37,14 @@ Height does not determine *correctness*. Even if every node has height 1, the an
 
 With independent promotion, search, insertion and deletion take expected $O(\log n)$ time. One particular list can still take $O(n)$ in the worst case. The coin controls the distribution of costs; it does not guarantee that every search is short.[^pugh]
 
-<Quiz lang="en" title="An unlucky height distribution" items={[
-  { q: "Random promotion gives every node height 1. What goes wrong?", choices: ["Search misses some keys.", "The sorted base list still gives correct answers, but search becomes a long linear walk.", "Keys become ordered by insertion time."], answer: 1, why: "Sorted L0 and the rule against overshooting protect correctness. The distribution of upper levels changes search cost. Expected time and correct answers are separate properties." },
-]} />
+**Quiz: An unlucky height distribution**
+
+1. Random promotion gives every node height 1. What goes wrong?
+   - Search misses some keys.
+   - The sorted base list still gives correct answers, but search becomes a long linear walk.
+   - Keys become ordered by insertion time.
+
+   Answer: The sorted base list still gives correct answers, but search becomes a long linear walk. Sorted L0 and the rule against overshooting protect correctness. The distribution of upper levels changes search cost. Expected time and correct answers are separate properties.
 
 ## Why flip a coin, and how much does the coin cost?
 
@@ -99,7 +104,7 @@ Members are unique; scores may repeat. Before asking whether a skip list allows 
 
 Find 42 in `Rank` mode below. With the authored heights, the path from H to 26 adds span 4, and the path from 26 to 42 adds span 2. Two horizontal moves account for six base nodes. `npm run test:skiplist` checks these values using the same engine as the drawing.
 
-<SkipListViz lang="en" mode="rank" />
+> Interactive visual (try it on the original page: https://alfex4936.github.io/blog/skip-list/)
 
 Header H has internal rank 0; the first element has rank 1, and 42 has rank 6 here. Redis's internal rank and public `ZRANK` use different origins. `ZRANK` starts at zero, so the corresponding public rank is 5.[^redis-code]
 
@@ -122,13 +127,18 @@ Even higher levels that do not contain the new node must increment a crossing sp
 
 The next explorer inserts 35 with height 2. Its last step highlights changed links and spans in terracotta. The L2 link `26 → 58` changes its span from 3 to 4 even though 35 has no L2 pointer. A count changes without a new link. Deletion reverses the adjustment.
 
-<SkipListViz lang="en" mode="insert" target={35} />
+> Interactive visual (try it on the original page: https://alfex4936.github.io/blog/skip-list/)
 
 The engine actually builds `update[]` and `rank[]` and updates links and spans. It is not a table of plausible-looking authored snapshots. Tests compare 2,000 insertions and deletions against a sorted set and verify that each span equals destination rank minus source rank. This verifies the teaching model, not the entire Redis C implementation.
 
-<Quiz lang="en" title="Inserting a height-2 node" items={[
-  { q: "A new node exists only on L0 and L1. What happens to an L2 link crossing its position?", choices: ["Its destination stays the same, and its span increases by 1.", "Its destination changes to the new node.", "Its span stays unchanged because the node has no L2 slot."], answer: 0, why: "The L2 pointer passes one more base element. A rank-supporting implementation must update spans on levels that do not contain the new node too." },
-]} />
+**Quiz: Inserting a height-2 node**
+
+1. A new node exists only on L0 and L1. What happens to an L2 link crossing its position?
+   - Its destination stays the same, and its span increases by 1.
+   - Its destination changes to the new node.
+   - Its span stays unchanged because the node has no L2 slot.
+
+   Answer: Its destination stays the same, and its span increases by 1. The L2 pointer passes one more base element. A rank-supporting implementation must update spans on levels that do not contain the new node too.
 
 ## A score update can stay in place
 
@@ -206,19 +216,17 @@ Flushing a memtable to disk does not mean disk reads traverse a skip list. Level
 
 The concurrency contract at the top of `db/skiplist.h` is specific. Writes require external synchronization; readers may run concurrently from other threads. The skip list must remain alive while a read runs. Nodes come from an Arena and are not individually deleted. They are reclaimed when the list is destroyed.[^leveldb]
 
-<TracePlayer
-  lang="en"
-  title="When a reader can reach the new node"
-  columns={["Predecessor next", "New node next", "Reachable reader path"]}
-  caption="A single-link model of initialization and release/acquire publication in LevelDB 1.23. It measures no CPU time and is not a concurrency proof for the entire insertion."
-  tracks={[
-    { label: "Initialize, then publish", steps: [
-      { action: "Before insertion", note: "The old link points to 42. A reader cannot reach the new node yet.", values: ["42", "Unpublished", "26 → 42"] },
-      { action: "Initialize new node", note: "The writer first fills in 35's successor pointer.", values: ["42", "42", "26 → 42"] },
-      { action: "Publish with release", note: "The predecessor link is published. The reader loads that link with acquire.", values: ["35", "42", "26 → 35 → 42"] },
-    ] },
-  ]}
-/>
+**When a reader can reach the new node**
+
+*Initialize, then publish*
+
+| Step | Note | Predecessor next | New node next | Reachable reader path |
+| --- | --- | --- | --- | --- |
+| Before insertion | The old link points to 42. A reader cannot reach the new node yet. | 42 | Unpublished | 26 → 42 |
+| Initialize new node | The writer first fills in 35's successor pointer. | 42 | 42 | 26 → 42 |
+| Publish with release | The predecessor link is published. The reader loads that link with acquire. | 35 | 42 | 26 → 35 → 42 |
+
+*A single-link model of initialization and release/acquire publication in LevelDB 1.23. It measures no CPU time and is not a concurrency proof for the entire insertion.*
 
 LevelDB's `Next()` uses an acquire load; `SetNext()` uses a release store. Initializing links in a node that is not yet published can use relaxed stores. Saying "pointers are read atomically" does not explain when the pointed-to node's initialization becomes visible.
 
@@ -274,20 +282,35 @@ For a leaderboard, start with member lookup, tie ordering, and whether rank is r
 
 For a memtable, ask whether individual nodes must be deleted. Reclaiming a structure as a whole and deleting nodes at arbitrary times need different reader protection. Comparing against arrays or B-trees also takes more than an $O(\log n)$ label. Check pointer-chasing memory access, contiguous layout, and result-scan length for the actual workload.
 
-<Quiz lang="en" title="Apply it to another workload" items={[
-  { q: "You want to add a rank operation to a skip-list map without spans. What should you inspect first?", choices: ["Upper pointers automatically provide ranks.", "Whether it stores passed-element counts, and whether insertion and deletion maintain them consistently.", "An integer score is already a rank."], answer: 1, why: "A destination pointer alone does not count the skipped elements. Tied scores and score gaps also prevent score from substituting for rank." },
-  { q: "You copy LevelDB's reader path but add immediate free of individual nodes. Are acquire/release pointers enough?", choices: ["Yes. An atomic pointer guarantees the target's lifetime.", "No. You need a reclamation rule for nodes readers may still hold.", "Freeing only base nodes is always safe."], answer: 1, why: "Publication order and memory lifetime are separate. LevelDB's implementation assumes no individual deletion. Removing that assumption invalidates reuse of the original contract." },
-  { q: "Redis quickly finds the start of a range. Does returning 10,000 results also take logarithmic time?", choices: ["Yes. One skip-list pointer returns an entire range.", "No. Reading and returning the result elements still costs work.", "Linear work occurs only when scores tie."], answer: 1, why: "After locating the start, the operation scans M results. ZRANGE documents O(log N + M). The 10,000 is this question's chosen result size, not a measurement." },
-]} />
+**Quiz: Apply it to another workload**
 
-<FlashCards lang="en" title="Keep these in mind when reading source" cards={[
-  { front: "Forward and span", back: "Forward identifies the destination; span counts the base elements passed. Rank adds the spans of the links actually followed." },
-  { front: "What randomness provides", back: "A height distribution and expected search costs. Sorted L0 and the search rules protect correctness. Bad heights can produce a linear walk." },
-  { front: "Tied scores in Redis", back: "Member strings are ordered by bytes. Members are unique; scores may repeat." },
-  { front: "LevelDB's concurrent-reader conditions", back: "Writes are externally synchronized; the structure stays alive during reads. Individual nodes are not deleted before destruction of the list." },
-  { front: "Finger search", back: "An algorithm maintaining a position near the previous search. Its guarantee does not automatically apply to ordinary header-based searches." },
-  { front: "Lock-free and wait-free", back: "System-wide progress and per-call completion are distinct. A call in a lock-free algorithm can still retry under contention." },
-]} />
+1. You want to add a rank operation to a skip-list map without spans. What should you inspect first?
+   - Upper pointers automatically provide ranks.
+   - Whether it stores passed-element counts, and whether insertion and deletion maintain them consistently.
+   - An integer score is already a rank.
+
+   Answer: Whether it stores passed-element counts, and whether insertion and deletion maintain them consistently. A destination pointer alone does not count the skipped elements. Tied scores and score gaps also prevent score from substituting for rank.
+2. You copy LevelDB's reader path but add immediate free of individual nodes. Are acquire/release pointers enough?
+   - Yes. An atomic pointer guarantees the target's lifetime.
+   - No. You need a reclamation rule for nodes readers may still hold.
+   - Freeing only base nodes is always safe.
+
+   Answer: No. You need a reclamation rule for nodes readers may still hold. Publication order and memory lifetime are separate. LevelDB's implementation assumes no individual deletion. Removing that assumption invalidates reuse of the original contract.
+3. Redis quickly finds the start of a range. Does returning 10,000 results also take logarithmic time?
+   - Yes. One skip-list pointer returns an entire range.
+   - No. Reading and returning the result elements still costs work.
+   - Linear work occurs only when scores tie.
+
+   Answer: No. Reading and returning the result elements still costs work. After locating the start, the operation scans M results. ZRANGE documents O(log N + M). The 10,000 is this question's chosen result size, not a measurement.
+
+**Keep these in mind when reading source**
+
+- Forward and span: Forward identifies the destination; span counts the base elements passed. Rank adds the spans of the links actually followed.
+- What randomness provides: A height distribution and expected search costs. Sorted L0 and the search rules protect correctness. Bad heights can produce a linear walk.
+- Tied scores in Redis: Member strings are ordered by bytes. Members are unique; scores may repeat.
+- LevelDB's concurrent-reader conditions: Writes are externally synchronized; the structure stays alive during reads. Individual nodes are not deleted before destruction of the list.
+- Finger search: An algorithm maintaining a position near the previous search. Its guarantee does not automatically apply to ordinary header-based searches.
+- Lock-free and wait-free: System-wide progress and per-call completion are distinct. A call in a lock-free algorithm can still retry under contention.
 
 [^pugh]: William Pugh, [Skip Lists: A Probabilistic Alternative to Balanced Trees](https://epaperpress.com/sortsearch/download/skiplist.pdf), *Communications of the ACM*, 1990. This links a PDF mirror; the publication record is [DOI 10.1145/78973.78977](https://doi.org/10.1145/78973.78977). Table 1 confirms pointer counts and normalized search cost. The author's original PDF URL returned 404 during verification.
 [^cookbook]: William Pugh, [A Skip List Cookbook](https://drum.lib.umd.edu/items/56c44671-3973-46b6-9e52-f71dc95af178), CS-TR-2286.1 / UMIACS-TR-89-72.1. Finger search and linear-list operations were checked in the [university repository PDF](https://api.drum.lib.umd.edu/server/api/core/bitstreams/17176ef8-8330-4a6c-8b75-4cd18c570bec/content). Rank, finger, and merge guarantees need the assumptions of their respective algorithms.

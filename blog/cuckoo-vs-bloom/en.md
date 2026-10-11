@@ -22,8 +22,6 @@ graph LR
 
 The tricky part is finding an evicted fingerprint's other place without the original item, because the table only holds fingerprints. The paper's answer is partial-key cuckoo hashing.
 
-<Walk>
-
 ```python title="cuckoo.py"
 def _alt(s, i, fp):
     return (i ^ h64(fp, 99)) % s.nb
@@ -47,31 +45,13 @@ def add(s, x):
     return False
 ```
 
-<Step lines="1-2">
+1. The other place is the current place XORed with a hash of the fingerprint. XOR is its own inverse, so the same expression takes `i1` to `i2` and `i2` back to `i1`. The original key is not needed. The bucket count must be a power of two so that `% nb` does not break this.
 
-The other place is the current place XORed with a hash of the fingerprint. XOR is its own inverse, so the same expression takes `i1` to `i2` and `i2` back to `i1`. The original key is not needed. The bucket count must be a power of two so that `% nb` does not break this.
+2. If either candidate has a free slot, insert there. While the table is mostly empty, this is where nearly every insert ends.
 
-</Step>
+3. If both are full, pick a random fingerprint, put ours in its slot, and send the evicted one to its other place via `_alt`. If that is full too, evict again. Record each changed slot and its previous fingerprint in `undo`.
 
-<Step lines="5-8">
-
-If either candidate has a free slot, insert there. While the table is mostly empty, this is where nearly every insert ends.
-
-</Step>
-
-<Step lines="9-17">
-
-If both are full, pick a random fingerprint, put ours in its slot, and send the evicted one to its other place via `_alt`. If that is full too, evict again. Record each changed slot and its previous fingerprint in `undo`.
-
-</Step>
-
-<Step lines="18-20">
-
-If no free slot turns up within a fixed number of kicks (500 here), the insert fails. This does not prove the whole table is full; the relocation path failed to find room. The last displaced fingerprint is still outside the table in `fp`, so returning failure without repair can lose an existing member. The example rolls changes back in reverse order to restore the table before the failed insert. Order matters because a slot may have been changed several times.
-
-</Step>
-
-</Walk>
+4. If no free slot turns up within a fixed number of kicks (500 here), the insert fails. This does not prove the whole table is full; the relocation path failed to find room. The last displaced fingerprint is still outside the table in `fp`, so returning failure without repair can lose an existing member. The example rolls changes back in reverse order to restore the table before the failed insert. Order matters because a slot may have been changed several times.
 
 ## Bucket size and load factor
 
@@ -131,14 +111,14 @@ The trap is elsewhere: you must not delete an item that was never inserted. I se
 
 So deletion holds only if the caller guarantees it deletes items that were definitely inserted, once each. That is easy when the authoritative set lives elsewhere and the filter is a cache in front of it. It does not hold when external input is deleted directly.
 
-<Quiz lang="en" title="Checkpoint: authorizing deletion" items={[
-  {
-    q: "A cuckoo filter reports 'present' for a key absent from the source set. Can that response alone authorize deletion?",
-    choices: ["Yes. A successful lookup proves the key was inserted.", "No. Deletion may remove a real member's colliding fingerprint.", "Yes. Deletion only clears the false positive."],
-    answer: 1,
-    why: "The filter compares fingerprints, not keys. Removing a false-positive match may make a real member disappear from lookups. Establish membership in the source set before deleting.",
-  },
-]} />
+**Quiz: Checkpoint: authorizing deletion**
+
+1. A cuckoo filter reports 'present' for a key absent from the source set. Can that response alone authorize deletion?
+   - Yes. A successful lookup proves the key was inserted.
+   - No. Deletion may remove a real member's colliding fingerprint.
+   - Yes. Deletion only clears the false positive.
+
+   Answer: No. Deletion may remove a real member's colliding fingerprint. The filter compares fingerprints, not keys. Removing a false-positive match may make a real member disappear from lookups. Establish membership in the source set before deleting.
 
 ## When to use which
 
@@ -158,25 +138,25 @@ A cuckoo filter can fail to find a slot within its relocation budget. Its failur
 
 The subtitle is half right. With four slots per bucket it fills to 96%, from 12 bits per item it has a lower false-positive rate in the same space, and it supports deletion. But around 8 bits per item Bloom is more accurate, deletion depends on the caller's discipline, and a full filter fails. "Better than Bloom when the target false-positive rate is low and you need deletion" is the sentence the measurements support.
 
-<Quiz lang="en" title="Putting a filter in front of the source set" items={[
-  {
-    q: "In this post's equal-space comparison, you have 8.42 bits per item and need no deletion. Which measured false-positive rate favors your choice?",
-    choices: ["Cuckoo, because it has a lower rate at every bit budget.", "Neither, because equal space means equal rates.", "Bloom, because its rate is lower in this row."],
-    answer: 2,
-    why: "This row reports 1.78% for Bloom and 2.98% for cuckoo. Longer fingerprints reverse the ranking, so the paper's title is not a rule to always choose cuckoo.",
-  },
-  {
-    q: "An evicted fingerprint has no original key stored. With a power-of-two bucket count, how do you find its other candidate bucket?",
-    choices: ["XOR the current bucket index with the fingerprint's hash.", "You cannot find it without the original key.", "Scan the whole table for an identical fingerprint."],
-    answer: 0,
-    why: "Applying the same XOR twice reverses it. The current bucket and fingerprint suffice to travel between candidates. The bucket-count condition keeps the modulo operation from breaking this property.",
-  },
-  {
-    q: "The item count keeps growing beyond your estimate. How do these fixed-size filters behave on insertion?",
-    choices: ["Both reject inserts once their capacity is exceeded.", "Cuckoo can fail to find a slot; Bloom's false-positive rate degrades.", "Only Bloom rejects inserts; cuckoo grows automatically."],
-    answer: 1,
-    why: "Cuckoo must find an empty slot within a bounded number of relocations. Failure can leave a fingerprint displaced, so the example reverses its changes. Bloom can keep setting bits, but its false-positive rate rises. Unknown size calls for a scalable structure.",
-  },
-]} />
+**Quiz: Putting a filter in front of the source set**
+
+1. In this post's equal-space comparison, you have 8.42 bits per item and need no deletion. Which measured false-positive rate favors your choice?
+   - Cuckoo, because it has a lower rate at every bit budget.
+   - Neither, because equal space means equal rates.
+   - Bloom, because its rate is lower in this row.
+
+   Answer: Bloom, because its rate is lower in this row. This row reports 1.78% for Bloom and 2.98% for cuckoo. Longer fingerprints reverse the ranking, so the paper's title is not a rule to always choose cuckoo.
+2. An evicted fingerprint has no original key stored. With a power-of-two bucket count, how do you find its other candidate bucket?
+   - XOR the current bucket index with the fingerprint's hash.
+   - You cannot find it without the original key.
+   - Scan the whole table for an identical fingerprint.
+
+   Answer: XOR the current bucket index with the fingerprint's hash. Applying the same XOR twice reverses it. The current bucket and fingerprint suffice to travel between candidates. The bucket-count condition keeps the modulo operation from breaking this property.
+3. The item count keeps growing beyond your estimate. How do these fixed-size filters behave on insertion?
+   - Both reject inserts once their capacity is exceeded.
+   - Cuckoo can fail to find a slot; Bloom's false-positive rate degrades.
+   - Only Bloom rejects inserts; cuckoo grows automatically.
+
+   Answer: Cuckoo can fail to find a slot; Bloom's false-positive rate degrades. Cuckoo must find an empty slot within a bounded number of relocations. Failure can leave a fingerprint displaced, so the example reverses its changes. Bloom can keep setting bits, but its false-positive rate rises. Unknown size calls for a scalable structure.
 
 [^1]: Bin Fan, David G. Andersen, Michael Kaminsky, Michael D. Mitzenmacher, "Cuckoo Filter: Practically Better Than Bloom", CoNEXT 2014.

@@ -9,8 +9,6 @@ This blog is my notebook: mostly technical, plus whatever else comes up along th
 
 When an explanation points at a figure, the figure is usually a few paragraphs up. Here it pins beside the text (above it, on a phone), and only the part the current step talks about lights up. Below is the path a post takes to become a page.
 
-<Walk>
-
 ```mermaid
 graph LR
   M[en.mdx] --> R[remark]
@@ -21,31 +19,17 @@ graph LR
   D -.->|other types| B[mermaid in the browser]
 ```
 
-<Step show="M,R">
-A post is an MDX file. remark turns the markdown into a syntax tree, and the math wrapped in `$` and the mermaid code blocks each become a node of that tree.
-</Step>
+1. A post is an MDX file. remark turns the markdown into a syntax tree, and the math wrapped in `$` and the mermaid code blocks each become a node of that tree.
 
-<Step show="R,K">
-rehype-katex turns the math into KaTeX HTML. The reader downloads fonts, not a math engine.
-</Step>
+2. rehype-katex turns the math into KaTeX HTML. The reader downloads fonts, not a math engine.
 
-<Step show="K,D">
-rehype-mermaid draws each diagram block with beautiful-mermaid and puts the SVG into the tree. Colours stay CSS variables, so switching the theme recolours the figure without drawing it again.
-</Step>
+3. rehype-mermaid draws each diagram block with beautiful-mermaid and puts the SVG into the tree. Colours stay CSS variables, so switching the theme recolours the figure without drawing it again.
 
-<Step show="D,E">
-A block that became a picture is no longer a code block, so Expressive Code highlights only the code that is left.
-</Step>
+4. A block that became a picture is no longer a code block, so Expressive Code highlights only the code that is left.
 
-<Step show="E,A">
-Astro assembles the page. Every figure and formula in this post came this way.
-</Step>
+5. Astro assembles the page. Every figure and formula in this post came this way.
 
-<Step show="D,B">
-beautiful-mermaid draws six types: flowchart, state, sequence, class, ER and xychart.[^1] The rest, gantt or pie for example, are drawn by mermaid in the browser, fetched only on a page that has one.
-</Step>
-
-</Walk>
+6. beautiful-mermaid draws six types: flowchart, state, sequence, class, ER and xychart.[^1] The rest, gantt or pie for example, are drawn by mermaid in the browser, fetched only on a page that has one.
 
 ## Diagrams
 
@@ -115,8 +99,6 @@ Code blocks are drawn by Expressive Code: file names, marked lines, diffs, termi
 
 `\bid=` also treats the gap between `-` and `i` in `data-id=` as a word boundary, so it rewrote node names too, and the walkthrough above could not find the nodes it was meant to light. Now only an `id=` with whitespace before it matches. The whole function reads as a walkthrough as well.
 
-<Walk>
-
 ```js title="src/lib/diagram.js"
 export function drawDiagram(src, id) {
   return renderMermaidSVG(src, { bg: 'var(--bg)', fg: 'var(--fg)', transparent: true })
@@ -127,23 +109,13 @@ export function drawDiagram(src, id) {
 }
 ```
 
-<Step lines="2">
-Drawing is one line. Where a colour goes, it passes `var(--bg)` instead of a colour.
-</Step>
+1. Drawing is one line. Where a colour goes, it passes `var(--bg)` instead of a colour.
 
-<Step lines="3">
-Drop the `<style>` each SVG carries. The same rules would repeat once per figure, and they include an `@import` of Inter from Google Fonts. The rules live once, in `diagram.css`.
-</Step>
+2. Drop the `<style>` each SVG carries. The same rules would repeat once per figure, and they include an `@import` of Inter from Google Fonts. The rules live once, in `diagram.css`.
 
-<Step lines="4">
-Remove `--bg: var(--bg)` from the SVG element itself. A variable that refers to itself is a cycle, and its value is lost.
-</Step>
+3. Remove `--bg: var(--bg)` from the SVG element itself. A variable that refers to itself is a cycle, and its value is lost.
 
-<Step lines="5-6">
-Give each figure's arrowhead markers their own prefix. Without one, every figure shares a single `#arrowhead`, and when the first figure sits in the hidden language, the arrowheads of all the others disappear with it.
-</Step>
-
-</Walk>
+4. Give each figure's arrowhead markers their own prefix. Without one, every figure shares a single `#arrowhead`, and when the first figure sits in the hidden language, the arrowheads of all the others disappear with it.
 
 Writing and publishing a post takes four commands.
 
@@ -190,58 +162,69 @@ Some posts carry figures you can operate. They all render to HTML at build time;
 
 The sorting figure runs the same input through two algorithms side by side, one step at a time. The input menu switches between random, already sorted, and many-duplicates arrays. The [sorting post](/blog/sorting-in-the-wild/) follows this through to what Rust, C++, and Go actually use.
 
-<SortViz lang="en" algo="lomuto,hoare" inputs="random,sorted,few" n={40} caption="The same 40 values through two partition schemes. Bar height is the value; highlighted slots are being compared or swapped." />
+> Interactive visual: The same 40 values through two partition schemes. Bar height is the value; highlighted slots are being compared or swapped. (try it on the original page: https://alfex4936.github.io/blog/tour/)
 
 Whether equal keys keep their order after sorting is faster to see than to read.
 
-<SortStabilityViz lang="en" keys={[2, 1, 2, 1, 2, 1]} unstableAlgo="lomuto" stableAlgo="stable-rust" caption="The large number is the sort key; the small number is the item's input position." />
+> Interactive visual: The large number is the sort key; the small number is the item's input position. (try it on the original page: https://alfex4936.github.io/blog/tour/)
 
-When order matters, the post uses a step player. Columns are state; buttons or arrow keys step through. The track buttons on top are different cases branching from the same start. Here is the <kbd>l</kbd> key from the next section in this form.
+When order matters, the post uses a step player. Columns are state; buttons or arrow keys step through. The track buttons on top are different cases branching from the same start. Here is the l key from the next section in this form.
 
-<TracePlayer
-  lang="en"
-  title="Pressing l"
-  columns={["data-lang", "Reading position", "Visible text"]}
-  caption="A model of what chrome.js and reader.js do, in order. Not a timing measurement."
-  tracks={[
-    { label: "Korean to English", steps: [
-      { action: "Reading", note: "About 40% into section 3 of the Korean text.", values: ["ko", "§3 · 40%", "Korean"] },
-      { action: "l key", note: "chrome.js takes the key and asks reader.js where you are.", values: ["ko", "§3 · 40%", "Korean"] },
-      { action: "Switch data-lang", note: "One html attribute changes. Nothing reloads.", values: ["en", "§3 · 40%", "English"] },
-      { action: "Same place", note: "Scrolls to the 40% point of section 3 in English.", values: ["en", "§3 · 40%", "English §3"] },
-    ] },
-    { label: "l again", steps: [
-      { action: "Reading", note: "You read a little further in English, to 70% of the same section.", values: ["en", "§3 · 70%", "English"] },
-      { action: "l key", note: "Again it asks for the position first.", values: ["en", "§3 · 70%", "English"] },
-      { action: "Switch data-lang", note: "The hidden Korean shows again.", values: ["ko", "§3 · 70%", "Korean"] },
-      { action: "Same place", note: "You return to 70%, where you were, not the 40% you left from.", values: ["ko", "§3 · 70%", "Korean §3"] },
-    ] },
-  ]}
-/>
+**Pressing l**
+
+*Korean to English*
+
+| Step | Note | data-lang | Reading position | Visible text |
+| --- | --- | --- | --- | --- |
+| Reading | About 40% into section 3 of the Korean text. | ko | §3 · 40% | Korean |
+| l key | chrome.js takes the key and asks reader.js where you are. | ko | §3 · 40% | Korean |
+| Switch data-lang | One html attribute changes. Nothing reloads. | en | §3 · 40% | English |
+| Same place | Scrolls to the 40% point of section 3 in English. | en | §3 · 40% | English §3 |
+
+*l again*
+
+| Step | Note | data-lang | Reading position | Visible text |
+| --- | --- | --- | --- | --- |
+| Reading | You read a little further in English, to 70% of the same section. | en | §3 · 70% | English |
+| l key | Again it asks for the position first. | en | §3 · 70% | English |
+| Switch data-lang | The hidden Korean shows again. | ko | §3 · 70% | Korean |
+| Same place | You return to 70%, where you were, not the 40% you left from. | ko | §3 · 70% | Korean §3 |
+
+*A model of what chrome.js and reader.js do, in order. Not a timing measurement.*
 
 To show the inside of a data structure, a post gets a figure built for that structure. This is the approximate LRU figure from the [Redis cache post](/blog/redis-cache-field-guide/).
 
-<LruSampleViz lang="en" caption="Each bar is one batch of keys; older keys are to the left. Solid bars are keys that survived eviction." />
+> Interactive visual: Each bar is one batch of keys; older keys are to the left. Solid bars are keys that survived eviction. (try it on the original page: https://alfex4936.github.io/blog/tour/)
 
 Bit-level rules are checked by flipping the bits yourself. This one is from the [HyperLogLog post](/blog/redis-hyperloglog/).
 
-<BitProbe lang="en" />
+> Interactive visual (try it on the original page: https://alfex4936.github.io/blog/tour/)
 
 Short checks sit in the middle of a post. Pick one and the answer and reason appear at once; choices are shuffled on every load.
 
-<Quiz lang="en" title="Checking this blog" items={[
-  { q: "What happens when you switch language with `l`?", choices: ["html's data-lang changes and the page scrolls to the same point in the same section", "The other language's page is loaded", "You go back to the top of the post"], answer: 0, why: "Both languages are in one page. That is why the build fails if the two languages have different section counts." },
-  { q: "What happens when you tap a footnote on a narrow screen?", choices: ["The note appears near where you are reading", "Nothing", "The footnote switches to Korean"], answer: 0, why: "It used to jump to the end of the post, which made it easy to lose your place. Now the note shows where you are." },
-]} />
+**Quiz: Checking this blog**
+
+1. What happens when you switch language with `l`?
+   - html's data-lang changes and the page scrolls to the same point in the same section
+   - The other language's page is loaded
+   - You go back to the top of the post
+
+   Answer: html's data-lang changes and the page scrolls to the same point in the same section Both languages are in one page. That is why the build fails if the two languages have different section counts.
+2. What happens when you tap a footnote on a narrow screen?
+   - The note appears near where you are reading
+   - Nothing
+   - The footnote switches to Korean
+
+   Answer: The note appears near where you are reading It used to jump to the end of the post, which made it easy to lose your place. Now the note shows where you are.
 
 At the end of a post, things worth remembering become cards. Tap to flip.
 
-<FlashCards lang="en" title="Shortcuts and figures" cards={[
-  { front: "`t`", back: "Toggles light and dark theme." },
-  { front: "`[` `]`", back: "Previous and next section." },
-  { front: "Walk and Step", back: "Highlights part of the figure beside the text as you read." },
-  { front: "TracePlayer", back: "Keeps state in columns and replays an order one step at a time." },
-]} />
+**Shortcuts and figures**
+
+- `t`: Toggles light and dark theme.
+- `[` `]`: Previous and next section.
+- Walk and Step: Highlights part of the figure beside the text as you read.
+- TracePlayer: Keeps state in columns and replays an order one step at a time.
 
 ## For the reader
 
@@ -249,14 +232,12 @@ On a wide screen, the contents on the left draw a bar as long as each section an
 
 | Key | What it does |
 | :--- | :--- |
-| <kbd>t</kbd> | Light or dark theme |
-| <kbd>l</kbd> | Korean or English, keeping your place |
-| <kbd>[</kbd> <kbd>]</kbd> | Previous or next section |
-| <kbd>?</kbd> | The list of keys |
+| t | Light or dark theme |
+| l | Korean or English, keeping your place |
+| [ ] | Previous or next section |
+| ? | The list of keys |
 
-Try <kbd>l</kbd>. Both languages are already on this page, so nothing reloads, and you land at the same point of the same section.
-
-<Walk>
+Try l. Both languages are already on this page, so nothing reloads, and you land at the same point of the same section.
 
 ```mermaid
 sequenceDiagram
@@ -271,23 +252,13 @@ sequenceDiagram
   R-->>U: same section, other language
 ```
 
-<Step show="U,C,#1">
-The l key goes to chrome.js, the script on every page that looks after language and theme.
-</Step>
+1. The l key goes to chrome.js, the script on every page that looks after language and theme.
 
-<Step show="C,R,#2,#3">
-Before switching, it asks reader.js where the reader is. The answer is a section number and how much of that section has been read.
-</Step>
+2. Before switching, it asks reader.js where the reader is. The answer is a section number and how much of that section has been read.
 
-<Step show="C,#4">
-Changing `data-lang` on the html element shows the hidden language and hides the visible one. Nothing reloads.
-</Step>
+3. Changing `data-lang` on the html element shows the hidden language and hides the visible one. Nothing reloads.
 
-<Step show="U,C,R,#5,#6">
-reader.js scrolls to the same share of the same section in the new language. That is why the build fails when the two languages have a different number of sections.
-</Step>
-
-</Walk>
+4. reader.js scrolls to the same share of the same section in the new language. That is why the build fails when the two languages have a different number of sections.
 
 On a wide screen, footnotes sit in the margin beside the text.[^2] New posts arrive by RSS (Korean, English), and an agent can start from `llms.txt`.
 

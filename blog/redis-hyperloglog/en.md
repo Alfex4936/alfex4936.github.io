@@ -22,8 +22,6 @@ A million members take 48,388,640 bytes, about 48 MB. That is one day; keep a se
 
 HyperLogLog stores no members, only the shape of their hashes. Following `hyperloglog.c` in the Redis source:
 
-<Walk>
-
 ```mermaid
 graph LR
   M[member] --> H[64-bit hash]
@@ -34,40 +32,30 @@ graph LR
   R --> C[PFCOUNT estimate]
 ```
 
-<Step show="M,H">
-Each member is hashed to 64 bits with MurmurHash64A. The same member always gets the same hash.
-</Step>
+1. Each member is hashed to 64 bits with MurmurHash64A. The same member always gets the same hash.
 
-<Step show="H,I,R">
-The low 14 bits pick one register: 2 to the 14th, 16,384 of them.
-</Step>
+2. The low 14 bits pick one register: 2 to the 14th, 16,384 of them.
 
-<Step show="H,Z,R">
-The remaining bits are read from the bottom up, counting the zeros before the first 1, plus one. A register keeps only the largest value it has seen. Long runs of zeros are rare, so seeing a large value means many members have gone past.
-</Step>
+3. The remaining bits are read from the bottom up, counting the zeros before the first 1, plus one. A register keeps only the largest value it has seen. Long runs of zeros are rare, so seeing a large value means many members have gone past.
 
-<Step show="R,C">
-PFCOUNT estimates the count from how the register values are spread. Redis uses Otmar Ertl's estimator.[^1]
-</Step>
-
-</Walk>
+4. PFCOUNT estimates the count from how the register values are spread. Redis uses Otmar Ertl's estimator.[^1]
 
 Changing the low bits and the remaining bits makes their roles visible. Choose "Same rank, another register": the candidate rank stays the same while the register index changes. A candidate smaller than the stored value is not written.
 
-<BitProbe lang="en" />
+> Interactive visual (try it on the original page: https://alfex4936.github.io/blog/redis-hyperloglog/)
 
 The remaining bits can also all be zero. [`hllPatLen` in Redis 7.2.4](https://github.com/redis/redis/blob/7.2.4/src/hyperloglog.c) appends a sentinel 1 beyond the scanned bits, capping the rank at 51. The "All zero bits" example scans all 50 remaining bits before reaching that sentinel. This candidate rank is not a visitor count.
 
 A register is 6 bits, so 16,384 × 6 bits is 12,288 bytes, and a 16-byte header makes 12,304. The measurement agrees.
 
-<Quiz lang="en" title="Checkpoint: updating a register" items={[
-  {
-    q: "A user visits several times in one day. Does each PFADD of the same ID increase the estimate?",
-    choices: ["Yes, once per visit.", "No. The same hash updates the same register with the same value.", "Only the sparse representation deduplicates visits."],
-    answer: 1,
-    why: "The same ID produces the same hash and register value. A register keeps only its maximum, so a repeated visit adds no new information.",
-  },
-]} />
+**Quiz: Checkpoint: updating a register**
+
+1. A user visits several times in one day. Does each PFADD of the same ID increase the estimate?
+   - Yes, once per visit.
+   - No. The same hash updates the same register with the same value.
+   - Only the sparse representation deduplicates visits.
+
+   Answer: No. The same hash updates the same register with the same value. The same ID produces the same hash and register value. A register keeps only its maximum, so a repeated visit adds no new information.
 
 ```bash
 $ redis-cli STRLEN visitors:hll
@@ -115,8 +103,6 @@ With few members, Redis uses a sparse representation that does not lay out all 1
 
 Add each visit to that day's key; to count, pass several day keys at once. The example is Go with go-redis v9.
 
-<Walk>
-
 ```go title="visitors.go"
 func Visit(ctx context.Context, rdb *redis.Client, day, user string) error {
 	return rdb.PFAdd(ctx, "visitors:"+day, user).Err()
@@ -131,38 +117,32 @@ func Unique(ctx context.Context, rdb *redis.Client, days ...string) (int64, erro
 }
 ```
 
-<Step lines="1-3">
-Every visit is a PFADD to that day's key. The same user visiting twice does not raise the count.
-</Step>
+1. Every visit is a PFADD to that day's key. The same user visiting twice does not raise the count.
 
-<Step lines="5-11">
-Given several keys, PFCOUNT estimates the size of their union. A week's unique visitors are seven day keys. If the union will be read again and again, PFMERGE can store it under a new key.
-</Step>
-
-</Walk>
+2. Given several keys, PFCOUNT estimates the size of their union. A week's unique visitors are seven day keys. If the union will be read again and again, PFMERGE can store it under a new key.
 
 Where the exact number matters, billing for example, count with a SET or a database. All the measurements above had errors under 1%, but neither those observations nor the 0.81% standard error bound future errors. HyperLogLog saves memory for dashboards that accept estimates. It does not guarantee a requirement that error must always stay within 1%.
 
-<Quiz lang="en" title="Designing a visitor counter" items={[
-  {
-    q: "You keep one HLL per day. How do you estimate weekly unique visitors without counting repeat visitors once per day?",
-    choices: ["Add the daily PFCOUNT results.", "Use the largest daily PFCOUNT result.", "Pass all day keys to one PFCOUNT call."],
-    answer: 2,
-    why: "PFCOUNT with several keys estimates their union. Adding daily estimates counts repeat visitors more than once; taking the maximum misses users who only visited on other days.",
-  },
-  {
-    q: "The measurement table reports 0.89% error. Does exceeding the 0.81% standard error alone prove an implementation bug?",
-    choices: ["No. Standard error is not a ceiling on individual measurements.", "Yes. Every measurement must fall within 0.81%.", "Yes. The dense representation stores an exact count."],
-    answer: 0,
-    why: "The post's 0.81% is a standard error determined by the register count. A single measurement can exceed it. Switching from sparse to dense does not turn an estimate into an exact count.",
-  },
-  {
-    q: "Billing requires both an exact unique-user count and the user list. Can you store only an HLL?",
-    choices: ["Yes. PFMERGE reconstructs the original IDs.", "No. Keep the members in a SET or database.", "Yes. Switching to dense reconstructs the original IDs."],
-    answer: 1,
-    why: "An HLL stores register information derived from hashes, not members. It cannot reconstruct an exact count or user list, and PFMERGE does not restore the original members.",
-  },
-]} />
+**Quiz: Designing a visitor counter**
+
+1. You keep one HLL per day. How do you estimate weekly unique visitors without counting repeat visitors once per day?
+   - Add the daily PFCOUNT results.
+   - Use the largest daily PFCOUNT result.
+   - Pass all day keys to one PFCOUNT call.
+
+   Answer: Pass all day keys to one PFCOUNT call. PFCOUNT with several keys estimates their union. Adding daily estimates counts repeat visitors more than once; taking the maximum misses users who only visited on other days.
+2. The measurement table reports 0.89% error. Does exceeding the 0.81% standard error alone prove an implementation bug?
+   - No. Standard error is not a ceiling on individual measurements.
+   - Yes. Every measurement must fall within 0.81%.
+   - Yes. The dense representation stores an exact count.
+
+   Answer: No. Standard error is not a ceiling on individual measurements. The post's 0.81% is a standard error determined by the register count. A single measurement can exceed it. Switching from sparse to dense does not turn an estimate into an exact count.
+3. Billing requires both an exact unique-user count and the user list. Can you store only an HLL?
+   - Yes. PFMERGE reconstructs the original IDs.
+   - No. Keep the members in a SET or database.
+   - Yes. Switching to dense reconstructs the original IDs.
+
+   Answer: No. Keep the members in a SET or database. An HLL stores register information derived from hashes, not members. It cannot reconstruct an exact count or user list, and PFMERGE does not restore the original members.
 
 [^1]: Otmar Ertl, "New cardinality estimation algorithms for HyperLogLog sketches", arXiv:1702.01284. The comment on `hllSigma` in the Redis source points to it.
 [^2]: On the machine these numbers come from, `CONFIG GET hll-sparse-max-bytes` returned 3000.

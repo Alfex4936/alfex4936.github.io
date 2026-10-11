@@ -17,8 +17,6 @@ Unicode gives every character an East_Asian_Width property (UAX #11). Terminals 
 | A | Ambiguous | 1 or 2 | `§` `·` `→` `─` |
 | N | Neutral | usually 1 | |
 
-<Walk>
-
 ```mermaid
 graph TD
   C[one character] --> W{W or F}
@@ -28,19 +26,11 @@ graph TD
   A -->|anything else| O[one column]
 ```
 
-<Step show="C,W,T">
-First, is it W or F? All 11,172 precomposed Hangul syllables (U+AC00–U+D7A3) are W, so two columns.
-</Step>
+1. First, is it W or F? All 11,172 precomposed Hangul syllables (U+AC00–U+D7A3) are W, so two columns.
 
-<Step show="W,A">
-If it is neither, is it A? Ambiguous characters are the ones whose width depended on the character set they came from.
-</Step>
+2. If it is neither, is it A? Ambiguous characters are the ones whose width depended on the character set they came from.
 
-<Step show="A,T,O">
-An A character is two columns in a terminal set up for East Asian text and one column everywhere else. When the same text lines up in one terminal and not in another, this is usually why.
-</Step>
-
-</Walk>
+3. An A character is two columns in a terminal set up for East Asian text and one column everywhere else. When the same text lines up in one terminal and not in another, this is usually why.
 
 ## Hangul
 
@@ -56,14 +46,14 @@ Decomposed vowels and trailing consonants attach to the letter before them to fo
 한글 (NFD) → 1112 1161 11AB 1100 1173 11AF
 ```
 
-<Quiz lang="en" title="Checkpoint: a decomposed syllable's width" items={[
-  {
-    q: "You decompose the same Hangul text into NFD. Should the terminal column count increase just because there are more code points?",
-    choices: ["Yes. Add a column for every code point.", "No. The vowels and trailing consonants attach to the leading consonant to form the same syllable.", "Reduce it, because every decomposed syllable is zero columns."],
-    answer: 1,
-    why: "The post identifies leading jamo as W, while most wcwidth implementations assign zero columns to the attached vowels and trailing consonants. More code points in the representation do not make the visible syllable wider.",
-  },
-]} />
+**Quiz: Checkpoint: a decomposed syllable's width**
+
+1. You decompose the same Hangul text into NFD. Should the terminal column count increase just because there are more code points?
+   - Yes. Add a column for every code point.
+   - No. The vowels and trailing consonants attach to the leading consonant to form the same syllable.
+   - Reduce it, because every decomposed syllable is zero columns.
+
+   Answer: No. The vowels and trailing consonants attach to the leading consonant to form the same syllable. The post identifies leading jamo as W, while most wcwidth implementations assign zero columns to the attached vowels and trailing consonants. More code points in the representation do not make the visible syllable wider.
 
 ## Ambiguous width
 
@@ -84,8 +74,6 @@ Monoplex KR, the code font here, draws box-drawing characters half width. So in 
 
 In JavaScript, `length` counts UTF-16 code units. The same `한글` is 2 precomposed and 6 decomposed. To count columns, split the string into the characters a reader sees (graphemes), then give each one its width.
 
-<Walk>
-
 ```js title="columns.js"
 const graphemes = new Intl.Segmenter('ko', { granularity: 'grapheme' })
 const WIDE = /^[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA960-\uA97F\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6]/
@@ -102,19 +90,11 @@ function columns(text, { cjk = false } = {}) {
 }
 ```
 
-<Step lines="1">
-`Intl.Segmenter` splits the string into the characters a reader sees. The three code points of a decomposed syllable come out as one.
-</Step>
+1. `Intl.Segmenter` splits the string into the characters a reader sees. The three code points of a decomposed syllable come out as one.
 
-<Step lines="2-3">
-The W and F ranges, and the A range. Hangul, CJK ideographs, kana and fullwidth forms count as wide; for A, only the characters this post mentions.
-</Step>
+2. The W and F ranges, and the A range. Hangul, CJK ideographs, kana and fullwidth forms count as wide; for A, only the characters this post mentions.
 
-<Step lines="5-13">
-Each character's width comes from its first code point. With `cjk` on, A counts as two columns.
-</Step>
-
-</Walk>
+3. Each character's width comes from its first code point. With `cjk` on, A counts as two columns.
 
 What it returns:
 
@@ -130,17 +110,17 @@ What it returns:
 
 This function does not cover emoji or every combining sequence. For real use, an implementation that follows the full Unicode tables is safer: `string-width` in JavaScript, `go-runewidth` in Go.
 
-<Quiz lang="en" title="When a terminal table stops lining up" items={[
-  {
-    q: "Hangul aligns, but arrows and box-drawing lines shift in another terminal. What should you check first?",
-    choices: ["A setting that makes all precomposed Hangul half width.", "Only whether UTF-16 code units are used as the column count.", "Whether the ambiguous-width setting matches the width drawn by the font."],
-    answer: 2,
-    why: "The arrows and box characters shown have property A, so a setup may treat them as one or two columns. If the terminal's reserved columns differ from the font's drawn width, the lines no longer align.",
-  },
-  {
-    q: "User input includes emoji and combining sequences. Is the post's short columns function ready to use unchanged in a product?",
-    choices: ["No. Choose an implementation covering full Unicode tables and the sequences you need.", "Yes. Grapheme segmentation automatically determines every character's width.", "Yes. The first code point determines every emoji's width."],
-    answer: 0,
-    why: "Grapheme segmentation finds character boundaries; it does not guarantee display width. The sample covers only selected ranges. For real use, consider implementations such as string-width or go-runewidth.",
-  },
-]} />
+**Quiz: When a terminal table stops lining up**
+
+1. Hangul aligns, but arrows and box-drawing lines shift in another terminal. What should you check first?
+   - A setting that makes all precomposed Hangul half width.
+   - Only whether UTF-16 code units are used as the column count.
+   - Whether the ambiguous-width setting matches the width drawn by the font.
+
+   Answer: Whether the ambiguous-width setting matches the width drawn by the font. The arrows and box characters shown have property A, so a setup may treat them as one or two columns. If the terminal's reserved columns differ from the font's drawn width, the lines no longer align.
+2. User input includes emoji and combining sequences. Is the post's short columns function ready to use unchanged in a product?
+   - No. Choose an implementation covering full Unicode tables and the sequences you need.
+   - Yes. Grapheme segmentation automatically determines every character's width.
+   - Yes. The first code point determines every emoji's width.
+
+   Answer: No. Choose an implementation covering full Unicode tables and the sequences you need. Grapheme segmentation finds character boundaries; it does not guarantee display width. The sample covers only selected ranges. For real use, consider implementations such as string-width or go-runewidth.

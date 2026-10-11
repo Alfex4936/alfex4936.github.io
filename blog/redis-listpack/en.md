@@ -30,14 +30,14 @@ Take a row of 250-byte entries and insert a large one in front. The next entry's
 
 listpack stores an entry's own length (backlen) at its end, not the previous entry's. Walking backwards reads that length from the end of the preceding entry. Changing one entry's size leaves its neighbours untouched, so there is nothing to cascade. Redis 7.0 replaced ziplist with listpack for hashes, zsets, and lists (each quicklist node).
 
-<Quiz lang="en" title="Checkpoint: storing entry lengths" items={[
-  {
-    q: "A large entry is inserted near the front of a listpack. Does it trigger the same prevlen cascade as a ziplist?",
-    choices: ["Yes. Listpack also stores the preceding entry's length in the next entry.", "No. Each backlen describes its own entry's length.", "No. Listpack insertions never move any bytes."],
-    answer: 1,
-    why: "Storing each entry's own length removes the chain of growing neighbours' length headers. Removing that cascade does not remove the byte movement needed to insert into a contiguous array.",
-  },
-]} />
+**Quiz: Checkpoint: storing entry lengths**
+
+1. A large entry is inserted near the front of a listpack. Does it trigger the same prevlen cascade as a ziplist?
+   - Yes. Listpack also stores the preceding entry's length in the next entry.
+   - No. Each backlen describes its own entry's length.
+   - No. Listpack insertions never move any bytes.
+
+   Answer: No. Each backlen describes its own entry's length. Storing each entry's own length removes the chain of growing neighbours' length headers. Removing that cascade does not remove the byte movement needed to insert into a contiguous array.
 
 ## Default thresholds
 
@@ -151,23 +151,23 @@ Requests per second measured on the client barely showed this. Even over local l
 
 If a key hovers around 512 fields, splitting it to stay below 512 is safer than raising the threshold.
 
-<Quiz lang="en" title="When a small hash suddenly grows" items={[
-  {
-    q: "With default settings and short fields and values, why does a listpack hash's memory jump between 512 and 513 fields?",
-    choices: ["Only the added field goes into a separate hash table.", "The whole key converts to a hash table, adding string and entry overhead.", "The listpack keeps two copies of every field value."],
-    answer: 1,
-    why: "Crossing the field-count threshold changes the key's encoding. The compact headers in a contiguous array give way to separate string allocations, entry structs and a bucket array.",
-  },
-  {
-    q: "As in the experiment, a long value converts a hash to a hash table, then that field is deleted. Does the smaller surviving key automatically return to listpack?",
-    choices: ["Yes. HDEL reselects the encoding from the current size.", "Yes. The next HGET reselects its encoding.", "No. Returning requires rewriting the key."],
-    answer: 2,
-    why: "Shrinking a hash with normal commands does not convert it back to listpack. The post's dump-and-recreate experiment returned to listpack because loading reselected the encoding from the current size.",
-  },
-  {
-    q: "You raise the listpack field-count threshold to save memory. What should you also check when the service often reads tail fields?",
-    choices: ["Server execution time in INFO commandstats, because linear scans get longer.", "Only MEMORY USAGE, because listpack HGET is constant time.", "Only client throughput, because network time never hides execution-time differences."],
-    answer: 0,
-    why: "A listpack scans fields from the start. Longer tail lookups make other commands wait. Network round trips can hide the difference, as in the experiment, so inspect server-side usec_per_call too.",
-  },
-]} />
+**Quiz: When a small hash suddenly grows**
+
+1. With default settings and short fields and values, why does a listpack hash's memory jump between 512 and 513 fields?
+   - Only the added field goes into a separate hash table.
+   - The whole key converts to a hash table, adding string and entry overhead.
+   - The listpack keeps two copies of every field value.
+
+   Answer: The whole key converts to a hash table, adding string and entry overhead. Crossing the field-count threshold changes the key's encoding. The compact headers in a contiguous array give way to separate string allocations, entry structs and a bucket array.
+2. As in the experiment, a long value converts a hash to a hash table, then that field is deleted. Does the smaller surviving key automatically return to listpack?
+   - Yes. HDEL reselects the encoding from the current size.
+   - Yes. The next HGET reselects its encoding.
+   - No. Returning requires rewriting the key.
+
+   Answer: No. Returning requires rewriting the key. Shrinking a hash with normal commands does not convert it back to listpack. The post's dump-and-recreate experiment returned to listpack because loading reselected the encoding from the current size.
+3. You raise the listpack field-count threshold to save memory. What should you also check when the service often reads tail fields?
+   - Server execution time in INFO commandstats, because linear scans get longer.
+   - Only MEMORY USAGE, because listpack HGET is constant time.
+   - Only client throughput, because network time never hides execution-time differences.
+
+   Answer: Server execution time in INFO commandstats, because linear scans get longer. A listpack scans fields from the start. Longer tail lookups make other commands wait. Network round trips can hide the difference, as in the experiment, so inspect server-side usec_per_call too.

@@ -3,8 +3,6 @@
 > 명령 실행과 자료구조에서 시작해 복제, Sentinel의 투표, Cluster 장애 조치와 슬롯 이동을 소스 함수까지 따라갑니다. 응답을 잃은 MIGRATE, 메모리 축출, Pub/Sub와 ACL도 같은 서버 안에서 연결합니다.
 > 2026-08-24 · https://alfex4936.github.io/blog/redis-7-2-internals/
 
-import reproduction from '../../../../scripts/test-redis-internals.py?url'
-
 Redis에 `SET`을 보내고 `OK`를 받았습니다. 그러면 어디까지 끝난 것일까요? 지금 연결한 서버의 메모리에는 들어갔습니다. 레플리카가 받았는지, 디스크에 남았는지, 다음 장애 조치에서도 살아남는지는 별도로 확인해야 합니다.
 
 이 글에서는 그 쓰기 한 건을 따라갑니다. 명령을 받아 실행하는 경로에서 시작해, 바이트 배열에 값을 넣고, 복제 연결로 보내고, 서버가 끊겼을 때 누가 다음 쓰기 담당자가 되는지 봅니다. 뒤에서는 슬롯을 옮기다가 응답을 잃는 경우까지 이어집니다.
@@ -32,8 +30,6 @@ TCP 연결은 명령 자체가 아닙니다. 클라이언트가 보낸 RESP 바�
 
 `processCommand`에는 실제 쓰기보다 앞선 문이 여러 개 있습니다. 명령과 인자 수를 확인하고, 인증과 ACL을 검사합니다. Cluster라면 키가 이 노드의 슬롯인지 판단합니다. 메모리 압박과 디스크 오류, 부족한 레플리카, 읽기 전용 레플리카 상태도 여기서 명령을 거절할 수 있습니다. 통과하면 `call`이 `c->cmd->proc(c)`를 실행합니다.[^gates]
 
-<Walk>
-
 ```mermaid
 graph TD
   R["RESP 바이트"] --> B["입력 버퍼와 argv"]
@@ -46,19 +42,11 @@ graph TD
   F --> P["AOF / 복제 전파"]
 ```
 
-<Step show="R,B,V">
-읽기와 파싱을 마쳐도 명령이 실행된 것은 아닙니다. RESP가 온전한지와 명령의 인자 수가 맞는지를 구분합니다.
-</Step>
+1. 읽기와 파싱을 마쳐도 명령이 실행된 것은 아닙니다. RESP가 온전한지와 명령의 인자 수가 맞는지를 구분합니다.
 
-<Step show="A,S,G">
-실행 전에 접근 권한, 슬롯 담당자, 쓰기를 받을 수 있는 상태를 확인합니다. MOVED나 NOPERM을 받았다면 자료구조를 수정하는 함수까지 가지 않았을 수 있습니다.
-</Step>
+2. 실행 전에 접근 권한, 슬롯 담당자, 쓰기를 받을 수 있는 상태를 확인합니다. MOVED나 NOPERM을 받았다면 자료구조를 수정하는 함수까지 가지 않았을 수 있습니다.
 
-<Step show="F,O,P">
-명령 함수가 메모리를 바꾸고 응답을 준비합니다. 전파와 영속화에는 별도 경로가 있으므로 OK를 레플리카와 디스크의 완료 표시로 바꾸어 읽지 않습니다.
-</Step>
-
-</Walk>
+3. 명령 함수가 메모리를 바꾸고 응답을 준비합니다. 전파와 영속화에는 별도 경로가 있으므로 OK를 레플리카와 디스크의 완료 표시로 바꾸어 읽지 않습니다.
 
 `MULTI`는 명령을 모으고 `EXEC`에서 실행합니다. 실행 중 다른 일반 클라이언트의 명령이 끼어드는 것과, 앞 명령의 결과를 되돌리는 것은 다른 기능입니다. Redis 트랜잭션에는 SQL식 rollback이 없습니다. 실행 시점의 명령 오류를 무시한 채 "EXEC가 원자적이니 전부 성공했다"고 판단하면 안 됩니다.[^multi]
 
@@ -124,9 +112,14 @@ graph LR
 
 list에는 특히 버전 확인이 필요합니다. **이 태그의 작은 list는 독립된 listpack일 수 있습니다.** `listTypeTryConvertListpack`은 커지면 quicklist로 바꾸고, `listTypeTryConvertQuicklist`은 packed 노드 하나로 줄었을 때 반대 전환도 검사합니다. 축소 시에는 기준의 절반을 사용해 경계에서 계속 표현을 바꾸는 일을 줄입니다. 다른 자료형의 한쪽 방향 전환을 모든 Redis 자료형의 규칙으로 일반화하지 않습니다.[^lists]
 
-<Quiz title="인코딩을 확인하는 이유" items={[
-  { q: "작아진 Redis 자료구조는 모두 작은 인코딩으로 되돌아갑니까?", choices: ["모두 되돌아갑니다.", "모두 되돌아가지 않습니다.", "자료형과 코드 경로마다 다릅니다. 이 태그의 list에는 축소 전환이 있습니다."], answer: 2, why: "hash의 전환 규칙을 list에도 적용하면 틀립니다. listTypeTryConvertQuicklist는 packed 노드 하나와 축소 경계를 확인합니다. TYPE만 보지 말고 버전과 OBJECT ENCODING을 함께 봅니다." },
-]} />
+**퀴즈: 인코딩을 확인하는 이유**
+
+1. 작아진 Redis 자료구조는 모두 작은 인코딩으로 되돌아갑니까?
+   - 모두 되돌아갑니다.
+   - 모두 되돌아가지 않습니다.
+   - 자료형과 코드 경로마다 다릅니다. 이 태그의 list에는 축소 전환이 있습니다.
+
+   정답: 자료형과 코드 경로마다 다릅니다. 이 태그의 list에는 축소 전환이 있습니다. hash의 전환 규칙을 list에도 적용하면 틀립니다. listTypeTryConvertQuicklist는 packed 노드 하나와 축소 경계를 확인합니다. TYPE만 보지 말고 버전과 OBJECT ENCODING을 함께 봅니다.
 
 ## 복제는 같은 바이트 역사에 다시 합류하는 일입니다
 
@@ -176,25 +169,27 @@ primary는 현재 쓰기를 받는 서버이고, replica는 그 서버의 복제
 
 승격 후에는 새 replication ID를 사용합니다. 이전 ID와 유효 offset 경계를 `replid2`, `second_replid_offset`에 남겨 기존 레플리카가 이전 역사에서 부분 재동기화할 기회를 줍니다. 둘로 갈라진 쓰기 역사를 ID 하나로 합치는 기능은 아닙니다.[^history]
 
-<TracePlayer
-  title="OK와 레플리카 반영 사이"
-  columns={["클라이언트", "primary", "replica"]}
-  caption="A와 B는 설명용 값입니다. 스냅샷은 비동기 복제의 가능한 순서이며, 전송 지연을 측정하지 않습니다."
-  tracks={[
-    { label: "반영 후 장애", steps: [
-      { action: "시작", note: "두 서버가 A를 갖고 있습니다.", values: ["대기", "A", "A"] },
-      { action: "SET B 실행", note: "현재 primary가 B를 쓰고 OK를 응답합니다.", values: ["OK", "B", "A"] },
-      { action: "복제 적용", note: "replica가 B의 스트림을 적용합니다.", values: ["OK", "B", "B"] },
-      { action: "primary 장애", note: "B를 받은 replica가 선택되는 경우 B가 남습니다. 선택과 영속화 조건은 별도입니다.", values: ["재연결 필요", "중단", "B"] },
-    ] },
-    { label: "반영 전 장애", steps: [
-      { action: "시작", note: "두 서버가 A를 갖고 있습니다.", values: ["대기", "A", "A"] },
-      { action: "SET B 실행", note: "OK를 받았어도 replica는 아직 A일 수 있습니다.", values: ["OK", "B", "A"] },
-      { action: "primary 장애", note: "B를 못 받은 replica만 승격 후보로 남는 순서입니다.", values: ["재연결 필요", "중단", "A"] },
-      { action: "replica 승격", note: "새 primary에 B가 없습니다. 원래 OK를 받았다는 사실로 복원되지 않습니다.", values: ["A를 읽음", "중단", "A / primary"] },
-    ] },
-  ]}
-/>
+**OK와 레플리카 반영 사이**
+
+*반영 후 장애*
+
+| 단계 | 설명 | 클라이언트 | primary | replica |
+| --- | --- | --- | --- | --- |
+| 시작 | 두 서버가 A를 갖고 있습니다. | 대기 | A | A |
+| SET B 실행 | 현재 primary가 B를 쓰고 OK를 응답합니다. | OK | B | A |
+| 복제 적용 | replica가 B의 스트림을 적용합니다. | OK | B | B |
+| primary 장애 | B를 받은 replica가 선택되는 경우 B가 남습니다. 선택과 영속화 조건은 별도입니다. | 재연결 필요 | 중단 | B |
+
+*반영 전 장애*
+
+| 단계 | 설명 | 클라이언트 | primary | replica |
+| --- | --- | --- | --- | --- |
+| 시작 | 두 서버가 A를 갖고 있습니다. | 대기 | A | A |
+| SET B 실행 | OK를 받았어도 replica는 아직 A일 수 있습니다. | OK | B | A |
+| primary 장애 | B를 못 받은 replica만 승격 후보로 남는 순서입니다. | 재연결 필요 | 중단 | A |
+| replica 승격 | 새 primary에 B가 없습니다. 원래 OK를 받았다는 사실로 복원되지 않습니다. | A를 읽음 | 중단 | A / primary |
+
+*A와 B는 설명용 값입니다. 스냅샷은 비동기 복제의 가능한 순서이며, 전송 지연을 측정하지 않습니다.*
 
 ### WAIT와 WAITAOF를 붙이면 무엇이 달라집니까
 
@@ -322,28 +317,35 @@ ODOWN을 본 Sentinel이 혼자 아무 replica나 승격하면 두 곳에서 동
 
 즉 quorum은 장애 감지 기준이고, 선거에는 과반수 조건이 추가됩니다. 아래 수는 실제 배치 측정이 아닌 quorum 계산 예제입니다. 감시자 수에는 자신도 포함하며, 같은 primary에 대해 알고 있는 Sentinels를 셉니다.
 
-<TracePlayer
-  title="ODOWN인데 왜 승격하지 못합니까"
-  columns={["알려진 Sentinel", "down 보고", "leader 득표", "판정"]}
-  caption="quorum=2로 고정한 설명용 선거입니다. 감지 quorum과 leader 선출 조건을 분리하며, 실제 타임아웃과 메시지 재전송은 생략합니다."
-  tracks={[
-    { label: "감시자 3개", steps: [
-      { action: "내 관측", note: "S1만 down으로 봅니다. quorum에 못 미칩니다.", values: ["3", "1", "0", "SDOWN"] },
-      { action: "S2도 down 보고", note: "자신을 포함한 보고 2개로 ODOWN입니다. 이 보고 자체가 leader 투표는 아닙니다.", values: ["3", "2", "0", "ODOWN"] },
-      { action: "같은 epoch의 leader 투표", note: "leader가 2표를 모으면 3개의 절대 과반수와 quorum=2를 함께 채웁니다.", values: ["3", "2", "2", "선출 가능"] },
-    ] },
-    { label: "감시자 5개", steps: [
-      { action: "내 관측", note: "S1만 down으로 봅니다.", values: ["5", "1", "0", "SDOWN"] },
-      { action: "S2도 down 보고", note: "quorum=2이므로 ODOWN이 될 수 있습니다.", values: ["5", "2", "0", "ODOWN"] },
-      { action: "2표만 확보", note: "알려진 5개 중 절대 과반수는 3개입니다. 2표로는 leader를 선출하지 못합니다.", values: ["5", "2", "2", "승격 허가 없음"] },
-      { action: "같은 leader에 3표", note: "같은 epoch에서 과반수와 quorum을 채워야 선출됩니다.", values: ["5", "2", "3", "선출 가능"] },
-    ] },
-  ]}
-/>
+**ODOWN인데 왜 승격하지 못합니까**
 
-<Quiz title="quorum만 낮추면 복구됩니까" items={[
-  { q: "Sentinel 5개를 알고 있고 quorum=2입니다. 네트워크가 갈라져 2개만 서로 통신합니다. ODOWN이면 자동 승격을 허가받습니까?", choices: ["허가받습니다. quorum=2를 채웠습니다.", "허가받지 못합니다. leader 선출에 알려진 Sentinel들의 절대 과반수도 필요합니다.", "데이터를 가진 replica가 한 표 더 주면 됩니다."], answer: 1, why: "장애 보고와 leader 투표는 별개입니다. 이 배치의 leader에는 최소 3표가 필요합니다. 데이터 replica가 Sentinel 선거의 부족한 표를 대신 주지 않습니다." },
-]} />
+*감시자 3개*
+
+| 단계 | 설명 | 알려진 Sentinel | down 보고 | leader 득표 | 판정 |
+| --- | --- | --- | --- | --- | --- |
+| 내 관측 | S1만 down으로 봅니다. quorum에 못 미칩니다. | 3 | 1 | 0 | SDOWN |
+| S2도 down 보고 | 자신을 포함한 보고 2개로 ODOWN입니다. 이 보고 자체가 leader 투표는 아닙니다. | 3 | 2 | 0 | ODOWN |
+| 같은 epoch의 leader 투표 | leader가 2표를 모으면 3개의 절대 과반수와 quorum=2를 함께 채웁니다. | 3 | 2 | 2 | 선출 가능 |
+
+*감시자 5개*
+
+| 단계 | 설명 | 알려진 Sentinel | down 보고 | leader 득표 | 판정 |
+| --- | --- | --- | --- | --- | --- |
+| 내 관측 | S1만 down으로 봅니다. | 5 | 1 | 0 | SDOWN |
+| S2도 down 보고 | quorum=2이므로 ODOWN이 될 수 있습니다. | 5 | 2 | 0 | ODOWN |
+| 2표만 확보 | 알려진 5개 중 절대 과반수는 3개입니다. 2표로는 leader를 선출하지 못합니다. | 5 | 2 | 2 | 승격 허가 없음 |
+| 같은 leader에 3표 | 같은 epoch에서 과반수와 quorum을 채워야 선출됩니다. | 5 | 2 | 3 | 선출 가능 |
+
+*quorum=2로 고정한 설명용 선거입니다. 감지 quorum과 leader 선출 조건을 분리하며, 실제 타임아웃과 메시지 재전송은 생략합니다.*
+
+**퀴즈: quorum만 낮추면 복구됩니까**
+
+1. Sentinel 5개를 알고 있고 quorum=2입니다. 네트워크가 갈라져 2개만 서로 통신합니다. ODOWN이면 자동 승격을 허가받습니까?
+   - 허가받습니다. quorum=2를 채웠습니다.
+   - 허가받지 못합니다. leader 선출에 알려진 Sentinel들의 절대 과반수도 필요합니다.
+   - 데이터를 가진 replica가 한 표 더 주면 됩니다.
+
+   정답: 허가받지 못합니다. leader 선출에 알려진 Sentinel들의 절대 과반수도 필요합니다. 장애 보고와 leader 투표는 별개입니다. 이 배치의 leader에는 최소 3표가 필요합니다. 데이터 replica가 Sentinel 선거의 부족한 표를 대신 주지 않습니다.
 
 ### leader가 정해진 뒤에도 할 일이 남습니다
 
@@ -360,21 +362,20 @@ ODOWN을 본 Sentinel이 혼자 아무 replica나 승격하면 두 곳에서 동
 
 후보 선택에도 두 단계가 있습니다. 먼저 SDOWN/ODOWN, 오래 끊긴 연결, INFO의 신선도, primary와 끊긴 기간, `replica-priority=0` 등을 검사해 후보를 거릅니다. 그다음 남은 후보를 **작은 priority, 큰 replication offset, run ID 순서**로 정렬합니다. 가장 최신 offset을 무조건 첫 기준으로 쓰는 것이 아닙니다.[^selection]
 
-<TracePlayer
-  title="leader 선출 뒤 실제 역할이 바뀌는 순서"
-  columns={["Sentinel leader", "후보 R1", "다른 replicas"]}
-  caption="성공 경로를 편집한 상태 재생입니다. 후보는 사전에 적격성 검사를 통과했다고 가정하며, 타임아웃·재선거·재구성 재시도는 본문에서 설명합니다."
-  tracks={[
-    { label: "승격과 재구성", steps: [
-      { action: "WAIT_START", note: "같은 epoch의 leader로 선출되고 시작 조건을 만족합니다.", values: ["선출됨", "replica", "옛 primary 추종"] },
-      { action: "SELECT_SLAVE", note: "적격 후보 중 priority, offset, run ID 순으로 R1을 고릅니다.", values: ["R1 선택", "선택됨", "옛 primary 추종"] },
-      { action: "SEND_SLAVEOF_NOONE", note: "R1에 역할 변경 명령을 보냅니다. 아직 INFO 확인 전입니다.", values: ["명령 전송", "승격 요청", "옛 primary 추종"] },
-      { action: "WAIT_PROMOTION", note: "R1의 INFO에서 primary 역할을 확인합니다.", values: ["INFO 확인", "primary", "옛 primary 추종"] },
-      { action: "RECONF_SLAVES", note: "parallel-syncs 제한 안에서 다른 replicas를 R1에 연결합니다.", values: ["재구성", "primary", "R1으로 동기화"] },
-      { action: "UPDATE_CONFIG", note: "서비스 이름의 primary 주소를 갱신합니다. 애플리케이션은 이를 조회해 재연결해야 합니다.", values: ["주소 갱신", "primary", "R1 추종"] },
-    ] },
-  ]}
-/>
+**leader 선출 뒤 실제 역할이 바뀌는 순서**
+
+*승격과 재구성*
+
+| 단계 | 설명 | Sentinel leader | 후보 R1 | 다른 replicas |
+| --- | --- | --- | --- | --- |
+| WAIT_START | 같은 epoch의 leader로 선출되고 시작 조건을 만족합니다. | 선출됨 | replica | 옛 primary 추종 |
+| SELECT_SLAVE | 적격 후보 중 priority, offset, run ID 순으로 R1을 고릅니다. | R1 선택 | 선택됨 | 옛 primary 추종 |
+| SEND_SLAVEOF_NOONE | R1에 역할 변경 명령을 보냅니다. 아직 INFO 확인 전입니다. | 명령 전송 | 승격 요청 | 옛 primary 추종 |
+| WAIT_PROMOTION | R1의 INFO에서 primary 역할을 확인합니다. | INFO 확인 | primary | 옛 primary 추종 |
+| RECONF_SLAVES | parallel-syncs 제한 안에서 다른 replicas를 R1에 연결합니다. | 재구성 | primary | R1으로 동기화 |
+| UPDATE_CONFIG | 서비스 이름의 primary 주소를 갱신합니다. 애플리케이션은 이를 조회해 재연결해야 합니다. | 주소 갱신 | primary | R1 추종 |
+
+*성공 경로를 편집한 상태 재생입니다. 후보는 사전에 적격성 검사를 통과했다고 가정하며, 타임아웃·재선거·재구성 재시도는 본문에서 설명합니다.*
 
 `WAIT_PROMOTION`에서 역할 확인을 못 하면 시간 제한과 실패 경로가 작동합니다. `parallel-syncs`는 leader 득표 수가 아니라 동시에 새 primary로 재구성할 replica 수입니다. "선거가 끝났습니다"와 "모든 replica가 다시 붙었습니다"를 같은 시각으로 보지 않습니다.
 
@@ -667,44 +668,45 @@ target이 각 키의 `RESTORE`에 OK로 답할 때마다, `COPY`가 아니면 �
 
 재시도 조건은 네 가지입니다. target이 오류로 답한 게 아니라 소켓 오류가 났고, 응답을 하나도 못 읽었고(`j == 0`), 이번이 첫 시도이고(`may_retry`), 타임아웃이 아니어야 합니다. 키는 OK 응답을 읽은 뒤에만 지우므로 `j == 0`이면 지운 키가 없고, 그래서 다시 보내도 안전합니다. 끝나면 지운 키만 모아 명령을 `DEL`로 바꿔 replica와 AOF에 전파합니다.
 
-<TracePlayer
-  title="키가 옮겨져도 owner는 아직 A입니다"
-  columns={["공식 owner", "A의 key", "B의 key", "라우팅"]}
-  caption="같은 슬롯의 키 하나를 옮기는 성공 경로입니다. 값 V와 노드 이름은 설명용이며 복제 ACK와 슬롯 전체의 반복 이동은 생략합니다."
-  tracks={[
-    { label: "IMPORTING → MIGRATING → NODE", steps: [
-      { action: "시작", note: "A가 슬롯과 키를 갖고 있습니다.", values: ["A", "V", "없음", "A 처리"] },
-      { action: "이동 상태 설정", note: "B는 IMPORTING, A는 MIGRATING입니다. owner는 그대로입니다.", values: ["A", "V", "없음", "기존 키: A"] },
-      { action: "B의 RESTORE 성공", note: "B가 값을 받았습니다. 원본 삭제보다 앞입니다.", values: ["A", "V", "V", "owner는 A"] },
-      { action: "A가 성공 응답 수신", note: "COPY 없는 성공 경로에서 A가 원본을 삭제합니다.", values: ["A", "없음", "V", "A: ASK B"] },
-      { action: "슬롯 전체 점검", note: "A에 남은 슬롯 키가 없는지 확인합니다. 그림은 한 키만 보여 줍니다.", values: ["A", "없음", "V", "ASKING으로 B"] },
-      { action: "소유권 확정과 전파", note: "B가 슬롯 담당자가 됩니다. 다른 노드와 클라이언트는 새 맵을 배웁니다.", values: ["B", "없음", "V", "MOVED B"] },
-    ] },
-  ]}
-/>
+**키가 옮겨져도 owner는 아직 A입니다**
+
+*IMPORTING → MIGRATING → NODE*
+
+| 단계 | 설명 | 공식 owner | A의 key | B의 key | 라우팅 |
+| --- | --- | --- | --- | --- | --- |
+| 시작 | A가 슬롯과 키를 갖고 있습니다. | A | V | 없음 | A 처리 |
+| 이동 상태 설정 | B는 IMPORTING, A는 MIGRATING입니다. owner는 그대로입니다. | A | V | 없음 | 기존 키: A |
+| B의 RESTORE 성공 | B가 값을 받았습니다. 원본 삭제보다 앞입니다. | A | V | V | owner는 A |
+| A가 성공 응답 수신 | COPY 없는 성공 경로에서 A가 원본을 삭제합니다. | A | 없음 | V | A: ASK B |
+| 슬롯 전체 점검 | A에 남은 슬롯 키가 없는지 확인합니다. 그림은 한 키만 보여 줍니다. | A | 없음 | V | ASKING으로 B |
+| 소유권 확정과 전파 | B가 슬롯 담당자가 됩니다. 다른 노드와 클라이언트는 새 맵을 배웁니다. | B | 없음 | V | MOVED B |
+
+*같은 슬롯의 키 하나를 옮기는 성공 경로입니다. 값 V와 노드 이름은 설명용이며 복제 ACK와 슬롯 전체의 반복 이동은 생략합니다.*
 
 ## MIGRATE 중 네트워크가 끊겼을 때
 
 가장 위험한 지점은 "대상에 썼습니다"와 "그 성공 응답을 소스가 받았습니다" 사이입니다. 대상은 RESTORE를 마쳤는데 응답을 잃으면, A는 원본을 삭제해도 되는지 알 수 없습니다. 이 소스는 확인하지 못한 키를 원본에 남길 수 있습니다. **타임아웃은 이동이 아무 일도 하지 않았다는 증거가 아닙니다.**[^migrate]
 
-<TracePlayer
-  title="응답 하나를 잃으면 두 복사본이 남을 수 있습니다"
-  columns={["A", "네트워크", "B"]}
-  caption="MIGRATE의 RESTORE 성공과 응답 수신을 분리한 가능한 순서입니다. 실제 장애 조치까지 시뮬레이션하지 않으며, 그림의 중복은 성공 응답 유실을 설명합니다."
-  tracks={[
-    { label: "응답 도착", steps: [
-      { action: "원본", note: "A만 V를 갖고 있습니다.", values: ["V", "연결됨", "없음"] },
-      { action: "RESTORE 실행", note: "B가 V를 저장하고 성공 응답을 보냅니다.", values: ["V", "OK 전송", "V"] },
-      { action: "OK 수신", note: "A가 확인한 뒤 원본을 삭제합니다.", values: ["없음", "OK 도착", "V"] },
-    ] },
-    { label: "응답 유실", steps: [
-      { action: "원본", note: "A만 V를 갖고 있습니다.", values: ["V", "연결됨", "없음"] },
-      { action: "RESTORE 실행", note: "B에는 이미 V가 있습니다.", values: ["V", "OK 전송", "V"] },
-      { action: "응답을 못 받음", note: "A는 성공을 확인하지 못합니다. 대상에 데이터가 없다고 판단해서는 안 됩니다.", values: ["V 남음", "IOERR 가능", "V 남음"] },
-      { action: "복구 판단", note: "슬롯 상태와 양쪽 데이터 및 새 쓰기를 확인한 뒤 재개 방식을 정합니다. 자동 삭제나 무조건 REPLACE하지 않습니다.", values: ["검사 필요", "재연결", "검사 필요"] },
-    ] },
-  ]}
-/>
+**응답 하나를 잃으면 두 복사본이 남을 수 있습니다**
+
+*응답 도착*
+
+| 단계 | 설명 | A | 네트워크 | B |
+| --- | --- | --- | --- | --- |
+| 원본 | A만 V를 갖고 있습니다. | V | 연결됨 | 없음 |
+| RESTORE 실행 | B가 V를 저장하고 성공 응답을 보냅니다. | V | OK 전송 | V |
+| OK 수신 | A가 확인한 뒤 원본을 삭제합니다. | 없음 | OK 도착 | V |
+
+*응답 유실*
+
+| 단계 | 설명 | A | 네트워크 | B |
+| --- | --- | --- | --- | --- |
+| 원본 | A만 V를 갖고 있습니다. | V | 연결됨 | 없음 |
+| RESTORE 실행 | B에는 이미 V가 있습니다. | V | OK 전송 | V |
+| 응답을 못 받음 | A는 성공을 확인하지 못합니다. 대상에 데이터가 없다고 판단해서는 안 됩니다. | V 남음 | IOERR 가능 | V 남음 |
+| 복구 판단 | 슬롯 상태와 양쪽 데이터 및 새 쓰기를 확인한 뒤 재개 방식을 정합니다. 자동 삭제나 무조건 REPLACE하지 않습니다. | 검사 필요 | 재연결 | 검사 필요 |
+
+*MIGRATE의 RESTORE 성공과 응답 수신을 분리한 가능한 순서입니다. 실제 장애 조치까지 시뮬레이션하지 않으며, 그림의 중복은 성공 응답 유실을 설명합니다.*
 
 단일 키와 `KEYS` 여러 키를 옮기는 경우도 구분합니다. 여러 RESTORE 응답을 처리하는 중에는 어떤 키는 확인 후 삭제됐고, 어떤 키는 원본에 남은 부분 진행 상태가 가능합니다. 한 번의 실패를 슬롯 전체의 rollback으로 해석하지 않습니다.
 
@@ -864,7 +866,7 @@ Sentinel이 데이터 노드에 접속하는 인증, replicas가 primary에 접�
 
 실행하려면 이 글에 첨부된 Python 스크립트를 내려받아 Docker가 동작하는 환경에서 실행합니다. 별도 Python 패키지는 필요하지 않습니다. 다운로드한 코드는 실행 전에 확인하십시오.
 
-<a href={reproduction} download="test-redis-internals.py">재현 스크립트 내려받기</a>
+[재현 스크립트 내려받기](https://alfex4936.github.io/blog/assets/test-redis-internals.DcvNNABH.py)
 
 ```bash title="격리된 재현 실행"
 python3 test-redis-internals.py --docker
@@ -880,26 +882,51 @@ python3 test-redis-internals.py --docker
 
 ## 다음 장애에서 판단해 봅니다
 
-<Quiz title="상황을 바꾸어 적용합니다" items={[
-  { q: "SET에 OK를 받았습니다. primary가 끊기고, 그 쓰기를 못 받은 replica가 승격됐습니다. 어떤 결과가 가능합니까?", choices: ["OK를 받았으므로 새 primary에도 반드시 있습니다.", "그 쓰기가 새 primary에 없을 수 있습니다.", "Sentinel이 클라이언트의 OK 기록에서 값을 복원합니다."], answer: 1, why: "일반 복제는 비동기입니다. leader 선거나 Cluster의 epoch가 데이터 값을 재구성하지 않습니다. ACK 요구, fsync와 후보 선택의 조건을 따로 설계합니다." },
-  { q: "CLUSTER FAILOVER FORCE는 무엇을 건너뜁니까?", choices: ["기존 primary와 offset을 맞추는 정상 조정입니다. 선거 허가는 여전히 필요합니다.", "voting primary의 선거 허가입니다.", "모든 복제를 영구적으로 끕니다."], answer: 0, why: "FORCE와 TAKEOVER를 구분합니다. FORCE는 기존 primary와의 조정을 건너뛰며, TAKEOVER는 정상 선거까지 건너뛰어 위험한 분할 상태를 만들 수 있습니다." },
-  { q: "MIGRATE에 IOERR가 나왔습니다. 바로 원본을 삭제해도 됩니까?", choices: ["대상에 성공한 것이므로 삭제합니다.", "대상에 실패한 것이므로 REPLACE로 계속 덮습니다.", "대상에 이미 복원됐을 수 있습니다. 양쪽 데이터와 TTL, 슬롯 상태 및 새 쓰기를 먼저 확인합니다."], answer: 2, why: "RESTORE 성공과 그 응답 수신은 다른 사건입니다. 응답 유실은 두 복사본을 남길 수 있으며 여러 키의 부분 진행도 가능합니다. 실패 응답은 rollback 표시가 아닙니다." },
-  { q: "소스에서 MIGRATE를 실행하고 같은 연결로 WAIT를 했습니다. 대상 replica의 RESTORE까지 기다린 것입니까?", choices: ["그렇습니다. WAIT는 모든 노드의 쓰기를 기다립니다.", "아닙니다. WAIT는 그 연결과 서버의 앞선 쓰기 offset에 대한 확인입니다.", "슬롯 수가 같으면 그렇습니다."], answer: 1, why: "소스의 복제와 대상의 복제는 다른 스트림입니다. 소스에서 받은 확인을 대상의 복원 내구성으로 바꾸어 읽지 않습니다." },
-  { q: "PUBLISH가 구독 전달 수를 반환했습니다. 소비자의 작업 완료를 확인한 것입니까?", choices: ["확인했습니다. 소비자가 완료 후 응답합니다.", "확인하지 않았습니다. 서버의 구독 전달과 앱의 처리 완료는 다릅니다.", "replica가 있으면 작업 완료까지 확인합니다."], answer: 1, why: "Pub/Sub는 구독자 응답 버퍼에 메시지를 넣습니다. 작업 ACK나 재접속 replay는 이 경로의 기능이 아닙니다." },
-]} />
+**퀴즈: 상황을 바꾸어 적용합니다**
 
-<FlashCards title="다시 떠올릴 용어" cards={[
-  { front: "SDOWN / ODOWN", back: "Sentinel 하나의 장애 관측 / 설정 quorum을 채운 primary 장애 관측. leader 선출은 별도입니다." },
-  { front: "Sentinel quorum / majority", back: "quorum은 down 보고 기준입니다. leader는 알려진 Sentinels의 절대 과반수와 quorum을 모두 채워야 합니다." },
-  { front: "PFAIL / FAIL", back: "Cluster의 로컬 의심 / voting primary들의 장애 보고를 모은 판정. Sentinel ODOWN과 선거 참가자가 다릅니다." },
-  { front: "replid + offset", back: "어느 복제 역사에서 어느 바이트까지 이어받았는지를 표시합니다. 키 수가 아닙니다." },
-  { front: "backlog", back: "부분 재동기화를 위해 보관하는 복제 스트림입니다. 영구 변경 로그나 백업이 아닙니다." },
-  { front: "ASK / MOVED", back: "ASK는 이동 중 한 명령을 ASKING과 함께 임시 대상에 보냅니다. MOVED는 현재 슬롯 담당자를 알려 줍니다." },
-  { front: "IMPORTING / MIGRATING", back: "대상이 받아들이는 상태 / 소스가 내보내는 상태입니다. 데이터 이동과 공식 owner 변경은 별도입니다." },
-  { front: "WAIT / WAITAOF", back: "같은 연결의 앞선 쓰기에 대해 복제 ACK / AOF fsync 확인을 기다립니다. 반환 수를 검사하며 rollback으로 읽지 않습니다." },
-  { front: "expiration / eviction", back: "유효 시간 종료 / 메모리 압박에 따른 축출입니다. miss라는 결과가 같아도 지표와 대응이 다릅니다." },
-  { front: "ACL selector", back: "명령과 모든 필요한 키·채널을 함께 만족시키는 권한 묶음입니다. 서로 다른 selector의 일부 권한을 조립하지 않습니다." },
-]} />
+1. SET에 OK를 받았습니다. primary가 끊기고, 그 쓰기를 못 받은 replica가 승격됐습니다. 어떤 결과가 가능합니까?
+   - OK를 받았으므로 새 primary에도 반드시 있습니다.
+   - 그 쓰기가 새 primary에 없을 수 있습니다.
+   - Sentinel이 클라이언트의 OK 기록에서 값을 복원합니다.
+
+   정답: 그 쓰기가 새 primary에 없을 수 있습니다. 일반 복제는 비동기입니다. leader 선거나 Cluster의 epoch가 데이터 값을 재구성하지 않습니다. ACK 요구, fsync와 후보 선택의 조건을 따로 설계합니다.
+2. CLUSTER FAILOVER FORCE는 무엇을 건너뜁니까?
+   - 기존 primary와 offset을 맞추는 정상 조정입니다. 선거 허가는 여전히 필요합니다.
+   - voting primary의 선거 허가입니다.
+   - 모든 복제를 영구적으로 끕니다.
+
+   정답: 기존 primary와 offset을 맞추는 정상 조정입니다. 선거 허가는 여전히 필요합니다. FORCE와 TAKEOVER를 구분합니다. FORCE는 기존 primary와의 조정을 건너뛰며, TAKEOVER는 정상 선거까지 건너뛰어 위험한 분할 상태를 만들 수 있습니다.
+3. MIGRATE에 IOERR가 나왔습니다. 바로 원본을 삭제해도 됩니까?
+   - 대상에 성공한 것이므로 삭제합니다.
+   - 대상에 실패한 것이므로 REPLACE로 계속 덮습니다.
+   - 대상에 이미 복원됐을 수 있습니다. 양쪽 데이터와 TTL, 슬롯 상태 및 새 쓰기를 먼저 확인합니다.
+
+   정답: 대상에 이미 복원됐을 수 있습니다. 양쪽 데이터와 TTL, 슬롯 상태 및 새 쓰기를 먼저 확인합니다. RESTORE 성공과 그 응답 수신은 다른 사건입니다. 응답 유실은 두 복사본을 남길 수 있으며 여러 키의 부분 진행도 가능합니다. 실패 응답은 rollback 표시가 아닙니다.
+4. 소스에서 MIGRATE를 실행하고 같은 연결로 WAIT를 했습니다. 대상 replica의 RESTORE까지 기다린 것입니까?
+   - 그렇습니다. WAIT는 모든 노드의 쓰기를 기다립니다.
+   - 아닙니다. WAIT는 그 연결과 서버의 앞선 쓰기 offset에 대한 확인입니다.
+   - 슬롯 수가 같으면 그렇습니다.
+
+   정답: 아닙니다. WAIT는 그 연결과 서버의 앞선 쓰기 offset에 대한 확인입니다. 소스의 복제와 대상의 복제는 다른 스트림입니다. 소스에서 받은 확인을 대상의 복원 내구성으로 바꾸어 읽지 않습니다.
+5. PUBLISH가 구독 전달 수를 반환했습니다. 소비자의 작업 완료를 확인한 것입니까?
+   - 확인했습니다. 소비자가 완료 후 응답합니다.
+   - 확인하지 않았습니다. 서버의 구독 전달과 앱의 처리 완료는 다릅니다.
+   - replica가 있으면 작업 완료까지 확인합니다.
+
+   정답: 확인하지 않았습니다. 서버의 구독 전달과 앱의 처리 완료는 다릅니다. Pub/Sub는 구독자 응답 버퍼에 메시지를 넣습니다. 작업 ACK나 재접속 replay는 이 경로의 기능이 아닙니다.
+
+**다시 떠올릴 용어**
+
+- SDOWN / ODOWN: Sentinel 하나의 장애 관측 / 설정 quorum을 채운 primary 장애 관측. leader 선출은 별도입니다.
+- Sentinel quorum / majority: quorum은 down 보고 기준입니다. leader는 알려진 Sentinels의 절대 과반수와 quorum을 모두 채워야 합니다.
+- PFAIL / FAIL: Cluster의 로컬 의심 / voting primary들의 장애 보고를 모은 판정. Sentinel ODOWN과 선거 참가자가 다릅니다.
+- replid + offset: 어느 복제 역사에서 어느 바이트까지 이어받았는지를 표시합니다. 키 수가 아닙니다.
+- backlog: 부분 재동기화를 위해 보관하는 복제 스트림입니다. 영구 변경 로그나 백업이 아닙니다.
+- ASK / MOVED: ASK는 이동 중 한 명령을 ASKING과 함께 임시 대상에 보냅니다. MOVED는 현재 슬롯 담당자를 알려 줍니다.
+- IMPORTING / MIGRATING: 대상이 받아들이는 상태 / 소스가 내보내는 상태입니다. 데이터 이동과 공식 owner 변경은 별도입니다.
+- WAIT / WAITAOF: 같은 연결의 앞선 쓰기에 대해 복제 ACK / AOF fsync 확인을 기다립니다. 반환 수를 검사하며 rollback으로 읽지 않습니다.
+- expiration / eviction: 유효 시간 종료 / 메모리 압박에 따른 축출입니다. miss라는 결과가 같아도 지표와 대응이 다릅니다.
+- ACL selector: 명령과 모든 필요한 키·채널을 함께 만족시키는 권한 묶음입니다. 서로 다른 selector의 일부 권한을 조립하지 않습니다.
 
 ## 소스를 다시 열 때의 지도
 

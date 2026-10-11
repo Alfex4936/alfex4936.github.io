@@ -41,8 +41,6 @@ $$
 
 The power of the boundary is **the index of the first binary digit where $a$ and $b$ differ**. Equivalently, keep halving $[0,1)$ into halves, quarters, eighths, and the power is the depth at which the two midpoints first land in different pieces. A boundary straddling the middle of the array gets power 1; boundaries between small runs near one end get large powers. CPython computes this with integer arithmetic only. Ported to Python, the loop looks like this.
 
-<Walk>
-
 ```python title="power.py"
 def power(s1, n1, n2, n):
     a = 2 * s1 + n1
@@ -58,42 +56,24 @@ def power(s1, n1, n2, n):
     return p
 ```
 
-<Step lines="2-3">
+1. Multiply both midpoints by $2n$ to make them integers; $a/2n$ and $b/2n$ are the original midpoints. No division, so no rounding error.
 
-Multiply both midpoints by $2n$ to make them integers; $a/2n$ and $b/2n$ are the original midpoints. No division, so no rounding error.
+2. If $a \ge n$ then $a/2n \ge 1/2$, and since $b > a$ so is $b$. Both have a 1 in the current digit, so subtract it and move on.
 
-</Step>
+3. If $a < n \le b$, the current digit is 0 for $a$ and 1 for $b$. That is the first digit where they differ, so return its index `p`.
 
-<Step lines="7-8">
-
-If $a \ge n$ then $a/2n \ge 1/2$, and since $b > a$ so is $b$. Both have a 1 in the current digit, so subtract it and move on.
-
-</Step>
-
-<Step lines="9-10">
-
-If $a < n \le b$, the current digit is 0 for $a$ and 1 for $b$. That is the first digit where they differ, so return its index `p`.
-
-</Step>
-
-<Step lines="11">
-
-If both are 0, double them to look at the next digit. This is shifting the binary fraction left by one place.
-
-</Step>
-
-</Walk>
+4. If both are 0, double them to look at the next digit. This is shifting the binary fraction left by one place.
 
 CPython's actual implementation (`powerloop` in `Objects/listobject.c`) is the same loop. It runs once per run found and never iterates more than $\log_2 n$ times, which is negligible next to the sort itself.
 
-<Quiz lang="en" title="Checkpoint: boundary power" items={[
-  {
-    q: "Two normalized run midpoints differ at their first binary digit. How should you interpret that boundary's power and tree position?",
-    choices: ["Small power, close to the root, merged late.", "Large power, close to the leaves, merged first.", "The runs have equal length and must not be merged."],
-    answer: 0,
-    why: "Power is the index of the first differing binary digit. A first-digit split is power 1, as in the post's example: a root-side boundary merged after deeper boundaries.",
-  },
-]} />
+**Quiz: Checkpoint: boundary power**
+
+1. Two normalized run midpoints differ at their first binary digit. How should you interpret that boundary's power and tree position?
+   - Small power, close to the root, merged late.
+   - Large power, close to the leaves, merged first.
+   - The runs have equal length and must not be merged.
+
+   Answer: Small power, close to the root, merged late. Power is the index of the first differing binary digit. A first-digit split is power 1, as in the post's example: a root-side boundary merged after deeper boundaries.
 
 ## Same runs, different merge order
 
@@ -187,26 +167,26 @@ On the ×256 input 3.10 took 6.05 ms and 3.11 took 5.25 ms, 13% faster. Random i
 
 The value of the change is the **guarantee** more than the average speed. Timsort's merge cost was known to reach $1.5\,n\mathcal{H}$; powersort guarantees at most $n\mathcal{H} + O(n)$. The rule is also simpler than the stack invariants, leaving no room for the kind of bug found in 2015, where an invariant broke deep in the stack.
 
-<Quiz lang="en" title="Separating merge cost from comparisons" items={[
-  {
-    q: "Someone says upgrading to CPython 3.11 also replaced run detection and galloping. What change does the post actually establish?",
-    choices: ["The whole sort was replaced with pivot-based partitioning.", "Only the rule scheduling merges of adjacent runs changed.", "Run detection was removed, leaving only insertion sort."],
-    answer: 1,
-    why: "Powersort replaces the merge schedule. Run detection, insertion sort for extending short runs, and galloping remain, so this is not a change that speeds up every input by the same factor.",
-  },
-  {
-    q: "The simulation shows a large merge-cost gap, but actual comparison counts barely differ. Why can these measurements diverge?",
-    choices: ["The simulation also counts only __lt__ calls, so both results must match.", "Galloping removes all comparisons and element copies.", "The simulation sums merged run lengths; the actual sort skips comparisons by galloping."],
-    answer: 2,
-    why: "Merge cost here is the sum of both run lengths for each merge. Galloping reduces actual comparisons while copies may remain. A merge-cost reduction cannot be read directly as a comparison or time reduction.",
-  },
-  {
-    q: "The post's random input yields identical comparison counts on both Python versions. Does that make the powersort change useless?",
-    choices: ["Yes. Matching on one input proves matching on all inputs.", "No. Some inputs produce the same tree; uneven runs expose cost and guarantee differences.", "No. Powersort must reduce comparisons even on random input."],
-    answer: 1,
-    why: "The random-input measurement really did match. Benefits depend on run structure, and the entropy-based merge-cost guarantee is not a promise that every input will take less wall-clock time.",
-  },
-]} />
+**Quiz: Separating merge cost from comparisons**
+
+1. Someone says upgrading to CPython 3.11 also replaced run detection and galloping. What change does the post actually establish?
+   - The whole sort was replaced with pivot-based partitioning.
+   - Only the rule scheduling merges of adjacent runs changed.
+   - Run detection was removed, leaving only insertion sort.
+
+   Answer: Only the rule scheduling merges of adjacent runs changed. Powersort replaces the merge schedule. Run detection, insertion sort for extending short runs, and galloping remain, so this is not a change that speeds up every input by the same factor.
+2. The simulation shows a large merge-cost gap, but actual comparison counts barely differ. Why can these measurements diverge?
+   - The simulation also counts only __lt__ calls, so both results must match.
+   - Galloping removes all comparisons and element copies.
+   - The simulation sums merged run lengths; the actual sort skips comparisons by galloping.
+
+   Answer: The simulation sums merged run lengths; the actual sort skips comparisons by galloping. Merge cost here is the sum of both run lengths for each merge. Galloping reduces actual comparisons while copies may remain. A merge-cost reduction cannot be read directly as a comparison or time reduction.
+3. The post's random input yields identical comparison counts on both Python versions. Does that make the powersort change useless?
+   - Yes. Matching on one input proves matching on all inputs.
+   - No. Some inputs produce the same tree; uneven runs expose cost and guarantee differences.
+   - No. Powersort must reduce comparisons even on random input.
+
+   Answer: No. Some inputs produce the same tree; uneven runs expose cost and guarantee differences. The random-input measurement really did match. Benefits depend on run structure, and the entropy-based merge-cost guarantee is not a promise that every input will take less wall-clock time.
 
 [^1]: CPython 3.11's `Objects/listsort.txt` explains why powersort was adopted and how power is computed. Tim Peters made the change himself.
 [^2]: Stijn de Gouw et al., "OpenJDK's java.utils.Collection.sort() is broken: The good, the bad and the worst case", CAV 2015. CPython had the same bug.

@@ -33,8 +33,6 @@ Deleting instead of overwriting on write is deliberate. If two writes land almos
 
 A gap remains. A read fetches the old value from the database, a write then deletes the cache key, and the read puts the old value into the cache.
 
-<Walk>
-
 ```mermaid
 sequenceDiagram
   participant R as Reader
@@ -48,63 +46,50 @@ sequenceDiagram
   R->>C: SET user:42 A EX 300
 ```
 
-<Step show="R,D,#1,#2">
+1. The reader gets A. Reading the database and filling the cache are separate operations, so another request can run between them.
 
-The reader gets A. Reading the database and filling the cache are separate operations, so another request can run between them.
+2. The writer commits B and deletes the cache entry. It followed the intended commit-then-delete order.
 
-</Step>
-
-<Step show="W,D,C,#3,#4">
-
-The writer commits B and deletes the cache entry. It followed the intended commit-then-delete order.
-
-</Step>
-
-<Step show="R,C,#5">
-
-The delayed reader inserts A again. The database holds B while the cache holds A.
-
-</Step>
-
-</Walk>
+3. The delayed reader inserts A again. The database holds B while the cache holds A.
 
 TTL bounds the lifetime of that last `SET`, not staleness measured from the database commit. A delayed read or a lagging database replica can insert the old value much later. Extending TTL on every read can keep it alive even longer.
 
 The same code ends differently depending on where the other request intervenes. Choose an ordering below and advance one step at a time. Changed values are highlighted.
 
-<TracePlayer
-  lang="en"
-  title="When SET arrives after DEL"
-  columns={["Database", "Value held by reader", "Redis"]}
-  caption="An authored model of the example's execution order, not a measurement of request timing or Redis throughput. Each cell shows the state after that step."
-  tracks={[
-    { label: "Late SET: the old value returns", steps: [
-      { action: "Start", note: "The database holds A and the cache is empty.", values: ["A", "None", "None"] },
-      { action: "Reader: fetch A from the database", note: "The reader has not filled the cache yet.", values: ["A", "A", "None"] },
-      { action: "Writer: commit B", note: "The database changes to B. The A already held by the reader does not change.", values: ["B", "A", "None"] },
-      { action: "Writer: execute DEL", note: "Deleting the empty cache cannot delete the A held by the in-flight reader.", values: ["B", "A", "None"] },
-      { action: "Reader: SET A", note: "The database holds B, the cache holds A. TTL starts at this SET.", values: ["B", "A", "A · TTL 300s"] },
-    ] },
-    { label: "In this ordering, DEL arrives last", steps: [
-      { action: "Start", note: "Start with the same A and empty cache.", values: ["A", "None", "None"] },
-      { action: "Reader: fetch A from the database", note: "This reader also gets A.", values: ["A", "A", "None"] },
-      { action: "Reader: SET A", note: "This time the reader fills the cache before the writer intervenes.", values: ["A", "A", "A · TTL 300s"] },
-      { action: "Writer: commit B", note: "A remains cached until DEL.", values: ["B", "A", "A · TTL 300s"] },
-      { action: "Writer: execute DEL", note: "The cache is empty. The next miss reads the database again. This is one ordering, not a guarantee across all interleavings.", values: ["B", "A", "None"] },
-    ] },
-  ]}
-/>
+**When SET arrives after DEL**
+
+*Late SET: the old value returns*
+
+| Step | Note | Database | Value held by reader | Redis |
+| --- | --- | --- | --- | --- |
+| Start | The database holds A and the cache is empty. | A | None | None |
+| Reader: fetch A from the database | The reader has not filled the cache yet. | A | A | None |
+| Writer: commit B | The database changes to B. The A already held by the reader does not change. | B | A | None |
+| Writer: execute DEL | Deleting the empty cache cannot delete the A held by the in-flight reader. | B | A | None |
+| Reader: SET A | The database holds B, the cache holds A. TTL starts at this SET. | B | A | A · TTL 300s |
+
+*In this ordering, DEL arrives last*
+
+| Step | Note | Database | Value held by reader | Redis |
+| --- | --- | --- | --- | --- |
+| Start | Start with the same A and empty cache. | A | None | None |
+| Reader: fetch A from the database | This reader also gets A. | A | A | None |
+| Reader: SET A | This time the reader fills the cache before the writer intervenes. | A | A | A · TTL 300s |
+| Writer: commit B | A remains cached until DEL. | B | A | A · TTL 300s |
+| Writer: execute DEL | The cache is empty. The next miss reads the database again. This is one ordering, not a guarantee across all interleavings. | B | A | None |
+
+*An authored model of the example's execution order, not a measurement of request timing or Redis throughput. Each cell shows the state after that step.*
 
 For prices or permissions where stale reads are unacceptable, read the database or design a protocol that checks versions against the authoritative data. Record failed invalidations so they can be retried. An outbox records the invalidation event in the same database transaction as the update; CDC is another option. Both still need to handle delivery delay and out-of-order events.
 
-<Quiz lang="en" title="Checkpoint: what TTL bounds" items={[
-  {
-    q: "After B is committed and the cache invalidated, a delayed reader inserts A with a 60-second TTL. Which statement is correct?",
-    choices: ["Freshness is guaranteed within 60 seconds of the commit", "Lifetime is bounded from the delayed SET", "Commit-then-delete makes inserting A impossible"],
-    answer: 1,
-    why: "TTL starts at cache insertion. It does not automatically fix delayed database reads or stale replica data."
-  }
-]} />
+**Quiz: Checkpoint: what TTL bounds**
+
+1. After B is committed and the cache invalidated, a delayed reader inserts A with a 60-second TTL. Which statement is correct?
+   - Freshness is guaranteed within 60 seconds of the commit
+   - Lifetime is bounded from the delayed SET
+   - Commit-then-delete makes inserting A impossible
+
+   Answer: Lifetime is bounded from the delayed SET TTL starts at cache insertion. It does not automatically fix delayed database reads or stale replica data.
 
 **Read-through** does the same thing as cache-aside, but the cache layer (a library or proxy) does it for you. The application only talks to the cache.
 
@@ -130,8 +115,6 @@ flowchart LR
 
 Ordinary key lookup paths check expiry with `expireIfNeeded`. A command such as `DBSIZE`, which reports the size of the keyspace, does not expire every key by visiting it.
 
-<Walk>
-
 ```c title="src/db.c (Redis 6.2.6, comments removed)"
 int expireIfNeeded(redisDb *db, robj *key) {
     if (!keyIsExpired(db,key)) return 0;
@@ -146,31 +129,13 @@ int expireIfNeeded(redisDb *db, robj *key) {
 }
 ```
 
-<Step lines="2">
+1. If the expiry time has not passed, nothing happens. Most accesses stop on this line.
 
-If the expiry time has not passed, nothing happens. Most accesses stop on this line.
+2. A replica only answers "expired" and does not delete. Keys on a replica are removed only by a `DEL` sent from the master, which keeps the two datasets from drifting apart. Reads see the key as missing, but its memory stays until the master deletes it.
 
-</Step>
+3. While clients are paused (`CLIENT PAUSE`, during a failover) it does not delete either, because the dataset must stay unchanged.
 
-<Step lines="4">
-
-A replica only answers "expired" and does not delete. Keys on a replica are removed only by a `DEL` sent from the master, which keeps the two datasets from drifting apart. Reads see the key as missing, but its memory stays until the master deletes it.
-
-</Step>
-
-<Step lines="6">
-
-While clients are paused (`CLIENT PAUSE`, during a failover) it does not delete either, because the dataset must stay unchanged.
-
-</Step>
-
-<Step lines="8-10">
-
-On a master, it deletes the key and propagates a `DEL` (or `UNLINK`) to the AOF and the replicas.
-
-</Step>
-
-</Walk>
+4. On a master, it deletes the key and propagates a `DEL` (or `UNLINK`) to the AOF and the replicas.
 
 With only this, an expired key that nobody reads stays in memory forever.
 
@@ -237,7 +202,7 @@ All three policies reduce to one rule: evict the highest idle score first. LFU i
 
 I measured how much the sample count matters. I inserted 10 batches of 2,000 keys, 1.05 seconds apart, with memory capped at about half the total. Under ideal LRU every surviving key would be in the newer half.
 
-<LruSampleViz lang="en" caption="Each bar is one batch of keys; older keys are to the left. Solid bars are keys that survived eviction." />
+> Interactive visual: Each bar is one batch of keys; older keys are to the left. Solid bars are keys that survived eviction. (try it on the original page: https://alfex4936.github.io/blog/redis-cache-field-guide/)
 
 | `maxmemory-samples` | Survivors in the newer half |
 |---|---|
@@ -267,15 +232,11 @@ uint8_t LFULogIncr(uint8_t counter) {
 
 A new key starts at 5 (`LFU_INIT_VAL`). Starting at 0 would make a freshly inserted key the first in line for eviction. The higher the value, the lower the chance of the next increment, so the counter grows roughly logarithmically. I ran `GET` on one key N times and read `OBJECT FREQ`.
 
-<div class="table-wrap">
-
 | `lfu-log-factor` | 0 | 1 | 10 | 100 | 1K | 10K | 100K | 1M |
 |---|---|---|---|---|---|---|---|---|
 | 1 | 5 | 6 | 9 | 19 | 45 | 145 | 255 | 255 |
 | 10 (default) | 5 | 6 | 6 | 10 | 21 | 45 | 148 | 255 |
 | 100 | 5 | 6 | 6 | 7 | 9 | 18 | 50 | 162 |
-
-</div>
 
 In this run, with the default factor of 10, I observed 255 after a million reads. Increments are probabilistic; a million is not a fixed saturation threshold. Lowering the factor makes the counter grow faster, but saturated popular keys become harder to distinguish.
 
@@ -366,14 +327,14 @@ I checked the revised example with `npm run test:cache -- --docker` against Redi
 
 In Cluster, both Lua keys must share a slot. A value key of `{user:42}:value` produces a lock key of `{user:42}:value:lock`, using the same hash tag. Lease expiry, lock-key eviction, or failover can allow overlapping loaders. This lock reduces duplicate cache fills. It does not provide exactly-once payments or inventory updates; use database transactions and idempotency keys for those.
 
-<Quiz lang="en" title="Checkpoint: a loader loses its lease" items={[
-  {
-    q: "The loader pauses until its lock expires. Does its token still give it exclusive access?",
-    choices: ["Yes; tokens guarantee indefinite exclusivity", "No; another loader can take the lock", "Yes; database transactions are joined automatically"],
-    answer: 1,
-    why: "A token prevents deleting another owner's lock. The code checks ownership at publication too, but cannot guarantee no overlapping database reads."
-  }
-]} />
+**Quiz: Checkpoint: a loader loses its lease**
+
+1. The loader pauses until its lock expires. Does its token still give it exclusive access?
+   - Yes; tokens guarantee indefinite exclusivity
+   - No; another loader can take the lock
+   - Yes; database transactions are joined automatically
+
+   Answer: No; another loader can take the lock A token prevents deleting another owner's lock. The code checks ownership at publication too, but cannot guarantee no overlapping database reads.
 
 **Fix 2: refresh early.** XFetch (probabilistic early expiration) stores how long the value took to compute and increases the chance of an early refresh as expiry approaches[^1]. It reduces clumping without guaranteeing exactly one refresher. Scheduled background warming can fail or run late too, so keep a path for requests after expiry.
 
@@ -443,14 +404,14 @@ Negative entries must distinguish absence from an empty string, an empty list, a
 
 Distinguish single-flight, which combines loaders, from pipelining, which batches commands. A pipeline sends multiple Redis commands without waiting for a round trip after each one. It is not a transaction and does not resolve another client's update between `GET` and `SET`. Bound the batch size so response memory and waiting do not grow without limit.
 
-<Quiz lang="en" title="Checkpoint: fewer round trips, but atomic?" items={[
-  {
-    q: "You pipeline GET and SET. Does that eliminate races with another request?",
-    choices: ["Yes; a pipeline is a transaction", "No; it reduces round-trip waits without guaranteeing atomicity", "Yes; the cache TTL is locked automatically"],
-    answer: 1,
-    why: "Atomic comparison and mutation require Lua or an appropriate transaction protocol. Pipelining addresses transport waits."
-  }
-]} />
+**Quiz: Checkpoint: fewer round trips, but atomic?**
+
+1. You pipeline GET and SET. Does that eliminate races with another request?
+   - Yes; a pipeline is a transaction
+   - No; it reduces round-trip waits without guaranteeing atomicity
+   - Yes; the cache TTL is locked automatically
+
+   Answer: No; it reduces round-trip waits without guaranteeing atomicity Atomic comparison and mutation require Lua or an appropriate transaction protocol. Pipelining addresses transport waits.
 
 A simple load model is
 
@@ -517,108 +478,121 @@ After recovery, warm popular data first at a limited rate. TTL jitter spreads ex
 
 ## Quiz
 
-<Quiz lang="en" items={[
-  {
-    q: "You set `maxmemory` on Redis 6.2 and keep the default policy. It cannot relieve the over-limit condition. What happens?",
-    choices: ["It evicts the least recently used keys", "`denyoom` commands such as `SET` fail with OOM", "Every command fails", "It spills to disk"],
-    answer: 1,
-    why: "The default policy is `noeviction`. It does not reject space-reducing commands such as `DEL`. The default `maxmemory` of 0 means unlimited."
-  },
-  {
-    q: "Active expiry removes keys that nobody reads. What does the source establish?",
-    choices: ["Every key is deleted at its deadline", "The expired share is always at most 10%", "Work is controlled by observed expired share and time budgets", "Exactly 20 keys are always deleted per pass"],
-    answer: 2,
-    why: "It scans buckets with a cursor and checks a time limit. Targets and thresholds do not guarantee an exact deletion time or remaining expired share."
-  },
-  {
-    q: "Is `maxmemory-samples=1` the same algorithm as `allkeys-random`?",
-    choices: ["No; earlier candidates remain in a pool", "Yes; the source is identical", "Yes; no access time is recorded", "No; it becomes exact LRU"],
-    answer: 0,
-    why: "Similar measured outcomes do not make algorithms identical. LRU uses access times and retained candidates."
-  },
-  {
-    q: "Why does the LFU counter start at 5 instead of 0?",
-    choices: ["8-bit alignment", "So a newly inserted key is not evicted right away", "To avoid dividing by zero in the log", "To match replicas"],
-    answer: 1,
-    why: "Starting at 0, a new key would always have the lowest frequency and be an eviction candidate the moment it arrives."
-  },
-  {
-    q: "In a stampede lock, why check the cache again after taking the lock?",
-    choices: ["To confirm the lock was taken", "The previous holder may already have filled it", "To refresh the TTL", "To use a Lua script"],
-    answer: 1,
-    why: "If you take the lock right after the previous holder filled the cache and released it, you hit the DB again unless you check."
-  },
-  {
-    q: "A nightly job sets a 24-hour TTL on every product key at midnight. What worries you most?",
-    choices: ["Cache penetration", "Hot keys", "Cache avalanche", "Big keys"],
-    answer: 2,
-    why: "They all expire together at the next midnight. Add jitter to the TTL to spread them out."
-  },
-  {
-    q: "You need to delete a hash with 5 million fields. Which command blocks the main thread least?",
-    choices: ["`DEL`", "`EXPIRE key 0`", "`UNLINK`", "`FLUSHDB`"],
-    answer: 2,
-    why: "`UNLINK` detaches the key and hands the freeing to a background thread."
-  },
-  {
-    q: "What happens when you `GET` an expired key on a replica?",
-    choices: ["It returns the value", "It returns nil and deletes the key", "It returns nil but the key stays until the master's DEL arrives", "It returns an error"],
-    answer: 2,
-    why: "A replica decides expiry only to answer; deletion happens only via the `DEL` the master propagates."
-  },
-  {
-    q: "Should permission checks immediately after revocation use stale-while-revalidate?",
-    choices: ["Every cache tolerates stale data", "If stale authorization is forbidden, check current permissions", "A hard TTL guarantees instant revocation", "Just extend the soft TTL"],
-    answer: 1,
-    why: "Freshness requirements depend on the data. Old news and revoked permissions cannot share the same stale-response policy."
-  },
-  {
-    q: "In an example with a maximum allowed TTL of 300 seconds, which expression spreads expiry safely?",
-    choices: ["`300 + random.randint(0, 60)`", "`random.randint(240, 300)`", "`300 + random.randint(0, 300)`", "Extend TTL indefinitely on every hit"],
-    answer: 1,
-    why: "It stays within the 300-second limit. Adding positive jitter can exceed the allowed freshness budget."
-  },
-  {
-    q: "A product exists in the database but its Bloom filter update is delayed. Can trusting 'absent' cause trouble?",
-    choices: ["No; it is always safe", "Yes; a valid request can be rejected", "Redis updates the filter automatically", "Only false positives can increase"],
-    answer: 1,
-    why: "No false negatives applies to inserted elements. Database-to-filter update lag is a separate problem."
-  },
-  {
-    q: "You copy a hot key to `hot:{item:42}:0` and `hot:{item:42}:1`. Does that spread Cluster load?",
-    choices: ["They always go to different shards", "The same hash tag keeps them in one slot", "Names do not affect slots", "Replicas automatically distribute every read"],
-    answer: 1,
-    why: "An identical hash tag means an identical slot. Place copies across slots and design their update path."
-  },
-  {
-    q: "Every request that times out on Redis falls back to the database. What protection is needed first?",
-    choices: ["Unlimited retries", "Database concurrency limits and request deadlines", "Remove every TTL", "Check only average hit rate"],
-    answer: 1,
-    why: "The database inherits the cache's load. Bound fallback and serve allowed stale data or explicit errors for excess work."
-  }
-]} />
+**Quiz**
+
+1. You set `maxmemory` on Redis 6.2 and keep the default policy. It cannot relieve the over-limit condition. What happens?
+   - It evicts the least recently used keys
+   - `denyoom` commands such as `SET` fail with OOM
+   - Every command fails
+   - It spills to disk
+
+   Answer: `denyoom` commands such as `SET` fail with OOM The default policy is `noeviction`. It does not reject space-reducing commands such as `DEL`. The default `maxmemory` of 0 means unlimited.
+2. Active expiry removes keys that nobody reads. What does the source establish?
+   - Every key is deleted at its deadline
+   - The expired share is always at most 10%
+   - Work is controlled by observed expired share and time budgets
+   - Exactly 20 keys are always deleted per pass
+
+   Answer: Work is controlled by observed expired share and time budgets It scans buckets with a cursor and checks a time limit. Targets and thresholds do not guarantee an exact deletion time or remaining expired share.
+3. Is `maxmemory-samples=1` the same algorithm as `allkeys-random`?
+   - No; earlier candidates remain in a pool
+   - Yes; the source is identical
+   - Yes; no access time is recorded
+   - No; it becomes exact LRU
+
+   Answer: No; earlier candidates remain in a pool Similar measured outcomes do not make algorithms identical. LRU uses access times and retained candidates.
+4. Why does the LFU counter start at 5 instead of 0?
+   - 8-bit alignment
+   - So a newly inserted key is not evicted right away
+   - To avoid dividing by zero in the log
+   - To match replicas
+
+   Answer: So a newly inserted key is not evicted right away Starting at 0, a new key would always have the lowest frequency and be an eviction candidate the moment it arrives.
+5. In a stampede lock, why check the cache again after taking the lock?
+   - To confirm the lock was taken
+   - The previous holder may already have filled it
+   - To refresh the TTL
+   - To use a Lua script
+
+   Answer: The previous holder may already have filled it If you take the lock right after the previous holder filled the cache and released it, you hit the DB again unless you check.
+6. A nightly job sets a 24-hour TTL on every product key at midnight. What worries you most?
+   - Cache penetration
+   - Hot keys
+   - Cache avalanche
+   - Big keys
+
+   Answer: Cache avalanche They all expire together at the next midnight. Add jitter to the TTL to spread them out.
+7. You need to delete a hash with 5 million fields. Which command blocks the main thread least?
+   - `DEL`
+   - `EXPIRE key 0`
+   - `UNLINK`
+   - `FLUSHDB`
+
+   Answer: `UNLINK` `UNLINK` detaches the key and hands the freeing to a background thread.
+8. What happens when you `GET` an expired key on a replica?
+   - It returns the value
+   - It returns nil and deletes the key
+   - It returns nil but the key stays until the master's DEL arrives
+   - It returns an error
+
+   Answer: It returns nil but the key stays until the master's DEL arrives A replica decides expiry only to answer; deletion happens only via the `DEL` the master propagates.
+9. Should permission checks immediately after revocation use stale-while-revalidate?
+   - Every cache tolerates stale data
+   - If stale authorization is forbidden, check current permissions
+   - A hard TTL guarantees instant revocation
+   - Just extend the soft TTL
+
+   Answer: If stale authorization is forbidden, check current permissions Freshness requirements depend on the data. Old news and revoked permissions cannot share the same stale-response policy.
+10. In an example with a maximum allowed TTL of 300 seconds, which expression spreads expiry safely?
+   - `300 + random.randint(0, 60)`
+   - `random.randint(240, 300)`
+   - `300 + random.randint(0, 300)`
+   - Extend TTL indefinitely on every hit
+
+   Answer: `random.randint(240, 300)` It stays within the 300-second limit. Adding positive jitter can exceed the allowed freshness budget.
+11. A product exists in the database but its Bloom filter update is delayed. Can trusting 'absent' cause trouble?
+   - No; it is always safe
+   - Yes; a valid request can be rejected
+   - Redis updates the filter automatically
+   - Only false positives can increase
+
+   Answer: Yes; a valid request can be rejected No false negatives applies to inserted elements. Database-to-filter update lag is a separate problem.
+12. You copy a hot key to `hot:{item:42}:0` and `hot:{item:42}:1`. Does that spread Cluster load?
+   - They always go to different shards
+   - The same hash tag keeps them in one slot
+   - Names do not affect slots
+   - Replicas automatically distribute every read
+
+   Answer: The same hash tag keeps them in one slot An identical hash tag means an identical slot. Place copies across slots and design their update path.
+13. Every request that times out on Redis falls back to the database. What protection is needed first?
+   - Unlimited retries
+   - Database concurrency limits and request deadlines
+   - Remove every TTL
+   - Check only average hit rate
+
+   Answer: Database concurrency limits and request deadlines The database inherits the cache's load. Bound fallback and serve allowed stale data or explicit errors for excess work.
 
 ## Flash cards
 
 Tap a card to flip it. Made for a quick pass the night before an interview.
 
-<FlashCards lang="en" cards={[
-  { front: "Write order in cache-aside", back: "Update the DB first, then delete the cache key. Don't overwrite." },
-  { front: "Default `maxmemory-policy`", back: "`noeviction`. Rejects denyoom commands over the limit; the default limit 0 means unlimited." },
-  { front: "Default `maxmemory-samples`", back: "5. Raising it to 10 gets closer to ideal LRU." },
-  { front: "Eviction candidate pool size", back: "16 (`EVPOOL_SIZE`)" },
-  { front: "LFU counter size and start value", back: "8 bits, starts at 5. Grows by probability, decays per minute." },
-  { front: "Default active-expiry target", back: "20 keys, possibly more to finish a bucket chain. Repetition depends on expired share and time." },
-  { front: "Expired keys on a replica", back: "Answers nil but does not delete. Waits for the master's DEL." },
-  { front: "Two stampede fixes", back: "A lock with a re-check, and refreshing before expiry (XFetch)" },
-  { front: "Penetration fixes", back: "Cache the absence briefly, Bloom filter, input validation" },
-  { front: "Avalanche fixes", back: "TTL jitter, high availability, concurrency limit in front of the DB" },
-  { front: "When `UNLINK` frees asynchronously", back: "Effort above 64 and reference count 1. Even large strings have effort 1." },
-  { front: "What 6.0 I/O threads do", back: "Socket reads and writes only. Commands still run on the one main thread." },
-  { front: "Soft TTL versus hard TTL", back: "After soft: serve stale and refresh. After hard: stop serving the old value." },
-  { front: "What TTL does not guarantee", back: "Freshness from the database commit. A delayed reader can reinsert an old value." },
-  { front: "Protect the DB when Redis fails", back: "Finite timeouts and retries, backend concurrency limits, and allowed stale responses." }
-]} />
+**Flash cards**
+
+- Write order in cache-aside: Update the DB first, then delete the cache key. Don't overwrite.
+- Default `maxmemory-policy`: `noeviction`. Rejects denyoom commands over the limit; the default limit 0 means unlimited.
+- Default `maxmemory-samples`: 5. Raising it to 10 gets closer to ideal LRU.
+- Eviction candidate pool size: 16 (`EVPOOL_SIZE`)
+- LFU counter size and start value: 8 bits, starts at 5. Grows by probability, decays per minute.
+- Default active-expiry target: 20 keys, possibly more to finish a bucket chain. Repetition depends on expired share and time.
+- Expired keys on a replica: Answers nil but does not delete. Waits for the master's DEL.
+- Two stampede fixes: A lock with a re-check, and refreshing before expiry (XFetch)
+- Penetration fixes: Cache the absence briefly, Bloom filter, input validation
+- Avalanche fixes: TTL jitter, high availability, concurrency limit in front of the DB
+- When `UNLINK` frees asynchronously: Effort above 64 and reference count 1. Even large strings have effort 1.
+- What 6.0 I/O threads do: Socket reads and writes only. Commands still run on the one main thread.
+- Soft TTL versus hard TTL: After soft: serve stale and refresh. After hard: stop serving the old value.
+- What TTL does not guarantee: Freshness from the database commit. A delayed reader can reinsert an old value.
+- Protect the DB when Redis fails: Finite timeouts and retries, backend concurrency limits, and allowed stale responses.
 
 ## Summary
 

@@ -3,8 +3,6 @@
 > Follow source functions from command execution and data structures through replication, Sentinel voting, Cluster failover and slot migration. Connect lost MIGRATE replies, eviction, Pub/Sub and ACL inside the same server.
 > 2026-08-24 · https://alfex4936.github.io/blog/redis-7-2-internals/
 
-import reproduction from '../../../../scripts/test-redis-internals.py?url'
-
 You sent `SET` to Redis and received `OK`. What has finished? The value is in the memory of the server you connected to. Whether a replica received it, whether it reached disk, and whether it survives the next failover require separate checks.
 
 This article follows that one write. It starts with receiving and executing a command, stores a value in a byte array, sends it over a replication connection, and examines who becomes the next writer when a server disconnects. Later sections follow slot migration through a lost reply.
@@ -32,8 +30,6 @@ A TCP connection is not a command. Redis must read the client's RESP bytes and p
 
 `processCommand` has several gates before an actual write. It checks the command and argument count, authentication and ACL. In Cluster mode, it checks whether the keys belong to this node's slots. Memory pressure, disk errors, insufficient replicas and a read-only replica role can also reject the command here. If the checks pass, `call` executes `c->cmd->proc(c)`.[^gates]
 
-<Walk>
-
 ```mermaid
 graph TD
   R["RESP bytes"] --> B["Input buffer and argv"]
@@ -46,19 +42,11 @@ graph TD
   F --> P["AOF / replication propagation"]
 ```
 
-<Step show="R,B,V">
-Finishing reads and parsing does not mean the command has executed. RESP completeness and the command's argument count are separate checks.
-</Step>
+1. Finishing reads and parsing does not mean the command has executed. RESP completeness and the command's argument count are separate checks.
 
-<Step show="A,S,G">
-Before execution, Redis checks permissions, slot ownership and whether it can accept the write. A MOVED or NOPERM response can mean the command never reached the function that modifies its data structure.
-</Step>
+2. Before execution, Redis checks permissions, slot ownership and whether it can accept the write. A MOVED or NOPERM response can mean the command never reached the function that modifies its data structure.
 
-<Step show="F,O,P">
-The command function changes memory and prepares a reply. Propagation and persistence have separate paths, so OK is not a completion marker for replicas or disk.
-</Step>
-
-</Walk>
+3. The command function changes memory and prepares a reply. Propagation and persistence have separate paths, so OK is not a completion marker for replicas or disk.
 
 `MULTI` queues commands for execution at `EXEC`. Preventing other ordinary clients' commands from interleaving during execution and undoing an earlier command's results are different features. Redis transactions do not have SQL-style rollback. Ignoring an execution-time command error and concluding that "EXEC is atomic, so everything succeeded" is incorrect.[^multi]
 
@@ -124,9 +112,14 @@ Default thresholds are in [this tag's redis.conf](https://github.com/redis/redis
 
 Lists especially require a version check. **A small list in this tag can be a standalone listpack.** `listTypeTryConvertListpack` converts a growing list to quicklist, while `listTypeTryConvertQuicklist` checks the reverse conversion when it shrinks to one packed node. Shrink conversion uses half the threshold to reduce repeated representation changes near the boundary. Do not generalize another type's one-way conversion into a rule for every Redis type.[^lists]
 
-<Quiz lang="en" title="Why check the encoding?" items={[
-  { q: "Do all Redis data structures switch back to a compact encoding after shrinking?", choices: ["All of them do.", "None of them do.", "It depends on the type and code path. Lists in this tag have a shrink conversion."], answer: 2, why: "Applying a hash's conversion rules to lists gives the wrong answer. listTypeTryConvertQuicklist checks for one packed node and the shrink boundary. Check the version and OBJECT ENCODING alongside TYPE." },
-]} />
+**Quiz: Why check the encoding?**
+
+1. Do all Redis data structures switch back to a compact encoding after shrinking?
+   - All of them do.
+   - None of them do.
+   - It depends on the type and code path. Lists in this tag have a shrink conversion.
+
+   Answer: It depends on the type and code path. Lists in this tag have a shrink conversion. Applying a hash's conversion rules to lists gives the wrong answer. listTypeTryConvertQuicklist checks for one packed node and the shrink boundary. Check the version and OBJECT ENCODING alongside TYPE.
 
 ## Replication means rejoining the same byte history
 
@@ -176,26 +169,27 @@ I checked these values in the configuration registry and the tag's configuration
 
 Promotion creates a new replication ID. Redis retains the previous ID and valid offset boundary in `replid2` and `second_replid_offset`, giving existing replicas a chance to partially resynchronize from the previous history. It does not merge divergent write histories into one ID.[^history]
 
-<TracePlayer
-  lang="en"
-  title="Between OK and replica application"
-  columns={["Client", "primary", "replica"]}
-  caption="A and B are illustrative values. These snapshots show possible asynchronous replication orderings, not measured transfer delays."
-  tracks={[
-    { label: "Failure after application", steps: [
-      { action: "Start", note: "Both servers hold A.", values: ["Waiting", "A", "A"] },
-      { action: "Execute SET B", note: "The current primary writes B and replies OK.", values: ["OK", "B", "A"] },
-      { action: "Apply replication", note: "The replica applies the stream containing B.", values: ["OK", "B", "B"] },
-      { action: "Primary fails", note: "B remains if a replica that received it is selected. Selection and persistence conditions are separate.", values: ["Reconnect needed", "Stopped", "B"] },
-    ] },
-    { label: "Failure before application", steps: [
-      { action: "Start", note: "Both servers hold A.", values: ["Waiting", "A", "A"] },
-      { action: "Execute SET B", note: "The replica can still hold A even after the client receives OK.", values: ["OK", "B", "A"] },
-      { action: "Primary fails", note: "In this ordering, only a replica that did not receive B remains eligible for promotion.", values: ["Reconnect needed", "Stopped", "A"] },
-      { action: "Promote replica", note: "The new primary does not have B. Receiving OK earlier does not restore it.", values: ["Reads A", "Stopped", "A / primary"] },
-    ] },
-  ]}
-/>
+**Between OK and replica application**
+
+*Failure after application*
+
+| Step | Note | Client | primary | replica |
+| --- | --- | --- | --- | --- |
+| Start | Both servers hold A. | Waiting | A | A |
+| Execute SET B | The current primary writes B and replies OK. | OK | B | A |
+| Apply replication | The replica applies the stream containing B. | OK | B | B |
+| Primary fails | B remains if a replica that received it is selected. Selection and persistence conditions are separate. | Reconnect needed | Stopped | B |
+
+*Failure before application*
+
+| Step | Note | Client | primary | replica |
+| --- | --- | --- | --- | --- |
+| Start | Both servers hold A. | Waiting | A | A |
+| Execute SET B | The replica can still hold A even after the client receives OK. | OK | B | A |
+| Primary fails | In this ordering, only a replica that did not receive B remains eligible for promotion. | Reconnect needed | Stopped | A |
+| Promote replica | The new primary does not have B. Receiving OK earlier does not restore it. | Reads A | Stopped | A / primary |
+
+*A and B are illustrative values. These snapshots show possible asynchronous replication orderings, not measured transfer delays.*
 
 ### What changes with WAIT and WAITAOF?
 
@@ -323,29 +317,35 @@ Allowing a Sentinel that observes ODOWN to promote any replica by itself could p
 
 Quorum is the failure-detection threshold; elections add the majority condition. The numbers below are quorum arithmetic examples, not deployment measurements. The monitor count includes the Sentinel itself and counts Sentinels known for the same primary.
 
-<TracePlayer
-  lang="en"
-  title="Why can ODOWN still block promotion?"
-  columns={["Known Sentinels", "Down reports", "Leader votes", "Decision"]}
-  caption="An illustrative election with quorum fixed at 2. Detection quorum and leader election conditions are separate; actual timeouts and message retransmissions are omitted."
-  tracks={[
-    { label: "3 monitors", steps: [
-      { action: "My observation", note: "Only S1 considers the primary down. This is below quorum.", values: ["3", "1", "0", "SDOWN"] },
-      { action: "S2 reports down too", note: "Two reports, including its own, produce ODOWN. Those reports are not themselves leader votes.", values: ["3", "2", "0", "ODOWN"] },
-      { action: "Leader votes in one epoch", note: "Two votes meet both the absolute majority of 3 and quorum=2.", values: ["3", "2", "2", "Election possible"] },
-    ] },
-    { label: "5 monitors", steps: [
-      { action: "My observation", note: "Only S1 considers the primary down.", values: ["5", "1", "0", "SDOWN"] },
-      { action: "S2 reports down too", note: "With quorum=2, this can produce ODOWN.", values: ["5", "2", "0", "ODOWN"] },
-      { action: "Only 2 votes", note: "An absolute majority of the 5 known monitors is 3. Two votes cannot elect a leader.", values: ["5", "2", "2", "No promotion authorization"] },
-      { action: "3 votes for one leader", note: "Election requires both majority and quorum within the same epoch.", values: ["5", "2", "3", "Election possible"] },
-    ] },
-  ]}
-/>
+**Why can ODOWN still block promotion?**
 
-<Quiz lang="en" title="Does lowering quorum restore availability?" items={[
-  { q: "There are 5 known Sentinels and quorum=2. A partition leaves only 2 able to communicate with each other. Does ODOWN authorize automatic promotion?", choices: ["Yes. They meet quorum=2.", "No. Electing a leader also requires an absolute majority of known Sentinels.", "A data replica can supply one extra vote."], answer: 1, why: "Down reports and leader votes are separate. A leader in this topology needs at least 3 votes. A data replica cannot replace a missing vote in a Sentinel election." },
-]} />
+*3 monitors*
+
+| Step | Note | Known Sentinels | Down reports | Leader votes | Decision |
+| --- | --- | --- | --- | --- | --- |
+| My observation | Only S1 considers the primary down. This is below quorum. | 3 | 1 | 0 | SDOWN |
+| S2 reports down too | Two reports, including its own, produce ODOWN. Those reports are not themselves leader votes. | 3 | 2 | 0 | ODOWN |
+| Leader votes in one epoch | Two votes meet both the absolute majority of 3 and quorum=2. | 3 | 2 | 2 | Election possible |
+
+*5 monitors*
+
+| Step | Note | Known Sentinels | Down reports | Leader votes | Decision |
+| --- | --- | --- | --- | --- | --- |
+| My observation | Only S1 considers the primary down. | 5 | 1 | 0 | SDOWN |
+| S2 reports down too | With quorum=2, this can produce ODOWN. | 5 | 2 | 0 | ODOWN |
+| Only 2 votes | An absolute majority of the 5 known monitors is 3. Two votes cannot elect a leader. | 5 | 2 | 2 | No promotion authorization |
+| 3 votes for one leader | Election requires both majority and quorum within the same epoch. | 5 | 2 | 3 | Election possible |
+
+*An illustrative election with quorum fixed at 2. Detection quorum and leader election conditions are separate; actual timeouts and message retransmissions are omitted.*
+
+**Quiz: Does lowering quorum restore availability?**
+
+1. There are 5 known Sentinels and quorum=2. A partition leaves only 2 able to communicate with each other. Does ODOWN authorize automatic promotion?
+   - Yes. They meet quorum=2.
+   - No. Electing a leader also requires an absolute majority of known Sentinels.
+   - A data replica can supply one extra vote.
+
+   Answer: No. Electing a leader also requires an absolute majority of known Sentinels. Down reports and leader votes are separate. A leader in this topology needs at least 3 votes. A data replica cannot replace a missing vote in a Sentinel election.
 
 ### Work remains after choosing the leader
 
@@ -362,22 +362,20 @@ The state sequence in `sentinelFailoverStateMachine` shows that promotion does n
 
 Candidate selection also has two stages. First, eligibility checks filter candidates using SDOWN/ODOWN, long-disconnected links, INFO freshness, time disconnected from the primary, `replica-priority=0` and other conditions. Remaining candidates are then sorted by **lower priority, higher replication offset, then run ID**. The newest offset is not unconditionally the first criterion.[^selection]
 
-<TracePlayer
-  lang="en"
-  title="Role changes after leader election"
-  columns={["Sentinel leader", "Candidate R1", "Other replicas"]}
-  caption="Edited state playback of the successful path. The candidate is assumed to have passed eligibility checks; the text covers timeouts, reelections and reconfiguration retries."
-  tracks={[
-    { label: "Promotion and reconfiguration", steps: [
-      { action: "WAIT_START", note: "Elected leader in the same epoch, with start conditions satisfied.", values: ["Elected", "replica", "Follow old primary"] },
-      { action: "SELECT_SLAVE", note: "Select R1 among eligible candidates by priority, offset and run ID.", values: ["R1 selected", "Selected", "Follow old primary"] },
-      { action: "SEND_SLAVEOF_NOONE", note: "Send R1 the role-change command. INFO confirmation has not happened yet.", values: ["Command sent", "Promotion requested", "Follow old primary"] },
-      { action: "WAIT_PROMOTION", note: "Confirm R1's primary role through INFO.", values: ["INFO confirmed", "primary", "Follow old primary"] },
-      { action: "RECONF_SLAVES", note: "Connect other replicas to R1 within the parallel-syncs limit.", values: ["Reconfigure", "primary", "Sync to R1"] },
-      { action: "UPDATE_CONFIG", note: "Update the service name's primary address. Applications must resolve it and reconnect.", values: ["Address updated", "primary", "Follow R1"] },
-    ] },
-  ]}
-/>
+**Role changes after leader election**
+
+*Promotion and reconfiguration*
+
+| Step | Note | Sentinel leader | Candidate R1 | Other replicas |
+| --- | --- | --- | --- | --- |
+| WAIT_START | Elected leader in the same epoch, with start conditions satisfied. | Elected | replica | Follow old primary |
+| SELECT_SLAVE | Select R1 among eligible candidates by priority, offset and run ID. | R1 selected | Selected | Follow old primary |
+| SEND_SLAVEOF_NOONE | Send R1 the role-change command. INFO confirmation has not happened yet. | Command sent | Promotion requested | Follow old primary |
+| WAIT_PROMOTION | Confirm R1's primary role through INFO. | INFO confirmed | primary | Follow old primary |
+| RECONF_SLAVES | Connect other replicas to R1 within the parallel-syncs limit. | Reconfigure | primary | Sync to R1 |
+| UPDATE_CONFIG | Update the service name's primary address. Applications must resolve it and reconnect. | Address updated | primary | Follow R1 |
+
+*Edited state playback of the successful path. The candidate is assumed to have passed eligibility checks; the text covers timeouts, reelections and reconfiguration retries.*
 
 Failure to confirm the role in `WAIT_PROMOTION` activates time limits and failure paths. `parallel-syncs` counts replicas being reconfigured to the new primary at once, not leader votes. "The election finished" and "all replicas reconnected" are not the same timestamp.
 
@@ -670,46 +668,45 @@ Each time the target answers OK to a key's `RESTORE`, the source deletes that ke
 
 It retries only on a socket error (not a target error), when no reply has been read yet (`j == 0`), on the first attempt, and not on a timeout. Keys are deleted only after an OK is read, so `j == 0` means nothing was deleted and resending is safe. Finally the command is rewritten as `DEL` over the deleted keys only and propagated to replicas and the AOF.
 
-<TracePlayer
-  lang="en"
-  title="The key moves, but A still owns the slot"
-  columns={["Official owner", "Key on A", "Key on B", "Routing"]}
-  caption="Successful migration of one key in a slot. Value V and node names are illustrative; replication ACKs and repeated migrations for the whole slot are omitted."
-  tracks={[
-    { label: "IMPORTING → MIGRATING → NODE", steps: [
-      { action: "Start", note: "A holds the slot and key.", values: ["A", "V", "Absent", "A handles it"] },
-      { action: "Set migration states", note: "B is IMPORTING and A is MIGRATING. Ownership is unchanged.", values: ["A", "V", "Absent", "Existing key: A"] },
-      { action: "RESTORE succeeds on B", note: "B has received the value. Source deletion has not happened yet.", values: ["A", "V", "V", "Owner is A"] },
-      { action: "A receives success", note: "On the successful path without COPY, A deletes the source.", values: ["A", "Absent", "V", "A: ASK B"] },
-      { action: "Check the entire slot", note: "Check that A has no remaining keys in this slot. The diagram shows only one key.", values: ["A", "Absent", "V", "B via ASKING"] },
-      { action: "Finalize and propagate ownership", note: "B becomes the slot owner. Other nodes and clients learn the new map.", values: ["B", "Absent", "V", "MOVED B"] },
-    ] },
-  ]}
-/>
+**The key moves, but A still owns the slot**
+
+*IMPORTING → MIGRATING → NODE*
+
+| Step | Note | Official owner | Key on A | Key on B | Routing |
+| --- | --- | --- | --- | --- | --- |
+| Start | A holds the slot and key. | A | V | Absent | A handles it |
+| Set migration states | B is IMPORTING and A is MIGRATING. Ownership is unchanged. | A | V | Absent | Existing key: A |
+| RESTORE succeeds on B | B has received the value. Source deletion has not happened yet. | A | V | V | Owner is A |
+| A receives success | On the successful path without COPY, A deletes the source. | A | Absent | V | A: ASK B |
+| Check the entire slot | Check that A has no remaining keys in this slot. The diagram shows only one key. | A | Absent | V | B via ASKING |
+| Finalize and propagate ownership | B becomes the slot owner. Other nodes and clients learn the new map. | B | Absent | V | MOVED B |
+
+*Successful migration of one key in a slot. Value V and node names are illustrative; replication ACKs and repeated migrations for the whole slot are omitted.*
 
 ## When the network disconnects during MIGRATE
 
 The most dangerous point lies between "the destination wrote it" and "the source received the success reply." If the destination finishes RESTORE but the reply is lost, A cannot know whether it can delete the source. This source can leave unconfirmed keys on the source node. **A timeout is not evidence that migration did nothing.**[^migrate]
 
-<TracePlayer
-  lang="en"
-  title="One lost reply can leave two copies"
-  columns={["A", "Network", "B"]}
-  caption="A possible sequence separating MIGRATE's RESTORE success from reply receipt. This does not simulate failover; the duplicate copies illustrate a lost success reply."
-  tracks={[
-    { label: "Reply arrives", steps: [
-      { action: "Source", note: "Only A holds V.", values: ["V", "Connected", "Absent"] },
-      { action: "Execute RESTORE", note: "B stores V and sends a success reply.", values: ["V", "Sending OK", "V"] },
-      { action: "Receive OK", note: "A deletes the source after confirmation.", values: ["Absent", "OK arrived", "V"] },
-    ] },
-    { label: "Reply lost", steps: [
-      { action: "Source", note: "Only A holds V.", values: ["V", "Connected", "Absent"] },
-      { action: "Execute RESTORE", note: "B already holds V.", values: ["V", "Sending OK", "V"] },
-      { action: "No reply received", note: "A cannot confirm success. Do not conclude that the destination lacks the data.", values: ["V remains", "Possible IOERR", "V remains"] },
-      { action: "Choose recovery", note: "Check slot state, both copies and new writes before deciding how to resume. Do not automatically delete or blindly REPLACE.", values: ["Inspection needed", "Reconnect", "Inspection needed"] },
-    ] },
-  ]}
-/>
+**One lost reply can leave two copies**
+
+*Reply arrives*
+
+| Step | Note | A | Network | B |
+| --- | --- | --- | --- | --- |
+| Source | Only A holds V. | V | Connected | Absent |
+| Execute RESTORE | B stores V and sends a success reply. | V | Sending OK | V |
+| Receive OK | A deletes the source after confirmation. | Absent | OK arrived | V |
+
+*Reply lost*
+
+| Step | Note | A | Network | B |
+| --- | --- | --- | --- | --- |
+| Source | Only A holds V. | V | Connected | Absent |
+| Execute RESTORE | B already holds V. | V | Sending OK | V |
+| No reply received | A cannot confirm success. Do not conclude that the destination lacks the data. | V remains | Possible IOERR | V remains |
+| Choose recovery | Check slot state, both copies and new writes before deciding how to resume. Do not automatically delete or blindly REPLACE. | Inspection needed | Reconnect | Inspection needed |
+
+*A possible sequence separating MIGRATE's RESTORE success from reply receipt. This does not simulate failover; the duplicate copies illustrate a lost success reply.*
 
 Distinguish a single-key migration from moving multiple keys with `KEYS`. While processing multiple RESTORE replies, partial progress is possible: some keys have been confirmed and deleted, while others remain on the source. One failure is not a rollback of the entire slot.
 
@@ -869,7 +866,7 @@ The reproduction script uses Docker's `redis:7.2.16` and checks the server versi
 
 Download the Python script attached to this article and run it where Docker works. No additional Python packages are required. Inspect downloaded code before executing it.
 
-<a href={reproduction} download="test-redis-internals.py">Download the reproduction script</a>
+[Download the reproduction script](https://alfex4936.github.io/blog/assets/test-redis-internals.DcvNNABH.py)
 
 ```bash title="Run the isolated reproduction"
 python3 test-redis-internals.py --docker
@@ -885,26 +882,51 @@ A laptop experiment cannot guarantee every combination of network disconnection 
 
 ## Apply this to the next failure
 
-<Quiz lang="en" title="Apply the mechanism to a different situation" items={[
-  { q: "SET returned OK. The primary disconnected, and a replica that had not received the write was promoted. What can happen?", choices: ["The new primary must have it because OK was received.", "The write can be absent from the new primary.", "Sentinel restores the value from the client's OK record."], answer: 1, why: "Ordinary replication is asynchronous. Leader elections and Cluster epochs do not reconstruct data values. Design acknowledgment requirements, fsync and candidate-selection conditions separately." },
-  { q: "What does CLUSTER FAILOVER FORCE skip?", choices: ["Normal coordination to match the existing primary's offset. Election authorization is still required.", "Election authorization from voting primaries.", "It permanently disables all replication."], answer: 0, why: "Distinguish FORCE from TAKEOVER. FORCE skips coordination with the existing primary. TAKEOVER skips the normal election too and can create a dangerous partitioned state." },
-  { q: "MIGRATE returned IOERR. Can you delete the source immediately?", choices: ["Delete it because the destination succeeded.", "Keep overwriting with REPLACE because the destination failed.", "It may already have been restored at the destination. Check both copies, TTLs, slot states and new writes first."], answer: 2, why: "RESTORE success and receiving its reply are separate events. A lost reply can leave two copies, and multiple keys can be partially migrated. A failure reply is not a rollback marker." },
-  { q: "You ran MIGRATE on the source, then WAIT on the same connection. Did you wait for RESTORE on the destination's replicas too?", choices: ["Yes. WAIT waits for writes on every node.", "No. WAIT acknowledges preceding write offsets for that connection and server.", "Yes, if the slot counts match."], answer: 1, why: "Source and destination replication are different streams. An acknowledgment received on the source does not establish destination restoration durability." },
-  { q: "PUBLISH returned a subscription-delivery count. Does this confirm completed consumer work?", choices: ["Yes. Consumers reply after completing work.", "No. Server subscription delivery and application completion are different.", "It confirms completion if replicas exist."], answer: 1, why: "Pub/Sub places messages in subscriber reply buffers. Work ACKs and reconnection replay are not features of this path." },
-]} />
+**Quiz: Apply the mechanism to a different situation**
 
-<FlashCards lang="en" title="Terms to recall" cards={[
-  { front: "SDOWN / ODOWN", back: "One Sentinel's failure observation / a primary failure observation meeting configured quorum. Leader election is separate." },
-  { front: "Sentinel quorum / majority", back: "Quorum is the down-report threshold. A leader must meet both an absolute majority of known Sentinels and quorum." },
-  { front: "PFAIL / FAIL", back: "Cluster local suspicion / a decision aggregating reports from voting primaries. Election participants differ from Sentinel ODOWN." },
-  { front: "replid + offset", back: "Identifies which replication history and through which byte a replica has continued. It is not a key count." },
-  { front: "backlog", back: "Replication stream retained for partial resynchronization, not a permanent change log or backup." },
-  { front: "ASK / MOVED", back: "ASK sends one command to a temporary migration destination with ASKING. MOVED reports the current slot owner." },
-  { front: "IMPORTING / MIGRATING", back: "The destination's accepting state / the source's outgoing state. Moving data and changing the official owner are separate." },
-  { front: "WAIT / WAITAOF", back: "Wait for replication ACKs / AOF fsync acknowledgments of preceding writes on the same connection. Check returned counts; neither means rollback." },
-  { front: "expiration / eviction", back: "End of valid lifetime / removal under memory pressure. Both can produce a miss, but metrics and responses differ." },
-  { front: "ACL selector", back: "A permission set satisfying the command and every required key and channel together. Do not combine partial permissions from different selectors." },
-]} />
+1. SET returned OK. The primary disconnected, and a replica that had not received the write was promoted. What can happen?
+   - The new primary must have it because OK was received.
+   - The write can be absent from the new primary.
+   - Sentinel restores the value from the client's OK record.
+
+   Answer: The write can be absent from the new primary. Ordinary replication is asynchronous. Leader elections and Cluster epochs do not reconstruct data values. Design acknowledgment requirements, fsync and candidate-selection conditions separately.
+2. What does CLUSTER FAILOVER FORCE skip?
+   - Normal coordination to match the existing primary's offset. Election authorization is still required.
+   - Election authorization from voting primaries.
+   - It permanently disables all replication.
+
+   Answer: Normal coordination to match the existing primary's offset. Election authorization is still required. Distinguish FORCE from TAKEOVER. FORCE skips coordination with the existing primary. TAKEOVER skips the normal election too and can create a dangerous partitioned state.
+3. MIGRATE returned IOERR. Can you delete the source immediately?
+   - Delete it because the destination succeeded.
+   - Keep overwriting with REPLACE because the destination failed.
+   - It may already have been restored at the destination. Check both copies, TTLs, slot states and new writes first.
+
+   Answer: It may already have been restored at the destination. Check both copies, TTLs, slot states and new writes first. RESTORE success and receiving its reply are separate events. A lost reply can leave two copies, and multiple keys can be partially migrated. A failure reply is not a rollback marker.
+4. You ran MIGRATE on the source, then WAIT on the same connection. Did you wait for RESTORE on the destination's replicas too?
+   - Yes. WAIT waits for writes on every node.
+   - No. WAIT acknowledges preceding write offsets for that connection and server.
+   - Yes, if the slot counts match.
+
+   Answer: No. WAIT acknowledges preceding write offsets for that connection and server. Source and destination replication are different streams. An acknowledgment received on the source does not establish destination restoration durability.
+5. PUBLISH returned a subscription-delivery count. Does this confirm completed consumer work?
+   - Yes. Consumers reply after completing work.
+   - No. Server subscription delivery and application completion are different.
+   - It confirms completion if replicas exist.
+
+   Answer: No. Server subscription delivery and application completion are different. Pub/Sub places messages in subscriber reply buffers. Work ACKs and reconnection replay are not features of this path.
+
+**Terms to recall**
+
+- SDOWN / ODOWN: One Sentinel's failure observation / a primary failure observation meeting configured quorum. Leader election is separate.
+- Sentinel quorum / majority: Quorum is the down-report threshold. A leader must meet both an absolute majority of known Sentinels and quorum.
+- PFAIL / FAIL: Cluster local suspicion / a decision aggregating reports from voting primaries. Election participants differ from Sentinel ODOWN.
+- replid + offset: Identifies which replication history and through which byte a replica has continued. It is not a key count.
+- backlog: Replication stream retained for partial resynchronization, not a permanent change log or backup.
+- ASK / MOVED: ASK sends one command to a temporary migration destination with ASKING. MOVED reports the current slot owner.
+- IMPORTING / MIGRATING: The destination's accepting state / the source's outgoing state. Moving data and changing the official owner are separate.
+- WAIT / WAITAOF: Wait for replication ACKs / AOF fsync acknowledgments of preceding writes on the same connection. Check returned counts; neither means rollback.
+- expiration / eviction: End of valid lifetime / removal under memory pressure. Both can produce a miss, but metrics and responses differ.
+- ACL selector: A permission set satisfying the command and every required key and channel together. Do not combine partial permissions from different selectors.
 
 ## A map for reopening the source
 

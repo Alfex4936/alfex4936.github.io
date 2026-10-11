@@ -15,7 +15,7 @@ Insertion sort is usually the first sort anyone learns. You pick up one card at 
 
 Quicksort picks a pivot and sends everything smaller to the left and everything larger to the right. The pivot is now in its final place, and the two sides can be sorted independently. If the pivot lands near the middle every time, the problem halves at each level and you get roughly $n \log_2 n$ compares.
 
-<SortViz algo="insertion,median3" n={60} caption="The same 60 random values. When quicksort on the right is done, insertion sort on the left is about a third of the way through." />
+> Interactive visual: The same 60 random values. When quicksort on the right is done, insertion sort on the left is about a third of the way through. (try it on the original page: https://alfex4936.github.io/blog/sorting-in-the-wild/)
 
 At 60 elements the counts are 922 against 430, a bit over 2×, but the gap opens quickly. On 200 random elements insertion sort made 10,054 compares and quicksort 1,764.
 
@@ -27,20 +27,20 @@ How you partition changes quicksort's character a lot. The two schemes in most t
 
 Lomuto takes the last element as the pivot and walks forward, moving every element smaller than the pivot to a growing left region. It is short, which is why textbooks like it. Hoare walks two pointers inward from both ends. The left one stops at an element greater than or equal to the pivot, the right one at an element less than or equal to it, and the two are swapped. Switching inputs in the figure below makes the difference obvious.
 
-<SortViz algo="lomuto,hoare" inputs="random,sorted,few,organ" n={60} caption="Pick 'sorted' from the input menu. Lomuto shrinks the range by one element at a time." />
+> Interactive visual: Pick 'sorted' from the input menu. Lomuto shrinks the range by one element at a time. (try it on the original page: https://alfex4936.github.io/blog/sorting-in-the-wild/)
 
 On random input both are fine. At n=200, Lomuto made 1,878 compares and Hoare 2,300, while Lomuto swapped 740 times to Hoare's 354. Hoare compares a little more and swaps less than half as often.
 
 On sorted input Lomuto collapses. The last element is always the maximum, so each partition peels off just the pivot and passes the other $n-1$ elements down. That is $n(n-1)/2$ compares, exactly 19,900 at n=200, with a recursion depth of 199. Re-sorting an already sorted array happens more than you'd think in practice: logs accumulated in time order, or a sorted list with a few items appended and sorted again.
 
-<Quiz lang="en" title="Checkpoint: a lopsided partition" items={[
-  {
-    q: "You pass an already sorted array to Lomuto quicksort with the last element as pivot. Why does its comparison count become quadratic?",
-    choices: ["Every pivot is the maximum, so the remaining range shrinks by only one element.", "Sorted input makes every comparator call happen twice.", "The pivot is the median, so every split halves the range."],
-    answer: 0,
-    why: "Repeated lopsided partitions reduce the remaining length one element at a time. Being already sorted does not save comparisons when the partitioning is unbalanced.",
-  },
-]} />
+**Quiz: Checkpoint: a lopsided partition**
+
+1. You pass an already sorted array to Lomuto quicksort with the last element as pivot. Why does its comparison count become quadratic?
+   - Every pivot is the maximum, so the remaining range shrinks by only one element.
+   - Sorted input makes every comparator call happen twice.
+   - The pivot is the median, so every split halves the range.
+
+   Answer: Every pivot is the maximum, so the remaining range shrinks by only one element. Repeated lopsided partitions reduce the remaining length one element at a time. Being already sorted does not save comparisons when the partitioning is unbalanced.
 
 The '4 values' input is worth a look too. With many duplicates, Lomuto pushes everything equal to the pivot to one side and leans again (5,446 compares, depth 53). Hoare stops and swaps on equal values as well, so duplicates end up split evenly between the two sides (1,943 compares). Swaps that look pointless are what keep it balanced.
 
@@ -60,7 +60,7 @@ At the start no element has a value yet. The paper calls this state gas. When th
 
 The only requirement is that the quicksort is deterministic. However clever the pivot rule, if it compares the same input in the same order every time, this method takes it down.
 
-<SortViz algo="median3,introsort,pdqsort" input="killer" n={64} view="dots" caption="A 64-element killer input built against median-of-3 quicksort. The left panel shrinks by only two elements per partition; introsort in the middle switches to heapsort when it hits its depth limit." />
+> Interactive visual: A 64-element killer input built against median-of-3 quicksort. The left panel shrinks by only two elements per partition; introsort in the middle switches to heapsort when it hits its depth limit. (try it on the original page: https://alfex4936.github.io/blog/sorting-in-the-wild/)
 
 In the left panel the range shrinks by just two elements after each partition. At 64 elements that's 1,142 compares and depth 25, which isn't dramatic, but scale it up and things change.
 
@@ -79,11 +79,9 @@ libstdc++'s `std::sort` is **introsort**, proposed by David Musser in 1997.[^3] 
 
 Heapsort is $O(n \log n)$ on any input but usually slower than quicksort. On 200 random elements heapsort made 2,461 compares against median-of-3 quicksort's 1,764. Memory access hurts more than the compare count: in a heap the children of index $i$ live at $2i+1$ and $2i+2$, so each step down the heap touches memory further away.
 
-<SortViz algo="median3,heapsort" n={60} caption="Heapsort (right) builds a heap first, then moves the maximum to the back one element at a time. Watch the bars jump across the whole array." />
+> Interactive visual: Heapsort (right) builds a heap first, then moves the maximum to the back one element at a time. Watch the bars jump across the whole array. (try it on the original page: https://alfex4936.github.io/blog/sorting-in-the-wild/)
 
 Introsort takes the best of both: quicksort normally, heapsort only in the worst case. Its main loop is short.
-
-<Walk>
 
 ```cpp title="bits/stl_algo.h (libstdc++, abridged)"
 template<typename _Iter, typename _Size, typename _Compare>
@@ -106,31 +104,13 @@ void __introsort_loop(_Iter __first, _Iter __last,
 }
 ```
 
-<Step lines="5">
+1. Once a range is down to 16 elements or fewer, the loop just returns. Those small ranges stay unsorted, but every value in them already belongs to that range.
 
-Once a range is down to 16 elements or fewer, the loop just returns. Those small ranges stay unsorted, but every value in them already belongs to that range.
+2. When the depth budget runs out, the rest of the range goes to `__partial_sort`. The middle argument is `__last`, meaning "sort all of it", and underneath this function is heapsort. `std::sort` passes a budget of $2\lfloor\log_2 n\rfloor$.
 
-</Step>
+3. The pivot comes from `__move_median_to_first`, which moves the median of the second, middle and second-to-last elements to the front. Partitioning is Hoare-style, and because both ends are known to hold values not less than and not greater than the pivot, the pointers skip their bounds checks (unguarded).
 
-<Step lines="7-11">
-
-When the depth budget runs out, the rest of the range goes to `__partial_sort`. The middle argument is `__last`, meaning "sort all of it", and underneath this function is heapsort. `std::sort` passes a budget of $2\lfloor\log_2 n\rfloor$.
-
-</Step>
-
-<Step lines="13-14">
-
-The pivot comes from `__move_median_to_first`, which moves the median of the second, middle and second-to-last elements to the front. Partitioning is Hoare-style, and because both ends are known to hold values not less than and not greater than the pivot, the pointers skip their bounds checks (unguarded).
-
-</Step>
-
-<Step lines="15-16">
-
-The right side recurses; the left side is handled by the `while` loop. It's tail recursion turned into a loop by hand.
-
-</Step>
-
-</Walk>
+4. The right side recurses; the left side is handled by the `while` loop. It's tail recursion turned into a loop by hand.
 
 After `__introsort_loop` returns, `std::sort` finishes with `__final_insertion_sort`, a single insertion sort over the whole array. Each element only moves within its own range, so the compare count is about the same as sorting each 16-element range separately, and it costs one call.
 
@@ -180,11 +160,11 @@ That is why sorted and reversed input both finish in about $n$ compares: 10,011 
 
 **It breaks patterns when a split is lopsided.** If the smaller side is under 1/8 of the range, a few elements near the middle are swapped with pseudo-randomly chosen positions and the budget drops by one. This scrambles whatever arrangement an attacker was aiming for. The budget is the bit length of $n$, 14 for 10,000. Once that many bad splits pile up, it falls back to heapsort just like introsort.
 
-<SortViz algo="pdqsort" inputs="sorted,reversed,nearly,few,organ,random" input="sorted" n={80} caption="Try different inputs. Sorted and reversed finish after one pass. With 4 values, the equal-value step fires a few times and that's it." />
+> Interactive visual: Try different inputs. Sorted and reversed finish after one pass. With 4 values, the equal-value step fires a few times and that's it. (try it on the original page: https://alfex4936.github.io/blog/sorting-in-the-wild/)
 
 Rust and Go share the design but partition differently. Rust uses the **BlockQuicksort** partition by Edelkamp and Weiß.[^5] It first records the results of comparing against the pivot in a small buffer (a block) and does the swaps afterwards in bulk. Because it never branches on a comparison result, the CPU's branch predictor has fewer chances to be wrong. On random data each partition branch is a coin flip that the predictor can barely guess, and this removes that cost. Rust's blocks hold 128 elements; the figure uses 8 so you can see them move. Go's `sort.Interface` only provides `Less` and `Swap`, so there's no way to put elements in a buffer, and it uses a plain Hoare partition. Go also hands off to insertion sort earlier, at 12 rather than Rust's 20.
 
-<SortViz algo="introsort,pdqsort-go,pdqsort" inputs="few,sorted,organ,nearly,random" input="few" n={80} caption="introsort, Go's pdqsort and Rust's pdqsort. The starting input has only 4 distinct values." />
+> Interactive visual: introsort, Go's pdqsort and Rust's pdqsort. The starting input has only 4 distinct values. (try it on the original page: https://alfex4936.github.io/blog/sorting-in-the-wild/)
 
 Compare counts for the three at n=10,000:
 
@@ -215,9 +195,9 @@ Go's `sort.Stable` **uses no buffer.** More precisely, it can't. `sort.Interface
 
 The figure gives equal keys distinct input positions. The original order of key 1 is 2, 4, 6. Lomuto quicksort reverses it; the stable sort preserves it.
 
-<SortStabilityViz lang="en" keys={[2, 1, 2, 1, 2, 1]} unstableAlgo="lomuto" stableAlgo="stable-rust" caption="The large number is the sort key; the small number is the item's input position." />
+> Interactive visual: The large number is the sort key; the small number is the item's input position. (try it on the original page: https://alfex4936.github.io/blog/sorting-in-the-wild/)
 
-<SortViz algo="stable-cpp,stable-rust,stable-go" inputs="random,organ,sorted,few" n={80} caption="C++ stable_sort, Rust sort and Go sort.Stable. Bars moving one at a time are being written back from the buffer; the long swap sequences on the Go side are rotations." />
+> Interactive visual: C++ stable_sort, Rust sort and Go sort.Stable. Bars moving one at a time are being written back from the buffer; the long swap sequences on the Go side are rotations. (try it on the original page: https://alfex4936.github.io/blog/sorting-in-the-wild/)
 
 Counts at n=1,000. 'Writes' are element moves between the buffer and the array.
 
@@ -259,26 +239,26 @@ xychart-beta
 
 There's a surprising amount of code behind a one-line `sort()` call, all of it looking at the shape of the input. Most of the time you don't need to know. But if you're re-sorting data that's already sorted, sorting data that came from outside, or sorting arrays full of duplicates, which language's which function you call can make a difference of several times.
 
-<Quiz lang="en" title="Choosing a sort for the job" items={[
-  {
-    q: "A pdqsort range has already ordered pivot candidates. Can it declare the entire range sorted from this signal alone?",
-    choices: ["Yes. Ordered candidates prove the entire range is sorted.", "No. Under the right conditions it tries bounded partial insertion sort, then partitions if that fails.", "No. Ordered candidates always trigger heapsort."],
-    answer: 1,
-    why: "Candidate order is a hint. The previous partition's state also matters before partial insertion sort is tried, and exceeding the correction budget abandons the attempt. The bound limits the cost of a wrong guess.",
-  },
-  {
-    q: "An employee list is in name order. You sort it by department and want name order preserved within each department. What should you choose?",
-    choices: ["An unstable sort, because equal department comparisons preserve input order.", "Any sort, because a good pivot guarantees stability.", "A stable sort, preserving input order among equal department keys."],
-    answer: 2,
-    why: "Stability preserves the relative order of elements with equal keys. An unstable sort can correctly sort departments while scrambling the original name order within a department.",
-  },
-  {
-    q: "The comparison table shows Rust's block partition making slightly more comparisons than Go. Does this alone establish a longer Rust runtime?",
-    choices: ["No. Block partition cuts branch mispredictions, and the table is not a timing of the actual libraries.", "Yes. Runtime always scales exactly with comparison count.", "Yes. The block buffer exists to eliminate comparisons."],
-    answer: 0,
-    why: "The counts come from JavaScript ports. Block partitioning reduces branches on comparison outcomes, so comparison counts alone cannot establish CPU cost or actual runtimes across languages.",
-  },
-]} />
+**Quiz: Choosing a sort for the job**
+
+1. A pdqsort range has already ordered pivot candidates. Can it declare the entire range sorted from this signal alone?
+   - Yes. Ordered candidates prove the entire range is sorted.
+   - No. Under the right conditions it tries bounded partial insertion sort, then partitions if that fails.
+   - No. Ordered candidates always trigger heapsort.
+
+   Answer: No. Under the right conditions it tries bounded partial insertion sort, then partitions if that fails. Candidate order is a hint. The previous partition's state also matters before partial insertion sort is tried, and exceeding the correction budget abandons the attempt. The bound limits the cost of a wrong guess.
+2. An employee list is in name order. You sort it by department and want name order preserved within each department. What should you choose?
+   - An unstable sort, because equal department comparisons preserve input order.
+   - Any sort, because a good pivot guarantees stability.
+   - A stable sort, preserving input order among equal department keys.
+
+   Answer: A stable sort, preserving input order among equal department keys. Stability preserves the relative order of elements with equal keys. An unstable sort can correctly sort departments while scrambling the original name order within a department.
+3. The comparison table shows Rust's block partition making slightly more comparisons than Go. Does this alone establish a longer Rust runtime?
+   - No. Block partition cuts branch mispredictions, and the table is not a timing of the actual libraries.
+   - Yes. Runtime always scales exactly with comparison count.
+   - Yes. The block buffer exists to eliminate comparisons.
+
+   Answer: No. Block partition cuts branch mispredictions, and the table is not a timing of the actual libraries. The counts come from JavaScript ports. Block partitioning reduces branches on comparison outcomes, so comparison counts alone cannot establish CPU cost or actual runtimes across languages.
 
 [^1]: The `sort` section of the Go 1.19 release notes. The implementation is in `src/sort/zsortinterface.go` and `zsortfunc.go`, both generated by `gen_sort_variants.go`.
 [^2]: M. Douglas McIlroy, "A Killer Adversary for Quicksort", Software: Practice and Experience 29(4), 1999.
