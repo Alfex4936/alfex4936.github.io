@@ -168,6 +168,22 @@ Code is set in Monoplex KR, which combines IBM Plex Mono with the Hangul of IBM 
 
 The source font is 2.7 MB per weight. The build keeps only the Hangul used in this repository: when this post was written, 406 syllables, 25.5 KB per weight.
 
+When a block is copied from someone else's code, the fence takes `link="URL"`. The file name becomes a link to the source, with a GitHub mark in front when the URL is on GitHub. A URL pinned to a commit hash keeps the line numbers right after the source moves on. Below is part of the eviction code in Redis 7.2.16.
+
+```c title="src/evict.c L171-L187" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/evict.c#L171-L187"
+if (server.maxmemory_policy & MAXMEMORY_FLAG_LRU) {
+    idle = estimateObjectIdleTime(o);
+} else if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
+    idle = 255-LFUDecrAndReturn(o);
+} else if (server.maxmemory_policy == MAXMEMORY_VOLATILE_TTL) {
+    idle = ULLONG_MAX - (long)dictGetVal(de);
+} else {
+    serverPanic("Unknown eviction policy in evictionPoolPopulate()");
+}
+```
+
+Whatever the policy, a higher score means a better candidate for eviction. LFU subtracts the frequency from 255 so it points the same way. The long comments in the original are cut.
+
 ## Figures you can play with
 
 Some posts carry figures you can operate. They all render to HTML at build time; JavaScript only handles playback and buttons. These are samples; the linked posts show each one in its real context.

@@ -136,7 +136,7 @@ After connecting, a replica proceeds through PING, authentication if needed, `RE
 
 Partial resynchronization requires the requested ID to match the current history or an accepted previous history, and the backlog to retain the bytes from the requested offset. The backlog retains replication history so a replica can catch up after a brief disconnection. It is not an unlimited database change log.
 
-```c title="src/replication.c L755-L792"
+```c title="src/replication.c L755-L792" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/replication.c#L755-L792"
     if (strcasecmp(master_replid, server.replid) &&
         (strcasecmp(master_replid, server.replid2) ||
          psync_offset > server.second_replid_offset))
@@ -155,8 +155,6 @@ Partial resynchronization requires the requested ID to match the current history
         goto need_full_resync;
     }
 ```
-
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/replication.c#L755-L792)
 
 The first `if` checks that the replid sent by the replica matches the current one. If it does not, it passes only when it matches the previous replid (`replid2`) and the requested offset is at or below `second_replid_offset`. The second `if` checks that the requested offset still lies inside the backlog; failing either check jumps to `need_full_resync`.
 
@@ -227,7 +225,7 @@ Sentinel is an external monitor, not a server partitioning data keys. It monitor
 
 `sentinelCheckSubjectivelyDown` sets SDOWN (subjectively down) from one Sentinel's observations. Among other conditions, it checks whether valid replies have been absent for `down-after-milliseconds`. Valid PING replies include `PONG`, as well as `LOADING` and `MASTERDOWN`, which indicate that the server is alive. TCP connection status alone does not determine this.[^sdown]
 
-```c title="src/sentinel.c L4576-L4602"
+```c title="src/sentinel.c L4576-L4602" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/sentinel.c#L4576-L4602"
     /* Update the SDOWN flag. We believe the instance is SDOWN if:
      *
      * 1) It is not replying.
@@ -257,8 +255,6 @@ Sentinel is an external monitor, not a server partitioning data keys. It monitor
     }
 ```
 
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/sentinel.c#L4576-L4602)
-
 There are three conditions: `elapsed` since the last valid reply exceeds `down_after_period`, the primary has been reporting itself as a replica for longer than `down_after_period+sentinel_info_period*2`, or a rebooted primary has not recovered within `master_reboot_down_after_period`. Any of them emits `+sdown` and sets `SRI_S_DOWN`.
 
 This assessment mainly means "I cannot use this server normally." The Sentinel itself might be isolated, or only its network path might be broken. SDOWN flags can apply to replicas and other Sentinels too, not only the primary.
@@ -267,7 +263,7 @@ This assessment mainly means "I cannot use this server normally." The Sentinel i
 
 When a primary is SDOWN, Sentinel asks other monitors for their observations with `SENTINEL is-master-down-by-addr`. `sentinelCheckObjectivelyDown` counts its own and other monitors' down reports, setting ODOWN (objectively down) when they reach the configured quorum. This means neither that all monitors agree nor that they have reached agreement on data.[^odown]
 
-```c title="src/sentinel.c L4605-L4628"
+```c title="src/sentinel.c L4605-L4628" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/sentinel.c#L4605-L4628"
 /* Is this instance down according to the configured quorum?
  *
  * Note that ODOWN is a weak quorum, it only means that enough Sentinels
@@ -294,15 +290,13 @@ void sentinelCheckObjectivelyDown(sentinelRedisInstance *master) {
     }
 ```
 
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/sentinel.c#L4605-L4628)
-
 `quorum = 1` is this Sentinel's own vote, and each other Sentinel with `SRI_MASTER_DOWN` set adds one. If the total reaches the configured `quorum`, the primary is ODOWN. The comment calls this a "weak quorum" because the votes are recent replies counted together, not an agreement reached at one instant.
 
 ### Promotion also requires a majority of known monitors
 
 Allowing a Sentinel that observes ODOWN to promote any replica by itself could produce simultaneous role changes in two places. An election therefore chooses a leader for each epoch. `sentinelVoteLeader` votes for an epoch, and `sentinelGetLeader` checks that the leader meets both an absolute majority of known Sentinels and the configured quorum.[^leader]
 
-```c title="src/sentinel.c L4843-L4862"
+```c title="src/sentinel.c L4843-L4862" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/sentinel.c#L4843-L4862"
     /* Count this Sentinel vote:
      * if this Sentinel did not voted yet, either vote for the most
      * common voted sentinel, or for itself if no vote exists at all. */
@@ -324,8 +318,6 @@ Allowing a Sentinel that observes ODOWN to promote any replica by itself could p
     if (winner && (max_votes < voters_quorum || max_votes < master->quorum))
         winner = NULL;
 ```
-
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/sentinel.c#L4843-L4862)
 
 `voters_quorum = voters/2+1` is the majority. Even the most-voted candidate is rejected (`winner = NULL`) if `max_votes` is below the majority or below the configured `quorum`. So with five Sentinels and quorum 2, starting a failover still takes three votes.
 
@@ -422,7 +414,7 @@ PFAIL is a local suspicion that another node has not been reachable in time. FAI
 
 A replica of the failed primary attempts promotion through `clusterHandleSlaveFailover`. After eligibility checks, it spreads attempts using replica rank based on replication offset and a random delay, then requests votes in a new epoch. Offset rank makes more lagging replicas attempt later. It is not a procedure in which every node compares candidate datasets and restores the newest values.[^cluster-election]
 
-```c title="src/cluster.c L4344-L4363"
+```c title="src/cluster.c L4344-L4363" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L4344-L4363"
     /* If the previous failover attempt timeout and the retry time has
      * elapsed, we can setup a new one. */
     if (auth_age > auth_retry_time) {
@@ -445,13 +437,11 @@ A replica of the failed primary attempts promotion through `clusterHandleSlaveFa
         }
 ```
 
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L4344-L4363)
-
 The election starts 500 ms plus a random 0 to 499 ms from now, then one more second per rank. `clusterGetSlaveRank` (L4142-L4157) computes rank as the number of failover-capable sibling replicas with a larger `repl_offset`, so the most up-to-date replica asks for votes first. A manual failover (`mf_end`) removes the delay.
 
 In `clusterSendFailoverAuthIfNeeded`, a voting primary checks its own role, whether it already voted in the epoch, the target primary's FAIL state, slot config epochs and other conditions. A candidate that gathers ACKs from a majority of voting primaries promotes itself and takes over the slots. `currentEpoch` numbers election progress; `configEpoch` establishes precedence between slot-ownership information. Neither is a key-value version number.[^cluster-election]
 
-```c title="src/cluster.c L4039-L4083"
+```c title="src/cluster.c L4039-L4083" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L4039-L4083"
     if (nodeIsSlave(myself) || myself->numslots == 0) return;
 
     /* Request epoch must be >= our currentEpoch.
@@ -480,11 +470,9 @@ In `clusterSendFailoverAuthIfNeeded`, a voting primary checks its own role, whet
     }
 ```
 
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L4039-L4083)
-
 These are the early checks. The voter must be a primary that owns slots, and a request whose epoch is below the voter's `currentEpoch` is refused. A node that already voted in this epoch (`lastVoteEpoch == currentEpoch`) does not vote again, and the request is refused unless the requester's primary is seen as FAIL (or `force_ack` is set for a manual failover).
 
-```c title="src/cluster.c L4085-L4125"
+```c title="src/cluster.c L4085-L4125" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L4085-L4125"
     /* We did not voted for a slave about this master for two
      * times the node timeout. This is not strictly needed for correctness
      * of the algorithm but makes the base case more linear. */
@@ -517,8 +505,6 @@ These are the early checks. The voter must be a primary that owns slots, and a r
     clusterDoBeforeSleep(CLUSTER_TODO_SAVE_CONFIG|CLUSTER_TODO_FSYNC_CONFIG);
     clusterSendFailoverAuth(node);
 ```
-
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L4085-L4125)
 
 A voter does not vote again for a replica of the same primary within `node_timeout*2`. If any slot the request claims has a known owner with a higher configEpoch than the request, the vote is refused. Once every check passes it records `lastVoteEpoch`, schedules a config save and fsync for `beforeSleep`, and calls `clusterSendFailoverAuth`. That call only queues the message on the link; the write handler sends it (L3530-L3535), and that handler runs after `clusterBeforeSleep` in `beforeSleep` (server.c L1663) has fsynced the config. So `lastVoteEpoch` is on disk before the vote leaves the node, and a restarted node cannot vote twice in one epoch.
 
@@ -576,7 +562,7 @@ MOVED, by contrast, reports the current slot owner. The client can retry at that
 
 Using the same hash tag does not guarantee that multi-key commands succeed during migration either. Keys can share a slot while temporarily residing on different nodes. `getNodeByQuery` counts missing keys and rejects such commands. TRYAGAIN retries need limits and backoff too.[^routing]
 
-```c title="src/cluster.c L7508-L7540"
+```c title="src/cluster.c L7508-L7540" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L7508-L7540"
     /* MIGRATE always works in the context of the local node if the slot
      * is open (migrating or importing state). We need to be able to freely
      * move keys among instances in this case. */
@@ -612,8 +598,6 @@ Using the same hash tag does not guarantee that multi-key commands succeed durin
     }
 ```
 
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L7508-L7540)
-
 `MIGRATE` itself runs locally while the slot is open. On the migrating side, if only some keys remain the result is `CLUSTER_REDIR_UNSTABLE` (the client sees `-TRYAGAIN`); if none remain it returns `-ASK` pointing at `migrating_slots_to[slot]`. The importing side serves only requests flagged with `ASKING`, and a multi-key request with missing keys also gets TRYAGAIN.
 
 ### What MIGRATE does
@@ -622,7 +606,7 @@ Using the same hash tag does not guarantee that multi-key commands succeed durin
 
 Value copying and slot-ownership changes are separate. One `MIGRATE` is not proof that every key in a slot has moved. The destination's RESTORE and the source's DEL also follow each node's own replication and persistence paths.
 
-```c title="src/cluster.c L7151-L7185"
+```c title="src/cluster.c L7151-L7185" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L7151-L7185"
     for (j = 0; j < num_keys; j++) {
         if (connSyncReadLine(cs->conn, buf2, sizeof(buf2), timeout) <= 0) {
             socket_error = 1;
@@ -650,11 +634,9 @@ Value copying and slot-ownership changes are separate. One `MIGRATE` is not proo
     }
 ```
 
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L7151-L7185)
-
 Each time the target answers OK to a key's `RESTORE`, the source deletes that key with `dbDelete` (unless `COPY` was given) and collects it in `newargv`. A key that got an error is not deleted, so it stays on the source.
 
-```c title="src/cluster.c L7187-L7215"
+```c title="src/cluster.c L7187-L7215" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L7187-L7215"
     /* On socket error, if we want to retry, do it now before rewriting the
      * command vector. We only retry if we are sure nothing was processed
      * and we failed to read the first reply (j == 0 test). */
@@ -685,8 +667,6 @@ Each time the target answers OK to a key's `RESTORE`, the source deletes that ke
         newargv = NULL; /* Make it safe to call zfree() on it in the future. */
     }
 ```
-
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L7187-L7215)
 
 It retries only on a socket error (not a target error), when no reply has been read yet (`j == 0`), on the first attempt, and not on a timeout. Keys are deleted only after an OK is read, so `j == 0` means nothing was deleted and resending is safe. Finally the command is rewritten as `DEL` over the deleted keys only and propagated to replicas and the AOF.
 
@@ -777,7 +757,7 @@ This calculation avoids a cycle in which DEL propagation grows replication/AOF b
 
 LRU does not maintain a perfect access-order list of all keys. It approximates ordering with samples, defaulting to `maxmemory-samples=5`, and retains better candidates in an eviction pool. `maxmemory-eviction-tenacity=10` affects the eviction time budget; it does not mean 10% CPU.[^evict]
 
-```c title="src/evict.c L168-L187"
+```c title="src/evict.c L168-L187" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/evict.c#L168-L187"
         /* Calculate the idle time according to the policy. This is called
          * idle just because the code initially handled LRU, but is in fact
          * just a score where an higher score means better candidate. */
@@ -800,13 +780,11 @@ LRU does not maintain a perfect access-order list of all keys. It approximates o
         }
 ```
 
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/evict.c#L168-L187)
-
 The variable is named `idle`, but it is a policy-specific score where higher means evicted sooner. LRU uses idle time, LFU uses `255 - frequency`, and volatile-ttl uses `ULLONG_MAX - expire time`, so keys expiring sooner score higher.
 
 LFU is not an exact request counter. It uses an 8-bit logarithmic counter and 16-bit minute-based decay information in the object field. The actual `LFUDecrAndReturn` subtracts the number of elapsed decay periods from the counter. Copying only an older nearby comment saying it "always halves" would contradict the implementation. Defaults `lfu-log-factor=10` and `lfu-decay-time=1` adjust this probabilistic increment and decay.[^lfu]
 
-```c title="src/evict.c L297-L326"
+```c title="src/evict.c L297-L326" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/evict.c#L297-L326"
 /* Logarithmically increment a counter. The greater is the current counter value
  * the less likely is that it gets really incremented. Saturate it at 255. */
 uint8_t LFULogIncr(uint8_t counter) {
@@ -828,8 +806,6 @@ unsigned long LFUDecrAndReturn(robj *o) {
     return counter;
 }
 ```
-
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/evict.c#L297-L326)
 
 `LFULogIncr` bumps the counter only with probability `p = 1/((counter - 5) * lfu-log-factor + 1)` (5 is `LFU_INIT_VAL`, server.h L3411). With the default factor 10, the table in redis.conf L2168-L2180 shows 100 hits giving 10 and 1M hits giving 255. `LFUDecrAndReturn` splits the 24-bit `lru` field into a 16-bit minute timestamp and an 8-bit counter, and subtracts 1 for every `lfu-decay-time` minutes elapsed.
 

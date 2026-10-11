@@ -136,7 +136,7 @@ primary는 현재 쓰기를 받는 서버이고, replica는 그 서버의 복제
 
 부분 재동기화(partial resynchronization)가 되려면 요청한 ID가 현재 역사 또는 허용된 이전 역사와 맞고, 요청한 offset부터의 바이트를 backlog가 보관하고 있어야 합니다. backlog는 레플리카가 잠시 끊긴 동안 따라잡을 수 있도록 남기는 복제 이력입니다. 데이터베이스의 변경 로그를 무한히 저장하는 장치는 아닙니다.
 
-```c title="src/replication.c L755-L792"
+```c title="src/replication.c L755-L792" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/replication.c#L755-L792"
     if (strcasecmp(master_replid, server.replid) &&
         (strcasecmp(master_replid, server.replid2) ||
          psync_offset > server.second_replid_offset))
@@ -155,8 +155,6 @@ primary는 현재 쓰기를 받는 서버이고, replica는 그 서버의 복제
         goto need_full_resync;
     }
 ```
-
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/replication.c#L755-L792)
 
 첫 번째 `if`는 replica가 보낸 replid가 현재 replid와 같은지 봅니다. 다르면 이전 replid(`replid2`)와 같고 요청 offset이 `second_replid_offset` 이하인 경우만 통과합니다. 두 번째 `if`는 요청 offset이 backlog에 남아 있는 구간 안에 있는지 보고, 어느 쪽이든 실패하면 `need_full_resync`로 가서 전체 동기화를 합니다.
 
@@ -226,7 +224,7 @@ Sentinel은 데이터 키를 나누는 서버가 아니라 외부 감시자입�
 
 `sentinelCheckSubjectivelyDown`은 Sentinel 하나의 관측으로 SDOWN(subjectively down)을 설정합니다. `down-after-milliseconds` 동안 유효한 응답을 못 받았는지 등을 봅니다. PING의 정상 응답에는 `PONG`뿐 아니라 서버가 살아 있음을 나타내는 `LOADING`, `MASTERDOWN`도 포함됩니다. TCP 연결 여부 하나만으로 판정하지 않습니다.[^sdown]
 
-```c title="src/sentinel.c L4576-L4602"
+```c title="src/sentinel.c L4576-L4602" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/sentinel.c#L4576-L4602"
     /* Update the SDOWN flag. We believe the instance is SDOWN if:
      *
      * 1) It is not replying.
@@ -256,8 +254,6 @@ Sentinel은 데이터 키를 나누는 서버가 아니라 외부 감시자입�
     }
 ```
 
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/sentinel.c#L4576-L4602)
-
 조건은 세 가지입니다. 마지막 정상 응답 이후 `elapsed`가 `down_after_period`를 넘었거나, primary가 자기를 replica라고 보고한 상태가 `down_after_period+sentinel_info_period*2`보다 오래 갔거나, 재시작한 primary가 `master_reboot_down_after_period` 안에 회복하지 못한 경우입니다. 이때 `+sdown` 이벤트를 내고 `SRI_S_DOWN` 플래그를 켭니다.
 
 이 판정은 주로 "내가 이 서버를 정상적으로 사용할 수 없다고 봅니다"입니다. 내가 고립됐거나 내 경로만 끊겼을 수도 있습니다. primary뿐 아니라 replica나 다른 Sentinel에도 SDOWN 플래그가 붙을 수 있습니다.
@@ -266,7 +262,7 @@ Sentinel은 데이터 키를 나누는 서버가 아니라 외부 감시자입�
 
 primary가 SDOWN이면 `SENTINEL is-master-down-by-addr`로 다른 감시자의 관측을 묻습니다. `sentinelCheckObjectivelyDown`은 자기 자신과 다른 감시자들의 down 보고를 세어 설정된 quorum에 도달하면 ODOWN(objectively down)을 설정합니다. 모든 감시자가 동의했다는 뜻도, 데이터에 합의했다는 뜻도 아닙니다.[^odown]
 
-```c title="src/sentinel.c L4605-L4628"
+```c title="src/sentinel.c L4605-L4628" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/sentinel.c#L4605-L4628"
 /* Is this instance down according to the configured quorum?
  *
  * Note that ODOWN is a weak quorum, it only means that enough Sentinels
@@ -293,15 +289,13 @@ void sentinelCheckObjectivelyDown(sentinelRedisInstance *master) {
     }
 ```
 
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/sentinel.c#L4605-L4628)
-
 `quorum = 1`은 자기 자신의 한 표이고, 다른 Sentinel 중 `SRI_MASTER_DOWN` 플래그가 켜진 수만큼 더합니다. 합이 설정한 `quorum` 이상이면 ODOWN입니다. 주석이 스스로 "weak quorum"이라고 부르는 이유는, 이 표들이 같은 순간에 모인 합의가 아니라 최근에 받은 응답의 집계이기 때문입니다.
 
 ### 승격 허가는 알려진 감시자들의 과반수도 필요합니다
 
 ODOWN을 본 Sentinel이 혼자 아무 replica나 승격하면 두 곳에서 동시에 역할을 바꿀 수 있습니다. 그래서 선거 epoch마다 leader를 정합니다. `sentinelVoteLeader`는 epoch에 대해 투표하고, `sentinelGetLeader`는 알려진 Sentinels의 절대 과반수와 설정 quorum을 모두 채운 leader인지 검사합니다.[^leader]
 
-```c title="src/sentinel.c L4843-L4862"
+```c title="src/sentinel.c L4843-L4862" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/sentinel.c#L4843-L4862"
     /* Count this Sentinel vote:
      * if this Sentinel did not voted yet, either vote for the most
      * common voted sentinel, or for itself if no vote exists at all. */
@@ -323,8 +317,6 @@ ODOWN을 본 Sentinel이 혼자 아무 replica나 승격하면 두 곳에서 동
     if (winner && (max_votes < voters_quorum || max_votes < master->quorum))
         winner = NULL;
 ```
-
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/sentinel.c#L4843-L4862)
 
 `voters_quorum = voters/2+1`이 과반입니다. 가장 많은 표를 받은 후보라도 `max_votes`가 과반에 못 미치거나 설정한 `quorum`에 못 미치면 `winner`를 `NULL`로 돌려 이번 epoch에서는 리더가 없습니다. 그래서 Sentinel 5대에 quorum 2를 줘도 failover를 시작하려면 3표가 필요합니다.
 
@@ -419,7 +411,7 @@ PFAIL은 한 노드가 다른 노드를 제때 못 만난다는 로컬 의심입
 
 장애 primary의 replica는 `clusterHandleSlaveFailover` 경로에서 승격을 시도합니다. 적격성 검사 후, replication offset에 따른 replica rank와 무작위 지연으로 시도를 벌리고, 새 epoch에서 투표 요청을 보냅니다. offset rank는 더 뒤처진 replica가 늦게 시도하게 만드는 장치입니다. 모든 노드가 후보 데이터를 비교해 최신 값을 복원하는 절차가 아닙니다.[^cluster-election]
 
-```c title="src/cluster.c L4344-L4363"
+```c title="src/cluster.c L4344-L4363" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L4344-L4363"
     /* If the previous failover attempt timeout and the retry time has
      * elapsed, we can setup a new one. */
     if (auth_age > auth_retry_time) {
@@ -442,13 +434,11 @@ PFAIL은 한 노드가 다른 노드를 제때 못 만난다는 로컬 의심입
         }
 ```
 
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L4344-L4363)
-
 선거 시작 시각은 지금부터 500ms에 0~499ms의 난수를 더하고, rank 1마다 1초를 더 늦춥니다. rank는 `clusterGetSlaveRank`(L4142-L4157)가 셉니다. failover가 가능한 형제 replica 중 자기보다 `repl_offset`이 큰 수이므로, 데이터를 가장 많이 받은 replica가 먼저 표를 요청합니다. 수동 failover(`mf_end`)면 지연이 0입니다.
 
 voting primary는 `clusterSendFailoverAuthIfNeeded`에서 자신의 역할, 이미 투표한 epoch, 대상 primary의 FAIL 상태와 슬롯의 config epoch 등을 검사합니다. 후보가 voting primary의 과반수 ACK를 모으면 승격하고 슬롯을 인계합니다. `currentEpoch`는 선거의 진행 번호이고, `configEpoch`는 슬롯 소유권 정보의 우선순위를 정할 때 쓰입니다. 키 값의 버전 번호가 아닙니다.[^cluster-election]
 
-```c title="src/cluster.c L4039-L4083"
+```c title="src/cluster.c L4039-L4083" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L4039-L4083"
     if (nodeIsSlave(myself) || myself->numslots == 0) return;
 
     /* Request epoch must be >= our currentEpoch.
@@ -477,11 +467,9 @@ voting primary는 `clusterSendFailoverAuthIfNeeded`에서 자신의 역할, 이�
     }
 ```
 
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L4039-L4083)
-
 앞쪽 검사들입니다. 투표하는 노드가 slot을 가진 primary여야 하고, 요청의 epoch가 내 `currentEpoch`보다 작으면 거절합니다. 같은 epoch에 이미 투표했으면(`lastVoteEpoch == currentEpoch`) 두 번 찍지 않고, 요청한 replica의 primary가 FAIL로 보이지 않으면(수동 failover의 `force_ack` 제외) 거절합니다.
 
-```c title="src/cluster.c L4085-L4125"
+```c title="src/cluster.c L4085-L4125" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L4085-L4125"
     /* We did not voted for a slave about this master for two
      * times the node timeout. This is not strictly needed for correctness
      * of the algorithm but makes the base case more linear. */
@@ -514,8 +502,6 @@ voting primary는 `clusterSendFailoverAuthIfNeeded`에서 자신의 역할, 이�
     clusterDoBeforeSleep(CLUSTER_TODO_SAVE_CONFIG|CLUSTER_TODO_FSYNC_CONFIG);
     clusterSendFailoverAuth(node);
 ```
-
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L4085-L4125)
 
 같은 primary의 replica에게는 `node_timeout*2` 안에 다시 투표하지 않습니다. 요청이 주장하는 slot 중 하나라도 내가 아는 소유자의 configEpoch가 요청의 configEpoch보다 크면 거절합니다. 모두 통과하면 `lastVoteEpoch`를 기록하고 설정 저장과 fsync를 `beforeSleep`에 예약한 다음 `clusterSendFailoverAuth`를 부릅니다. 이 함수는 메시지를 링크 큐에 넣기만 하고 실제 전송은 write handler가 하는데(L3530-L3535), 그 handler는 `beforeSleep`의 `clusterBeforeSleep`(server.c L1663)이 설정 파일을 fsync한 뒤에 돕니다. 그래서 표가 네트워크로 나가기 전에 `lastVoteEpoch`가 디스크에 있고, 재시작한 노드가 같은 epoch에 두 번 투표하지 않습니다.
 
@@ -573,7 +559,7 @@ graph TD
 
 같은 hash tag를 썼다고 이동 중 multi-key 명령이 무조건 성공하는 것도 아닙니다. 슬롯은 같아도 키가 양쪽에 나뉜 순간이 있습니다. `getNodeByQuery`는 missing key 수를 세어 그런 명령을 거절합니다. TRYAGAIN 재시도에도 제한과 backoff가 필요합니다.[^routing]
 
-```c title="src/cluster.c L7508-L7540"
+```c title="src/cluster.c L7508-L7540" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L7508-L7540"
     /* MIGRATE always works in the context of the local node if the slot
      * is open (migrating or importing state). We need to be able to freely
      * move keys among instances in this case. */
@@ -609,8 +595,6 @@ graph TD
     }
 ```
 
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L7508-L7540)
-
 `MIGRATE` 자체는 slot이 열려 있으면 로컬에서 실행합니다. migrating 쪽에서 키가 일부만 남아 있으면 `CLUSTER_REDIR_UNSTABLE`(클라이언트가 보는 `-TRYAGAIN`)이고, 하나도 없으면 `-ASK`로 `migrating_slots_to[slot]`을 알려줍니다. importing 쪽은 `ASKING`이 붙은 요청만 받고, 다중 키 요청에서 키가 빠져 있으면 역시 TRYAGAIN입니다.
 
 ### MIGRATE가 하는 일
@@ -619,7 +603,7 @@ graph TD
 
 이 과정에서는 값 복사와 슬롯 소유권 변경이 별개입니다. `MIGRATE` 한 번은 전체 슬롯의 키를 모두 옮겼다는 증거도 아닙니다. 대상의 RESTORE와 원본의 DEL도 각 노드의 복제와 영속화 경로를 따릅니다.
 
-```c title="src/cluster.c L7151-L7185"
+```c title="src/cluster.c L7151-L7185" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L7151-L7185"
     for (j = 0; j < num_keys; j++) {
         if (connSyncReadLine(cs->conn, buf2, sizeof(buf2), timeout) <= 0) {
             socket_error = 1;
@@ -647,11 +631,9 @@ graph TD
     }
 ```
 
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L7151-L7185)
-
 target이 각 키의 `RESTORE`에 OK로 답할 때마다, `COPY`가 아니면 원본에서 `dbDelete`로 키를 지우고 `newargv`에 모아 둡니다. 오류가 난 키는 지우지 않으므로 원본에 그대로 남습니다.
 
-```c title="src/cluster.c L7187-L7215"
+```c title="src/cluster.c L7187-L7215" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L7187-L7215"
     /* On socket error, if we want to retry, do it now before rewriting the
      * command vector. We only retry if we are sure nothing was processed
      * and we failed to read the first reply (j == 0 test). */
@@ -682,8 +664,6 @@ target이 각 키의 `RESTORE`에 OK로 답할 때마다, `COPY`가 아니면 �
         newargv = NULL; /* Make it safe to call zfree() on it in the future. */
     }
 ```
-
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/cluster.c#L7187-L7215)
 
 재시도 조건은 네 가지입니다. target이 오류로 답한 게 아니라 소켓 오류가 났고, 응답을 하나도 못 읽었고(`j == 0`), 이번이 첫 시도이고(`may_retry`), 타임아웃이 아니어야 합니다. 키는 OK 응답을 읽은 뒤에만 지우므로 `j == 0`이면 지운 키가 없고, 그래서 다시 보내도 안전합니다. 끝나면 지운 키만 모아 명령을 `DEL`로 바꿔 replica와 AOF에 전파합니다.
 
@@ -772,7 +752,7 @@ primary의 삭제는 복제 스트림으로 전파됩니다. replica는 복제 �
 
 LRU는 전체 키의 완벽한 접근 순서 리스트를 유지하지 않습니다. 기본 `maxmemory-samples=5`로 표본을 채우고 eviction pool에서 더 좋은 후보를 유지하는 근사 방식입니다. `maxmemory-eviction-tenacity=10`은 축출 작업 시간 예산에 관여하며 CPU 비율 10%라는 뜻이 아닙니다.[^evict]
 
-```c title="src/evict.c L168-L187"
+```c title="src/evict.c L168-L187" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/evict.c#L168-L187"
         /* Calculate the idle time according to the policy. This is called
          * idle just because the code initially handled LRU, but is in fact
          * just a score where an higher score means better candidate. */
@@ -795,13 +775,11 @@ LRU는 전체 키의 완벽한 접근 순서 리스트를 유지하지 않습니
         }
 ```
 
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/evict.c#L168-L187)
-
 변수 이름은 `idle`이지만 정책마다 뜻이 다른 점수이고, 높을수록 먼저 쫓겨납니다. LRU는 유휴 시간, LFU는 `255 - 빈도`, volatile-ttl은 `ULLONG_MAX - 만료 시각`이라 만료가 가까운 키일수록 점수가 높습니다.
 
 LFU는 정확한 요청 카운터가 아닙니다. 객체 필드의 8비트 logarithmic counter와 16비트 분 단위 감쇠 정보를 사용합니다. 실제 `LFUDecrAndReturn`은 경과 감쇠 구간 수를 카운터에서 빼 줍니다. 근처의 오래된 주석에 보이는 "항상 반으로 줄입니다"만 옮기면 구현과 달라집니다. 기본 `lfu-log-factor=10`, `lfu-decay-time=1`도 이 확률 증가와 감쇠를 조정하는 값입니다.[^lfu]
 
-```c title="src/evict.c L297-L326"
+```c title="src/evict.c L297-L326" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/evict.c#L297-L326"
 /* Logarithmically increment a counter. The greater is the current counter value
  * the less likely is that it gets really incremented. Saturate it at 255. */
 uint8_t LFULogIncr(uint8_t counter) {
@@ -823,8 +801,6 @@ unsigned long LFUDecrAndReturn(robj *o) {
     return counter;
 }
 ```
-
-[GitHub](https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/evict.c#L297-L326)
 
 `LFULogIncr`는 카운터를 확률 `p = 1/((counter - 5) * lfu-log-factor + 1)`로만 올립니다(5는 `LFU_INIT_VAL`, server.h L3411). 기본 factor 10에서 redis.conf L2168-L2180의 표는 100회 접근에 10, 1M회에 255를 보여줍니다. `LFUDecrAndReturn`은 `lru` 필드 24비트를 상위 16비트 분 단위 시각과 하위 8비트 카운터로 나눠 쓰고, `lfu-decay-time` 분이 지날 때마다 1씩 깎습니다.
 

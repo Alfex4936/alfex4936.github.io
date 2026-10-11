@@ -168,6 +168,22 @@ $ npm run deploy:site
 
 원본 글꼴은 굵기마다 2.7MB입니다. 빌드는 이 저장소에 쓰인 한글만 남깁니다. 이 글을 쓴 시점에는 한글 406자, 굵기마다 25.5KB였습니다.
 
+남의 코드를 옮겨 올 때는 펜스에 `link="URL"`을 붙입니다. 파일 이름 자리가 원본으로 가는 링크가 되고, GitHub 주소면 GitHub 아이콘이 앞에 붙습니다. 커밋 해시가 들어간 주소를 쓰면 원본이 바뀌어도 줄 번호가 맞습니다. 아래는 Redis 7.2.16의 eviction 코드 일부입니다.
+
+```c title="src/evict.c L171-L187" link="https://github.com/redis/redis/blob/335554f18caf7bbf6b0ac2b3548133d750f00a1b/src/evict.c#L171-L187"
+if (server.maxmemory_policy & MAXMEMORY_FLAG_LRU) {
+    idle = estimateObjectIdleTime(o);
+} else if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
+    idle = 255-LFUDecrAndReturn(o);
+} else if (server.maxmemory_policy == MAXMEMORY_VOLATILE_TTL) {
+    idle = ULLONG_MAX - (long)dictGetVal(de);
+} else {
+    serverPanic("Unknown eviction policy in evictionPoolPopulate()");
+}
+```
+
+정책이 무엇이든 점수는 클수록 먼저 내보낼 후보입니다. LFU는 빈도를 255에서 빼서 같은 방향으로 맞춥니다. 원본의 긴 주석은 줄였습니다.
+
 ## 만져 보는 그림
 
 글에 따라 직접 눌러 보는 그림이 들어갑니다. 모두 빌드할 때 HTML로 나오고, 자바스크립트는 재생과 버튼만 맡습니다. 아래는 각 그림의 견본이고, 제자리에서 쓰인 모습은 링크한 글에 있습니다.
