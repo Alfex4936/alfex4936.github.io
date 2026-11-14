@@ -69,7 +69,8 @@ for (const [key, a] of assets) {
   const head = git('show', `HEAD:${key}`)
   if (head === null) continue // new file, never committed: nothing to compare
   const now = readFileSync(join(ROOT, key), 'utf8')
-  if (head === now) continue
+  // Git may check out an LF blob as CRLF on Windows.
+  if (head.replaceAll('\r\n', '\n') === now.replaceAll('\r\n', '\n')) continue
 
   // The bytes moved. An asset nobody ever gave a ?v= is the worse case: there
   // is no number to compare, so a warm cache keeps the old file indefinitely
