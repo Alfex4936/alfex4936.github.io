@@ -13,8 +13,8 @@
   <link rel="alternate icon" href="./favicon-32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="./apple-touch-icon.png">
   <script>if ('WebGL2RenderingContext' in window) document.documentElement.classList.add('gl');</script>
-  <script type="module" crossorigin src="./assets/main-BPwstMfC.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/main-BS8ewyW4.css">
+  <script type="module" crossorigin src="./assets/main-C100MejY.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/main-BZFOTxwr.css">
 </head>
 <body>
   <canvas class="stage" id="stage" aria-hidden="true"></canvas>
@@ -26,7 +26,7 @@
     </a>
     <nav aria-label="페이지 메뉴">
       <a href="#archive">사진첩</a>
-      <a href="#longevity">십장생</a>
+      <a id="longevity-link" href="#longevity">십장생</a>
     </nav>
   </header>
 
@@ -60,6 +60,17 @@
         오늘은 태어난 지 <strong class="hero__count"><span data-days></span>일째</strong>
       </p>
       <p class="hero__meta"><span data-age></span> <span data-birthday></span></p>
+      <div class="hero__milestone" data-milestone hidden>
+        <div class="hero__milestone-main">
+          <strong class="hero__milestone-number"><span data-milestone-number></span><span class="hero__milestone-unit">일</span></strong>
+          <span class="hero__milestone-label" data-milestone-label></span>
+          <span class="hero__milestone-flower" data-milestone-flower aria-hidden="true"></span>
+        </div>
+        <div class="hero__milestone-stub">
+          <strong class="hero__milestone-dday" data-milestone-dday></strong>
+          <time class="hero__milestone-date" data-milestone-date></time>
+        </div>
+      </div>
       <div class="hero__actions">
         <a class="cta hero__open" href="#archive">사진첩 펼치기<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v13M6.5 12.5L12 18l5.5-5.5"/></svg></a>
         <button type="button" class="cta cta--soft" data-upload hidden><span>사진 보내기</span><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6M6.5 11.5L12 6l5.5 5.5"/></svg></button>
